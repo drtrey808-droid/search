@@ -1,27 +1,18 @@
-const BUILD_ID = "SAB_TRUSTED_LOOKUP_R6_1_2026_08_16";
+const BUILD_ID = "SAB_TRUSTED_LOOKUP_R7_2026_08_16";
 
 const TAVILY_URL = "https://api.tavily.com/search";
 const TAVILY_USAGE_URL = "https://api.tavily.com/usage";
-
-const NVIDIA_URL =
-  "https://integrate.api.nvidia.com/v1/chat/completions";
-
-const DEFAULT_MODEL =
-  "nvidia/nemotron-3-super-120b-a12b";
+const NVIDIA_URL = "https://integrate.api.nvidia.com/v1/chat/completions";
+const DEFAULT_MODEL = "nvidia/nemotron-3-super-120b-a12b";
 
 const TIERS = {
-  1: [
-    "roblox.com",
-    "create.roblox.com",
-  ],
-
+  1: ["roblox.com", "create.roblox.com"],
   2: [
     "stealabrainrot.fandom.com",
     "steal-a-brainrot.wiki",
     "progameguides.com",
     "sportskeeda.com",
   ],
-
   3: [
     "reddit.com",
     "youtube.com",
@@ -33,18 +24,13 @@ const TIERS = {
   ],
 };
 
-
 function cleanText(value, limit = 2000) {
   return String(value ?? "")
-    .replace(
-      /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g,
-      " "
-    )
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, " ")
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, limit);
 }
-
 
 function normalize(value) {
   return cleanText(value, 500)
@@ -52,72 +38,46 @@ function normalize(value) {
     .replace(/[^a-z0-9]+/g, "");
 }
 
-
 function clamp(value, min = 0, max = 1) {
   const n = Number(value);
-
-  return Number.isFinite(n)
-    ? Math.max(min, Math.min(max, n))
-    : min;
+  return Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : min;
 }
-
 
 function getTavilyKey() {
-  return String(
-    process.env.TAVILY_API_KEY || ""
-  )
+  return String(process.env.TAVILY_API_KEY || "")
     .trim()
     .replace(/^Bearer\s+/i, "")
     .trim();
 }
-
 
 function getNvidiaKey() {
-  return String(
-    process.env.NVIDIA_API_KEY || ""
-  )
+  return String(process.env.NVIDIA_API_KEY || "")
     .trim()
     .replace(/^Bearer\s+/i, "")
     .trim();
 }
 
-
 function getLookupToken() {
-  return String(
-    process.env.LOOKUP_PROXY_TOKEN || ""
-  ).trim();
+  return String(process.env.LOOKUP_PROXY_TOKEN || "").trim();
 }
-
 
 function hostname(url) {
   try {
-    return new URL(url)
-      .hostname
-      .toLowerCase()
-      .replace(/^www\./, "");
+    return new URL(url).hostname.toLowerCase().replace(/^www\./, "");
   } catch {
     return "";
   }
 }
 
-
 function domainMatches(host, domain) {
-  return (
-    host === domain ||
-    host.endsWith(`.${domain}`)
-  );
+  return host === domain || host.endsWith(`.${domain}`);
 }
-
 
 function classifyTier(url) {
   const host = hostname(url);
 
   for (const tier of [1, 2, 3]) {
-    if (
-      TIERS[tier].some((domain) =>
-        domainMatches(host, domain)
-      )
-    ) {
+    if (TIERS[tier].some((domain) => domainMatches(host, domain))) {
       return tier;
     }
   }
@@ -125,12 +85,8 @@ function classifyTier(url) {
   return 4;
 }
 
-
 function isRecentQuestion(question) {
-  const q = cleanText(
-    question,
-    600
-  ).toLowerCase();
+  const q = cleanText(question, 600).toLowerCase();
 
   return [
     "newest",
@@ -159,470 +115,224 @@ function isRecentQuestion(question) {
     "what changed",
     "update",
     "patch",
-  ].some((phrase) =>
-    q.includes(phrase)
-  );
+  ].some((phrase) => q.includes(phrase));
 }
 
-
-function jsonResponse(
-  status,
-  payload
-) {
-  return new Response(
-    JSON.stringify(payload),
-    {
-      status,
-
-      headers: {
-        "content-type":
-          "application/json; charset=utf-8",
-
-        "cache-control":
-          "no-store",
-
-        "x-lookup-build":
-          BUILD_ID,
-      },
-    }
-  );
+function jsonResponse(status, payload) {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store",
+      "x-lookup-build": BUILD_ID,
+    },
+  });
 }
-
 
 function stringifyDetail(value) {
-  if (value == null) {
-    return "";
-  }
-
-  if (typeof value === "string") {
-    return cleanText(
-      value,
-      400
-    );
-  }
+  if (value == null) return "";
+  if (typeof value === "string") return cleanText(value, 400);
 
   try {
-    return cleanText(
-      JSON.stringify(value),
-      400
-    );
+    return cleanText(JSON.stringify(value), 400);
   } catch {
-    return cleanText(
-      String(value),
-      400
-    );
+    return cleanText(String(value), 400);
   }
 }
 
-
-function upstreamDetail(
-  decoded,
-  rawText
-) {
-  if (
-    decoded &&
-    typeof decoded === "object"
-  ) {
-    for (
-      const key
-      of [
-        "detail",
-        "message",
-        "error",
-        "errors",
-      ]
-    ) {
-      if (
-        decoded[key] != null
-      ) {
-        const detail =
-          stringifyDetail(
-            decoded[key]
-          );
-
-        if (detail) {
-          return detail;
-        }
+function upstreamDetail(decoded, rawText) {
+  if (decoded && typeof decoded === "object") {
+    for (const key of ["detail", "message", "error", "errors"]) {
+      if (decoded[key] != null) {
+        const detail = stringifyDetail(decoded[key]);
+        if (detail) return detail;
       }
     }
   }
 
-  return cleanText(
-    rawText,
-    400
-  );
+  return cleanText(rawText, 400);
 }
 
-
-async function fetchJson(
-  label,
-  url,
-  options = {},
-  timeoutMs = 15000
-) {
-  const controller =
-    new AbortController();
-
-  const timer =
-    setTimeout(
-      () =>
-        controller.abort(),
-      timeoutMs
-    );
+async function fetchJson(label, url, options = {}, timeoutMs = 15000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     let response;
 
     try {
-      response =
-        await fetch(
-          url,
-          {
-            ...options,
-            signal:
-              controller.signal,
-          }
-        );
+      response = await fetch(url, {
+        ...options,
+        signal: controller.signal,
+      });
     } catch (error) {
-      if (
-        error?.name ===
-        "AbortError"
-      ) {
-        throw new Error(
-          `${label}_TIMEOUT`
-        );
+      if (error?.name === "AbortError") {
+        throw new Error(`${label}_TIMEOUT`);
       }
 
       throw new Error(
-        `${label}_REQUEST_FAILED:${cleanText(
-          error?.message,
-          180
-        )}`
+        `${label}_REQUEST_FAILED:${cleanText(error?.message, 180)}`
       );
     }
 
-    const raw =
-      await response.text();
-
+    const raw = await response.text();
     let decoded = null;
 
     try {
-      decoded =
-        raw
-          ? JSON.parse(raw)
-          : {};
+      decoded = raw ? JSON.parse(raw) : {};
     } catch {
       decoded = null;
     }
 
     if (!response.ok) {
-      const detail =
-        upstreamDetail(
-          decoded,
-          raw
-        );
+      const detail = upstreamDetail(decoded, raw);
 
       throw new Error(
-        `${label}_HTTP_${response.status}${
-          detail
-            ? `:${detail}`
-            : ""
-        }`
+        `${label}_HTTP_${response.status}${detail ? `:${detail}` : ""}`
       );
     }
 
-    return (
-      decoded ??
-      {
-        raw:
-          cleanText(
-            raw,
-            500
-          ),
-      }
-    );
+    return decoded ?? {
+      raw: cleanText(raw, 500),
+    };
   } finally {
     clearTimeout(timer);
   }
 }
 
-
-function validateQuestions(
-  value
-) {
-  if (
-    !Array.isArray(value) ||
-    value.length < 1 ||
-    value.length > 8
-  ) {
-    throw new Error(
-      "QUESTIONS_MUST_CONTAIN_1_TO_8_ITEMS"
-    );
+function validateQuestions(value) {
+  if (!Array.isArray(value) || value.length < 1 || value.length > 8) {
+    throw new Error("QUESTIONS_MUST_CONTAIN_1_TO_8_ITEMS");
   }
 
-  return value.map(
-    (row, i) => {
-      const question =
-        cleanText(
-          row?.question,
-          600
-        );
+  return value.map((row, i) => {
+    const question = cleanText(row?.question, 600);
 
-      if (!question) {
-        throw new Error(
-          `QUESTION_${i + 1}_EMPTY`
-        );
-      }
-
-      return {
-        index:
-          i + 1,
-
-        question,
-
-        expectedEntity:
-          cleanText(
-            row?.expectedEntity ||
-              "NONE",
-            120
-          ) ||
-          "NONE",
-
-        expectedAttribute:
-          cleanText(
-            row?.expectedAttribute ||
-              "NONE",
-            120
-          ) ||
-          "NONE",
-
-        aiAnswer:
-          cleanText(
-            row?.aiAnswer ||
-              "UNKNOWN",
-            240
-          ) ||
-          "UNKNOWN",
-
-        aiConfidence:
-          clamp(
-            row?.aiConfidence,
-            0,
-            1
-          ),
-      };
+    if (!question) {
+      throw new Error(`QUESTION_${i + 1}_EMPTY`);
     }
-  );
+
+    return {
+      index: i + 1,
+      question,
+
+      expectedEntity:
+        cleanText(row?.expectedEntity || "NONE", 120) || "NONE",
+
+      expectedAttribute:
+        cleanText(row?.expectedAttribute || "NONE", 120) || "NONE",
+
+      aiAnswer:
+        cleanText(row?.aiAnswer || "UNKNOWN", 240) || "UNKNOWN",
+
+      aiConfidence:
+        clamp(row?.aiConfidence, 0, 1),
+    };
+  });
 }
 
-
-function buildSearchQuery(
-  question
-) {
-  const q =
-    cleanText(
-      question,
-      600
-    );
+function buildSearchQuery(question) {
+  const q = cleanText(question, 600);
 
   if (
-    /\b(sab|steal a brainrot|brainrot|sammy|rebirth|rng machine)\b/i.test(
-      q
-    )
+    /\b(sab|steal a brainrot|brainrot|sammy|rebirth|rng machine)\b/i.test(q)
   ) {
-    return (
-      "Steal a Brainrot " +
-      q
-    );
+    return `Steal a Brainrot ${q}`;
   }
 
   return q;
 }
 
-
-async function tavilySearch(
-  question,
-  includeDomains = null
-) {
+async function tavilySearch(question, includeDomains = null) {
   const body = {
-    query:
-      buildSearchQuery(
-        question
-      ),
-
-    search_depth:
-      "basic",
-
-    max_results:
-      10,
-
-    topic:
-      "general",
-
-    include_answer:
-      false,
-
-    include_raw_content:
-      false,
-
-    include_images:
-      false,
-
-    include_image_descriptions:
-      false,
-
-    include_favicon:
-      false,
-
-    include_usage:
-      true,
+    query: buildSearchQuery(question),
+    search_depth: "basic",
+    max_results: 10,
+    topic: "general",
+    include_answer: false,
+    include_raw_content: false,
+    include_images: false,
+    include_image_descriptions: false,
+    include_favicon: false,
+    include_usage: true,
   };
 
-
-  if (
-    isRecentQuestion(
-      question
-    )
-  ) {
-    body.time_range =
-      "month";
+  if (isRecentQuestion(question)) {
+    body.time_range = "month";
   }
 
-
-  if (
-    Array.isArray(
-      includeDomains
-    ) &&
-    includeDomains.length
-  ) {
-    body.include_domains =
-      includeDomains;
+  if (Array.isArray(includeDomains) && includeDomains.length) {
+    body.include_domains = includeDomains;
   }
 
+  const data = await fetchJson(
+    "TAVILY",
+    TAVILY_URL,
+    {
+      method: "POST",
 
-  const data =
-    await fetchJson(
-      "TAVILY",
+      headers: {
+        Authorization: `Bearer ${getTavilyKey()}`,
+        "Content-Type": "application/json",
+      },
 
-      TAVILY_URL,
+      body: JSON.stringify(body),
+    }
+  );
 
-      {
-        method:
-          "POST",
-
-        headers: {
-          Authorization:
-            `Bearer ${getTavilyKey()}`,
-
-          "Content-Type":
-            "application/json",
-        },
-
-        body:
-          JSON.stringify(
-            body
-          ),
-      }
-    );
-
-
-  const results =
-    Array.isArray(
-      data?.results
-    )
-      ? data.results
-      : [];
-
+  const results = Array.isArray(data?.results)
+    ? data.results
+    : [];
 
   return results
-    .map(
-      (r, i) => {
-        const url =
+    .map((r, i) => {
+      const url = cleanText(r?.url, 1000);
+
+      return {
+        id: `S${i + 1}`,
+
+        title:
+          cleanText(r?.title, 250),
+
+        url,
+
+        host:
+          hostname(url),
+
+        snippet:
           cleanText(
-            r?.url,
-            1000
-          );
+            r?.content ?? r?.raw_content,
+            1800
+          ),
 
-        return {
-          id:
-            `S${i + 1}`,
+        publishedDate:
+          cleanText(
+            r?.published_date ?? r?.publishedDate,
+            100
+          ),
 
-          title:
-            cleanText(
-              r?.title,
-              250
-            ),
+        score:
+          clamp(r?.score, 0, 1),
 
-          url,
-
-          host:
-            hostname(
-              url
-            ),
-
-          snippet:
-            cleanText(
-              r?.content ??
-                r?.raw_content,
-              1800
-            ),
-
-          publishedDate:
-            cleanText(
-              r?.published_date ??
-                r?.publishedDate,
-              100
-            ),
-
-          score:
-            clamp(
-              r?.score,
-              0,
-              1
-            ),
-
-          tier:
-            classifyTier(
-              url
-            ),
-        };
-      }
-    )
-    .filter(
-      (r) =>
-        r.url.startsWith(
-          "https://"
-        )
+        tier:
+          classifyTier(url),
+      };
+    })
+    .filter((r) =>
+      r.url.startsWith("https://")
     );
 }
 
-
-function dedupeSources(
-  sources
-) {
+function dedupeSources(sources) {
   const out = [];
-  const seen =
-    new Set();
+  const seen = new Set();
 
-  for (
-    const source
-    of sources
-  ) {
-    const key =
-      source.url
-        .replace(
-          /[?#].*$/,
-          ""
-        )
-        .replace(
-          /\/$/,
-          ""
-        );
+  for (const source of sources) {
+    const key = source.url
+      .replace(/[?#].*$/, "")
+      .replace(/\/$/, "");
 
-    if (
-      !key ||
-      seen.has(key)
-    ) {
+    if (!key || seen.has(key)) {
       continue;
     }
 
@@ -630,78 +340,38 @@ function dedupeSources(
 
     out.push({
       ...source,
-
-      id:
-        `S${out.length + 1}`,
+      id: `S${out.length + 1}`,
     });
   }
 
-  return out.slice(
-    0,
-    14
-  );
+  return out.slice(0, 14);
 }
 
-
-function extractJsonObject(
-  text
-) {
-  const cleaned =
-    String(text ?? "")
-      .replace(
-        /^```(?:json)?\s*/i,
-        ""
-      )
-      .replace(
-        /\s*```$/,
-        ""
-      )
-      .trim();
-
+function extractJsonObject(text) {
+  const cleaned = String(text ?? "")
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/, "")
+    .trim();
 
   try {
-    return JSON.parse(
-      cleaned
-    );
+    return JSON.parse(cleaned);
   } catch {}
 
+  const first = cleaned.indexOf("{");
+  const last = cleaned.lastIndexOf("}");
 
-  const first =
-    cleaned.indexOf(
-      "{"
-    );
-
-  const last =
-    cleaned.lastIndexOf(
-      "}"
-    );
-
-
-  if (
-    first >= 0 &&
-    last > first
-  ) {
+  if (first >= 0 && last > first) {
     try {
       return JSON.parse(
-        cleaned.slice(
-          first,
-          last + 1
-        )
+        cleaned.slice(first, last + 1)
       );
     } catch {}
   }
 
-
-  throw new Error(
-    "NVIDIA_INVALID_JSON_OUTPUT"
-  );
+  throw new Error("NVIDIA_INVALID_JSON_OUTPUT");
 }
 
-
-async function callNemotron(
-  messages,
-  maxTokens = 320
-) {
+async function callNemotron(messages, maxTokens = 320) {
   const model =
     cleanText(
       process.env.NVIDIA_MODEL ||
@@ -709,16 +379,12 @@ async function callNemotron(
       200
     );
 
-
   const data =
     await fetchJson(
       "NVIDIA",
-
       NVIDIA_URL,
-
       {
-        method:
-          "POST",
+        method: "POST",
 
         headers: {
           Authorization:
@@ -735,8 +401,7 @@ async function callNemotron(
           JSON.stringify({
             model,
 
-            stream:
-              false,
+            stream: false,
 
             messages,
 
@@ -757,15 +422,12 @@ async function callNemotron(
       }
     );
 
-
   const content =
     data?.choices?.[0]
       ?.message?.content;
 
-
   if (
-    typeof content !==
-      "string" ||
+    typeof content !== "string" ||
     !content.trim()
   ) {
     throw new Error(
@@ -773,16 +435,10 @@ async function callNemotron(
     );
   }
 
-
-  return extractJsonObject(
-    content
-  );
+  return extractJsonObject(content);
 }
 
-
-function cleanCandidate(
-  raw
-) {
+function cleanCandidate(raw) {
   return {
     answer:
       cleanText(
@@ -821,23 +477,15 @@ function cleanCandidate(
       )
         ? raw.citedIds
             .map(String)
-            .slice(
-              0,
-              8
-            )
+            .slice(0, 8)
         : [],
 
     conflict:
-      raw?.conflict ===
-      true,
+      raw?.conflict === true,
   };
 }
 
-
-async function advisoryAnswer(
-  question,
-  lore
-) {
+async function advisoryAnswer(question, lore) {
   const raw =
     await callNemotron(
       [
@@ -887,12 +535,8 @@ async function advisoryAnswer(
       220
     );
 
-
-  return cleanCandidate(
-    raw
-  );
+  return cleanCandidate(raw);
 }
-
 
 async function extractFromSources(
   question,
@@ -908,6 +552,9 @@ async function extractFromSources(
         tier:
           s.tier,
 
+        relevance:
+          s.score,
+
         host:
           s.host,
 
@@ -921,7 +568,6 @@ async function extractFromSources(
           s.snippet,
       })
     );
-
 
   const raw =
     await callNemotron(
@@ -982,12 +628,8 @@ async function extractFromSources(
       320
     );
 
-
-  return cleanCandidate(
-    raw
-  );
+  return cleanCandidate(raw);
 }
-
 
 function sourceSupportsAnswer(
   source,
@@ -1004,19 +646,14 @@ function sourceSupportsAnswer(
           /[a-z0-9]+/g
         ) ||
       []
-    )
-      .filter(
-        (w) =>
-          w.length >= 2
-      );
+    ).filter(
+      (w) =>
+        w.length >= 2
+    );
 
-
-  if (
-    !words.length
-  ) {
+  if (!words.length) {
     return false;
   }
-
 
   const haystack =
     (
@@ -1025,26 +662,18 @@ function sourceSupportsAnswer(
       source.snippet
     ).toLowerCase();
 
-
   return words.every(
     (word) =>
-      haystack.includes(
-        word
-      )
+      haystack.includes(word)
   );
 }
 
-
-function answersMatch(
-  a,
-  b
-) {
+function answersMatch(a, b) {
   const left =
     normalize(a);
 
   const right =
     normalize(b);
-
 
   return (
     left &&
@@ -1054,7 +683,6 @@ function answersMatch(
     left === right
   );
 }
-
 
 function scoreCandidate(
   question,
@@ -1066,7 +694,6 @@ function scoreCandidate(
     new Set(
       candidate.citedIds
     );
-
 
   const supported =
     sources.filter(
@@ -1080,10 +707,8 @@ function scoreCandidate(
         )
     );
 
-
   const byHost =
     new Map();
-
 
   for (
     const source
@@ -1094,11 +719,12 @@ function scoreCandidate(
         source.host
       );
 
-
     if (
       !previous ||
       source.tier <
-        previous.tier
+        previous.tier ||
+      source.score >
+        previous.score
     ) {
       byHost.set(
         source.host,
@@ -1107,10 +733,8 @@ function scoreCandidate(
     }
   }
 
-
   const independent =
     [...byHost.values()];
-
 
   const counts = {
     1: 0,
@@ -1118,7 +742,6 @@ function scoreCandidate(
     3: 0,
     4: 0,
   };
-
 
   independent.forEach(
     (source) => {
@@ -1128,19 +751,28 @@ function scoreCandidate(
     }
   );
 
-
   const agreement =
     answersMatch(
       candidate.answer,
       advisory.answer
     );
 
+  const bestRelevance =
+    independent.length
+      ? Math.max(
+          ...independent.map(
+            (source) =>
+              clamp(
+                source.score,
+                0,
+                1
+              )
+          )
+        )
+      : 0;
 
-  let accepted =
-    false;
-
-  let ceiling =
-    0.64;
+  let accepted = false;
+  let ceiling = 0.64;
 
   let reason =
     "insufficient_sources";
@@ -1148,16 +780,12 @@ function scoreCandidate(
   let route =
     "REVIEW";
 
-
   if (
     candidate.conflict
   ) {
-    ceiling =
-      0.49;
-
+    ceiling = 0.49;
     reason =
       "source_conflict";
-
     route =
       "SOURCE_CONFLICT";
   }
@@ -1165,15 +793,10 @@ function scoreCandidate(
   else if (
     counts[1] >= 1
   ) {
-    accepted =
-      true;
-
-    ceiling =
-      0.98;
-
+    accepted = true;
+    ceiling = 0.98;
     reason =
       "accepted_official";
-
     route =
       "OFFICIAL";
   }
@@ -1181,15 +804,10 @@ function scoreCandidate(
   else if (
     counts[2] >= 2
   ) {
-    accepted =
-      true;
-
-    ceiling =
-      0.95;
-
+    accepted = true;
+    ceiling = 0.95;
     reason =
       "accepted_two_trusted";
-
     route =
       "TRUSTED_2_PLUS";
   }
@@ -1198,11 +816,8 @@ function scoreCandidate(
     counts[2] >= 1 &&
     counts[3] >= 1
   ) {
-    accepted =
-      true;
-
-    ceiling =
-      0.90;
+    accepted = true;
+    ceiling = 0.90;
 
     reason =
       "accepted_trusted_plus_community";
@@ -1219,11 +834,8 @@ function scoreCandidate(
     advisory.confidence >=
       0.80
   ) {
-    accepted =
-      true;
-
-    ceiling =
-      0.91;
+    accepted = true;
+    ceiling = 0.91;
 
     reason =
       "accepted_trusted_ai_agreement";
@@ -1233,10 +845,26 @@ function scoreCandidate(
   }
 
   else if (
+    counts[2] >= 1 &&
+    candidate.confidence >=
+      0.92 &&
+    bestRelevance >=
+      0.75
+  ) {
+    accepted = true;
+    ceiling = 0.90;
+
+    reason =
+      "accepted_single_trusted_strong";
+
+    route =
+      "TRUSTED_SINGLE_STRONG";
+  }
+
+  else if (
     counts[2] >= 1
   ) {
-    ceiling =
-      0.79;
+    ceiling = 0.79;
 
     reason =
       agreement
@@ -1250,8 +878,7 @@ function scoreCandidate(
   else if (
     counts[3] >= 2
   ) {
-    ceiling =
-      0.78;
+    ceiling = 0.78;
 
     reason =
       "community_only";
@@ -1260,21 +887,17 @@ function scoreCandidate(
       "COMMUNITY_REVIEW";
   }
 
-
   const confidence =
     Math.min(
       candidate.confidence,
       ceiling
     );
 
-
   if (
     confidence < 0.85
   ) {
-    accepted =
-      false;
+    accepted = false;
   }
-
 
   return {
     answer:
@@ -1295,6 +918,8 @@ function scoreCandidate(
       advisory.confidence,
 
     agreement,
+
+    bestRelevance,
 
     entity:
       question.expectedEntity !==
@@ -1335,14 +960,14 @@ function scoreCandidate(
 
     sources:
       independent
-        .slice(
-          0,
-          4
-        )
+        .slice(0, 4)
         .map(
           (source) => ({
             tier:
               source.tier,
+
+            relevance:
+              source.score,
 
             host:
               source.host,
@@ -1357,13 +982,11 @@ function scoreCandidate(
   };
 }
 
-
 async function resolveQuestion(
   question,
   lore
 ) {
   let advisory;
-
 
   try {
     advisory =
@@ -1398,7 +1021,6 @@ async function resolveQuestion(
         ),
     };
   }
-
 
   if (
     !isRecentQuestion(
@@ -1445,11 +1067,13 @@ async function resolveQuestion(
         highestTier:
           9,
 
+        bestRelevance:
+          0,
+
         sources:
           [],
       };
     }
-
 
     return {
       answer:
@@ -1489,17 +1113,18 @@ async function resolveQuestion(
       highestTier:
         9,
 
+      bestRelevance:
+        0,
+
       sources:
         [],
     };
   }
 
-
   const trustedDomains = [
     ...TIERS[1],
     ...TIERS[2],
   ];
-
 
   const trusted =
     await tavilySearch(
@@ -1507,12 +1132,10 @@ async function resolveQuestion(
       trustedDomains
     );
 
-
   let sources =
     dedupeSources(
       trusted
     );
-
 
   let candidate =
     await extractFromSources(
@@ -1521,7 +1144,6 @@ async function resolveQuestion(
       lore
     );
 
-
   let scored =
     scoreCandidate(
       question,
@@ -1529,7 +1151,6 @@ async function resolveQuestion(
       advisory,
       sources
     );
-
 
   if (
     scored.answer ===
@@ -1541,13 +1162,11 @@ async function resolveQuestion(
         null
       );
 
-
     sources =
       dedupeSources([
         ...sources,
         ...broad,
       ]);
-
 
     candidate =
       await extractFromSources(
@@ -1555,7 +1174,6 @@ async function resolveQuestion(
         sources,
         lore
       );
-
 
     scored =
       scoreCandidate(
@@ -1566,21 +1184,16 @@ async function resolveQuestion(
       );
   }
 
-
   return scored;
 }
 
-
-function makeTrace(
-  items
-) {
+function makeTrace(items) {
   const failed =
     items.find(
       (item) =>
         item.answer ===
         "UNKNOWN"
     );
-
 
   if (failed) {
     return (
@@ -1600,22 +1213,33 @@ function makeTrace(
         ) * 100
       )}%` +
 
-      ` • sources=${failed.sourceCount || 0}`
+      ` • sources=${failed.sourceCount || 0}` +
+
+      ` • relevance=${Math.round(
+        clamp(
+          failed.bestRelevance
+        ) * 100
+      )}%`
     );
   }
-
 
   return items
     .map(
       (item) =>
         `${item.route}:${item.answer}:${Math.round(
-          item.confidence *
-            100
+          item.confidence * 100
+        )}%` +
+
+        `:src=${item.sourceCount || 0}` +
+
+        `:rel=${Math.round(
+          clamp(
+            item.bestRelevance
+          ) * 100
         )}%`
     )
     .join(" | ");
 }
-
 
 export function OPTIONS() {
   return new Response(
@@ -1635,21 +1259,16 @@ export function OPTIONS() {
   );
 }
 
-
-export async function GET(
-  request
-) {
+export async function GET(request) {
   const url =
     new URL(
       request.url
     );
 
-
   const test =
     url.searchParams.get(
       "test"
     );
-
 
   if (
     test ===
@@ -1672,7 +1291,6 @@ export async function GET(
             },
           }
         );
-
 
       return jsonResponse(
         200,
@@ -1728,7 +1346,6 @@ export async function GET(
     }
   }
 
-
   if (
     test ===
     "search"
@@ -1775,7 +1392,6 @@ export async function GET(
           }
         );
 
-
       return jsonResponse(
         200,
         {
@@ -1820,7 +1436,6 @@ export async function GET(
     }
   }
 
-
   return jsonResponse(
     200,
     {
@@ -1853,19 +1468,25 @@ export async function GET(
         process.env.NVIDIA_MODEL ||
         DEFAULT_MODEL,
 
+      policy: {
+        singleTrustedStrong: {
+          candidateConfidenceMin:
+            0.92,
+
+          tavilyRelevanceMin:
+            0.75,
+        },
+      },
+
       sourceTiers:
         TIERS,
     }
   );
 }
 
-
-export async function POST(
-  request
-) {
+export async function POST(request) {
   const expectedToken =
     getLookupToken();
-
 
   const suppliedToken =
     cleanText(
@@ -1880,7 +1501,6 @@ export async function POST(
       )
       .trim();
 
-
   if (
     !expectedToken
   ) {
@@ -1892,7 +1512,6 @@ export async function POST(
       }
     );
   }
-
 
   if (
     suppliedToken !==
@@ -1907,7 +1526,6 @@ export async function POST(
     );
   }
 
-
   if (
     !getTavilyKey()
   ) {
@@ -1919,7 +1537,6 @@ export async function POST(
       }
     );
   }
-
 
   if (
     !getNvidiaKey()
@@ -1933,9 +1550,7 @@ export async function POST(
     );
   }
 
-
   let body;
-
 
   try {
     body =
@@ -1950,9 +1565,7 @@ export async function POST(
     );
   }
 
-
   let questions;
-
 
   try {
     questions =
@@ -1972,17 +1585,13 @@ export async function POST(
     );
   }
 
-
   const lore =
     cleanText(
       body?.lore,
       16000
     );
 
-
-  const items =
-    [];
-
+  const items = [];
 
   for (
     const question
@@ -1994,7 +1603,6 @@ export async function POST(
           question,
           lore
         );
-
 
       items.push({
         index:
@@ -2010,11 +1618,9 @@ export async function POST(
           500
         );
 
-
       console.error(
         `[SAB Lookup] item=${question.index} ${reason}`
       );
-
 
       items.push({
         index:
@@ -2052,12 +1658,14 @@ export async function POST(
         highestTier:
           4,
 
+        bestRelevance:
+          0,
+
         sources:
           [],
       });
     }
   }
-
 
   return jsonResponse(
     200,
