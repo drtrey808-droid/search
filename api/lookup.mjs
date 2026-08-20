@@ -1,4 +1,4 @@
-const BUILD_ID = "SAB_AGGRESSIVE_VERIFIED_ENGINE_R31_2026_08_19";
+const BUILD_ID = "SAB_FAILURE_ISOLATED_MULTIPART_R32_2026_08_19";
 
 const PRIMARY_ORIGIN = "https://steal-a-brainrot.org";
 const FANDOM_API = "https://stealabrainrot.fandom.com/api.php";
@@ -469,7 +469,8 @@ function analyzeQuestion(question) {
     current,
     intent: inferIntent(q, relation, update, date),
     rawQuestion: q,
-    source: "DETERMINISTIC_R31",
+    wantedRelations: detectWantedRelations(q, relation),
+    source: "DETERMINISTIC_R32",
   };
 }
 
@@ -609,7 +610,7 @@ async function fetchPage(url, source, deadline) {
   const html = await fetchText(source.key, url, {
     headers: {
       Accept: "text/html,application/xhtml+xml",
-      "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R31",
+      "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R32",
     },
   }, timeout);
   const page = {
@@ -943,7 +944,7 @@ function withBridgedUpdate(analysis, update) {
     source:
       analysis.source === "NVIDIA_QUESTION_ROUTER"
         ? "NVIDIA_QUESTION_ROUTER+DATE_BRIDGE"
-        : "DETERMINISTIC_R31+DATE_BRIDGE",
+        : "DETERMINISTIC_R32+DATE_BRIDGE",
   };
 }
 
@@ -1987,7 +1988,7 @@ async function fandomSearchTitles(query, deadline) {
     format: "json",
   });
   try {
-    const data = await fetchJson("FANDOM_SEARCH", `${FANDOM_API}?${params.toString()}`, { headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R31" } }, Math.min(CFG.FANDOM_TIMEOUT_MS, left - 20));
+    const data = await fetchJson("FANDOM_SEARCH", `${FANDOM_API}?${params.toString()}`, { headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R32" } }, Math.min(CFG.FANDOM_TIMEOUT_MS, left - 20));
     return (Array.isArray(data?.query?.search) ? data.query.search : []).map((x) => oneLine(x?.title, 300)).filter(Boolean);
   } catch {
     return [];
@@ -2000,7 +2001,7 @@ async function fetchFandomPage(title, deadline) {
   if (cached) return { ...cached, cache: "HIT" };
   const left = timeLeft(deadline);
   if (left < 250) throw new Error("FANDOM_BUDGET_EXHAUSTED");
-  const data = await fetchJson("FANDOM_PARSE", fandomParseUrl(title), { headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R31" } }, Math.min(CFG.FANDOM_TIMEOUT_MS, left - 20));
+  const data = await fetchJson("FANDOM_PARSE", fandomParseUrl(title), { headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R32" } }, Math.min(CFG.FANDOM_TIMEOUT_MS, left - 20));
   if (data?.error) throw new Error(`FANDOM_PARSE_${data.error.code || "ERROR"}`);
   const p = data?.parse || {};
   const html = typeof p.text === "string" ? p.text : String(p.text?.["*"] || "");
@@ -2155,11 +2156,70 @@ function mergeAnalysis(ai, fallback) {
     current: typeof ai.current === "boolean" ? ai.current : fallback.current,
     intent: oneLine(ai.intent, 80) || fallback.intent,
     wanted: oneLine(ai.wanted, 80) || relation,
+    wantedRelations: normalizedWantedRelations(ai.wantedRelations, relation),
     rawQuestion: fallback.rawQuestion || "",
     source: "NVIDIA_QUESTION_ROUTER",
   };
 }
 
+
+
+function detectWantedRelations(question, primaryRelation) {
+  const q = oneLine(question, 700).toLowerCase();
+  const wanted = [];
+
+  const add = (relation) => {
+    if (relation && ALLOWED_RELATIONS.has(relation) && !wanted.includes(relation)) {
+      wanted.push(relation);
+    }
+  };
+
+  add(primaryRelation);
+
+  // Explicit multi-part: frequency + update.
+  if (
+    /\b(?:how often|how frequently|frequency|interval|recurr?ence)\b/.test(q) &&
+    /\b(?:what|which)\s+update\b|\bupdate\s+(?:was|is|did|it)\b|\btied to\b|\bassociated with\b/.test(q)
+  ) {
+    add(REL.FREQUENCY);
+    add(REL.UPDATE);
+  }
+
+  // Other obvious two-part shapes we can support without hurting singles.
+  if (
+    /\b(?:what|which)\s+update\b/.test(q) &&
+    /\b(?:machine|rebirth|ritual|mutation|brainrot|item|gear)\b/.test(q)
+  ) {
+    if (/\bmachine\b/.test(q)) add(REL.MACHINE);
+    if (/\brebirth\b/.test(q)) add(REL.REBIRTH);
+    if (/\britual\b/.test(q) && /\b(?:result|outcome|spawn|reward)\b/.test(q)) add(REL.OUTCOME);
+    if (/\bmutation\b/.test(q)) add(REL.MUTATION);
+    if (/\bbrainrot\b|\bbrain rot\b/.test(q)) add(REL.BRAINROT);
+    if (/\b(?:item|gear)\b/.test(q)) add(REL.GEAR);
+    add(REL.UPDATE);
+  }
+
+  return wanted;
+}
+
+function normalizedWantedRelations(value, fallbackRelation) {
+  const out = [];
+  const add = (relation) => {
+    relation = String(relation || "").toUpperCase();
+    if (ALLOWED_RELATIONS.has(relation) && !out.includes(relation)) out.push(relation);
+  };
+
+  if (Array.isArray(value)) {
+    for (const relation of value) add(relation);
+  }
+
+  add(fallbackRelation);
+  return out;
+}
+
+function isMultipartAnalysis(analysis) {
+  return Array.isArray(analysis?.wantedRelations) && analysis.wantedRelations.length > 1;
+}
 
 function enforceQuestionSemantics(question, analysis) {
   const q = oneLine(question, 700).toLowerCase();
@@ -2219,6 +2279,7 @@ function enforceQuestionSemantics(question, analysis) {
     next.wanted = REL.MUTATION;
   }
 
+  next.wantedRelations = detectWantedRelations(question, next.relation);
   return next;
 }
 
@@ -2263,12 +2324,14 @@ async function analyzeQuestionAI(question, deadline) {
                 "Convert the user's question into structured lookup intent.",
                 `relation MUST be one of: ${[...ALLOWED_RELATIONS].join(", ")}.`,
                 "intent should usually be ENTITY_FACT, UPDATE_FACT, UPDATE_SUMMARY, CURRENT_FACT, or DATE_UPDATE_FACT.",
-                "wanted is the exact type of fact requested, such as MACHINE, REBIRTH, BRAINROT, GEAR, INCOME, COST, RARITY, SPAWN, REQUIREMENT, MULTIPLIER, DATE, UPDATE.",
+                "wanted is the primary fact requested.",
+                "wantedRelations is an array of every distinct fact type explicitly requested. For a normal single-part question it has one entry.",
+                "Example: 'How often did the Queen Bee event occur, and what update was it tied to?' => relation=FREQUENCY, wantedRelations=[FREQUENCY,UPDATE].",
                 "For questions like 'What machine was added in Update 61?', set update=61, relation=MACHINE, wanted=MACHINE.",
                 "For questions like 'What rebirth was added in the August 15, 2026 update?', set date=2026-08-15, relation=REBIRTH, wanted=REBIRTH.",
                 "For 'What did Update 62 add?', set update=62, relation=UPDATE, wanted=UPDATE, intent=UPDATE_SUMMARY.",
                 "Use canonical entity names when obvious, but never invent facts.",
-                'Return JSON only: {"intent":"...","entity":null,"aliases":[],"relation":"...","wanted":"...","update":null,"updateNumbers":[],"activeFrom":null,"activeTo":null,"replacedIn":null,"rebirth":null,"date":null,"current":false}',
+                'Return JSON only: {"intent":"...","entity":null,"aliases":[],"relation":"...","wanted":"...","wantedRelations":["..."],"update":null,"updateNumbers":[],"activeFrom":null,"activeTo":null,"replacedIn":null,"rebirth":null,"date":null,"current":false}',
               ].join("\n"),
             },
             {
@@ -3881,24 +3944,396 @@ async function aiExtractEvidenceBundle(question, analysis, pages, source, deadli
   }
 }
 
+
+async function safeSearchVariant(query, index, analysis, source, deadline) {
+  try {
+    const search = await tavilySearch(
+      query,
+      deadline,
+      [source.host],
+      analysis.current
+    );
+
+    const fatal =
+      !search ||
+      (!Array.isArray(search.results) && !Array.isArray(search.errors));
+
+    return {
+      index,
+      query,
+      search: search || { answer: "", results: [], errors: ["EMPTY_SEARCH_RESULT"] },
+      ok: !fatal,
+      error: fatal ? "INVALID_SEARCH_RESULT" : null,
+    };
+  } catch (error) {
+    return {
+      index,
+      query,
+      search: {
+        answer: "",
+        results: [],
+        errors: [errorCode(error)],
+      },
+      ok: false,
+      error: errorCode(error),
+    };
+  }
+}
+
+async function safeOpenCandidate(row, source, deadline) {
+  try {
+    const page = await openExactResult(row, source, deadline);
+    return { ok: true, row, page, error: null };
+  } catch (error) {
+    return {
+      ok: false,
+      row,
+      page: null,
+      error: errorCode(error),
+    };
+  }
+}
+
+function relationAnalysis(analysis, relation) {
+  return {
+    ...analysis,
+    relation,
+    wanted: relation,
+    wantedRelations: [relation],
+  };
+}
+
+function normalizeFrequencyAnswer(value) {
+  const text = oneLine(value, 200);
+  if (!text) return null;
+
+  const patterns = [
+    /\b(every\s+(?:one|two|three|four|five|six|seven|eight|nine|ten|\d+)\s+(?:minutes?|hours?|days?|weeks?))\b/i,
+    /\b(once\s+(?:every\s+)?(?:\d+\s+)?(?:minutes?|hours?|days?|weeks?))\b/i,
+    /\b(twice\s+(?:every\s+)?(?:\d+\s+)?(?:minutes?|hours?|days?|weeks?))\b/i,
+    /\b(hourly|daily|weekly)\b/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match?.[1]) {
+      return match[1]
+        .replace(/^every/i, "Every")
+        .replace(/^once/i, "Once")
+        .replace(/^twice/i, "Twice");
+    }
+  }
+
+  return null;
+}
+
+function extractSimpleRelationFromText(text, relation) {
+  const raw = oneLine(text, 8000);
+  if (!raw) return null;
+
+  if (relation === REL.FREQUENCY) {
+    return normalizeFrequencyAnswer(raw);
+  }
+
+  if (relation === REL.UPDATE) {
+    const m = raw.match(/\bUpdate\s*#?\s*(\d{1,3}(?:\.\d+)?)\b/i);
+    return m ? `Update${m[1]}` : null;
+  }
+
+  if (relation === REL.REBIRTH) {
+    const m = raw.match(/\bRebirth\s*#?\s*(\d{1,3})\b/i);
+    return m ? `Rebirth${Number(m[1])}` : null;
+  }
+
+  if (relation === REL.MULTIPLIER) {
+    return raw.match(/\b\d+(?:\.\d+)?\s*[x×]\b/i)?.[0]?.replace("×", "x") || null;
+  }
+
+  if (relation === REL.DROP_RATE) {
+    return raw.match(/\b\d+(?:\.\d+)?\s*%/)?.[0] || null;
+  }
+
+  return null;
+}
+
+function uniqueRelationAnswerFromChunks(chunks, relation) {
+  const answers = [];
+
+  for (const chunk of chunks || []) {
+    const answer = extractSimpleRelationFromText(chunk.text, relation);
+    if (!answer) continue;
+
+    if (!answers.some((x) => norm(x.answer) === norm(answer))) {
+      answers.push({
+        answer,
+        chunk,
+      });
+    }
+  }
+
+  // One unique value is ideal. Multiple different values are ambiguous.
+  return answers.length === 1 ? answers[0] : null;
+}
+
+function formatMultipartAnswer(parts, relations) {
+  return relations
+    .map((relation) => parts[relation]?.answer)
+    .filter(Boolean)
+    .join(", ");
+}
+
+function deterministicMultipartFromBundle(question, analysis, pages, chunks) {
+  if (!isMultipartAnalysis(analysis)) return null;
+
+  const parts = {};
+
+  for (const relation of analysis.wantedRelations) {
+    const subAnalysis = relationAnalysis(analysis, relation);
+
+    // Simple typed extraction from clue-local chunks first.
+    const simple = uniqueRelationAnswerFromChunks(chunks, relation);
+    if (simple) {
+      const page = pages[(simple.chunk.pageIndex || 1) - 1] || pages[0];
+      const type = answerTypeValid(question, subAnalysis, simple.answer, page);
+
+      if (type.valid) {
+        parts[relation] = {
+          answer: simple.answer,
+          page,
+          evidence: simple.chunk.text,
+        };
+        continue;
+      }
+    }
+
+    // Existing deterministic page resolvers can supply non-simple relation types.
+    for (const page of pages) {
+      const direct =
+        deterministicHighValueExactPage(question, subAnalysis, page, page.source || SOURCE.PRIMARY) ||
+        deterministicExactPageFallback(question, subAnalysis, page, page.source || SOURCE.PRIMARY);
+
+      if (!direct?.answer) continue;
+
+      const check = validateBundleAnswer(
+        question,
+        subAnalysis,
+        direct.answer,
+        pages,
+        chunks
+      );
+
+      if (check.valid) {
+        parts[relation] = {
+          answer: direct.answer,
+          page: check.page || page,
+          evidence: check.chunk?.text || page.text,
+        };
+        break;
+      }
+    }
+
+    if (!parts[relation]) return null;
+  }
+
+  const answer = formatMultipartAnswer(parts, analysis.wantedRelations);
+  if (!answer) return null;
+
+  return {
+    answer,
+    parts,
+    page: parts[analysis.wantedRelations[0]]?.page || pages[0],
+  };
+}
+
+function parseMultipartAi(content) {
+  const parsed = parseModelJson(content);
+  const rows = Array.isArray(parsed?.parts)
+    ? parsed.parts
+    : Array.isArray(parsed?.answers)
+      ? parsed.answers
+      : null;
+
+  if (!rows) throw new Error("MULTIPART_AI_NO_PARTS");
+
+  return rows.map((row) => ({
+    relation: String(row?.relation || row?.type || "").toUpperCase(),
+    answer: oneLine(row?.answer ?? row?.value, 300),
+    evidence: oneLine(row?.evidence ?? row?.quote, 350),
+  }));
+}
+
+async function aiExtractMultipartBundle(question, analysis, pages, source, deadline) {
+  if (!isMultipartAnalysis(analysis)) return { result: null, error: "NOT_MULTIPART" };
+  if (!env("NVIDIA_API_KEY") || timeLeft(deadline) < 320 || !pages.length) {
+    return { result: null, error: "NVIDIA_MULTIPART_UNAVAILABLE" };
+  }
+
+  const chunks = buildEvidenceBundle(question, analysis, pages);
+  if (!chunks.length) return { result: null, error: "NO_MULTIPART_EVIDENCE" };
+
+  try {
+    const data = await fetchJson(
+      `${source.key}_AI_MULTIPART`,
+      NVIDIA_URL,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${env("NVIDIA_API_KEY")}`,
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          model: process.env.NVIDIA_MODEL || DEFAULT_MODEL,
+          stream: false,
+          temperature: 0,
+          max_tokens: 230,
+          chat_template_kwargs: { enable_thinking: false },
+          messages: [
+            {
+              role: "system",
+              content: [
+                "Extract ALL requested Steal a Brainrot facts from ONLY the supplied trusted evidence chunks.",
+                "Do not use outside knowledge.",
+                `Requested relations: ${analysis.wantedRelations.join(", ")}.`,
+                "Return exactly one part for each requested relation.",
+                "For FREQUENCY return only recurrence wording such as Every two hours.",
+                "For UPDATE return Update<number>.",
+                "If ANY requested relation is unsupported, use UNKNOWN for that part.",
+                "Each non-UNKNOWN part needs a short exact evidence quote copied from the supplied chunks.",
+                'Return JSON only: {"parts":[{"relation":"FREQUENCY","answer":"Every two hours","evidence":"..."},{"relation":"UPDATE","answer":"Update61","evidence":"..."}]}',
+              ].join("\n"),
+            },
+            {
+              role: "user",
+              content: JSON.stringify({
+                question,
+                analysis: {
+                  entity: analysis.entity,
+                  wantedRelations: analysis.wantedRelations,
+                  update: analysis.update,
+                  date: analysis.date,
+                },
+                evidence: chunks.map((chunk, i) => ({
+                  id: i + 1,
+                  pageIndex: chunk.pageIndex,
+                  title: chunk.title,
+                  url: chunk.url,
+                  clue: chunk.clue,
+                  text: chunk.text,
+                })),
+              }),
+            },
+          ],
+        }),
+      },
+      Math.max(
+        320,
+        Math.min(CFG.NVIDIA_TIMEOUT_MS, timeLeft(deadline) - 30)
+      )
+    );
+
+    const rows = parseMultipartAi(data?.choices?.[0]?.message?.content);
+    const parts = {};
+
+    for (const relation of analysis.wantedRelations) {
+      const row = rows.find((x) => x.relation === relation);
+      if (!row || !row.answer || norm(row.answer) === "unknown") {
+        return { result: null, error: `MULTIPART_MISSING_${relation}` };
+      }
+
+      const support = supportingPageForAnswer(row.answer, pages, chunks);
+      if (!support) {
+        return { result: null, error: `MULTIPART_UNSUPPORTED_${relation}` };
+      }
+
+      const subAnalysis = relationAnalysis(analysis, relation);
+      const type = answerTypeValid(question, subAnalysis, row.answer, support.page);
+      if (!type.valid) {
+        return { result: null, error: `MULTIPART_TYPE_${relation}_${type.reason}` };
+      }
+
+      if (
+        row.evidence &&
+        !chunks.some((chunk) => norm(chunk.text).includes(norm(row.evidence)))
+      ) {
+        return { result: null, error: `MULTIPART_EVIDENCE_${relation}_NOT_FOUND` };
+      }
+
+      parts[relation] = {
+        answer: row.answer,
+        page: support.page,
+        evidence: row.evidence || support.chunk?.text || "",
+      };
+    }
+
+    const answer = formatMultipartAnswer(parts, analysis.wantedRelations);
+    if (!answer) return { result: null, error: "MULTIPART_EMPTY_COMBINED" };
+
+    const page = parts[analysis.wantedRelations[0]]?.page || pages[0];
+
+    return {
+      result: makeResult(
+        answer,
+        analysis.relation,
+        source,
+        page,
+        `${source.key}_MULTIPART_AI`,
+        source.confidence
+      ),
+      error: null,
+      parts,
+      supportingPage: page,
+    };
+  } catch (error) {
+    return {
+      result: null,
+      error: errorCode(error),
+    };
+  }
+}
+
+
 async function exactTierLookup(question, analysis, source, deadline) {
   const queries = aggressiveSearchQueries(question, analysis, source);
 
-  // Search variants run in parallel so aggression does not add 3x latency.
+  // Each search variant catches its OWN error. One timeout can never reject
+  // the entire tier if another variant succeeds.
   const settledSearches = await Promise.all(
-    queries.map(async (query, index) => ({
-      index,
-      query,
-      search: await tavilySearch(
-        query,
-        deadline,
-        [source.host],
-        analysis.current
-      ),
-    }))
+    queries.map((query, index) =>
+      safeSearchVariant(query, index, analysis, source, deadline)
+    )
   );
 
-  const search = mergeSearches(settledSearches);
+  const searchVariantErrors = settledSearches
+    .filter((x) => !x.ok || (x.search?.errors || []).length)
+    .map((x) => ({
+      index: x.index,
+      query: x.query,
+      error: x.error || (x.search?.errors || []).join(",") || "SEARCH_VARIANT_ERROR",
+    }));
+
+  const usableSearches = settledSearches.filter(
+    (x) => x.ok || (x.search?.results || []).length > 0
+  );
+
+  if (!usableSearches.length) {
+    return {
+      result: null,
+      search: { answer: "", results: [], errors: searchVariantErrors.map((x) => x.error) },
+      page: null,
+      pages: [],
+      pagesTried: [],
+      query: queries.join(" || "),
+      queries,
+      searchVariantErrors,
+      error: "ALL_SEARCH_VARIANTS_FAILED",
+    };
+  }
+
+  const search = mergeSearches(usableSearches);
+  // Preserve failed-variant diagnostics without making them fatal.
+  search.errors.push(...searchVariantErrors.map((x) => x.error));
+
   const candidates = rankAggressiveResults(
     search,
     question,
@@ -3916,29 +4351,37 @@ async function exactTierLookup(question, analysis, source, deadline) {
       pagesTried: [],
       query: queries.join(" || "),
       queries,
+      searchVariantErrors,
       error: "NO_AGGRESSIVE_SEARCH_RESULT",
     };
   }
 
-  // Open top 3 in parallel. Page checks happen after fetch.
-  const pageSettled = await Promise.allSettled(
-    candidates.map((row) => openExactResult(row, source, deadline))
+  // Page fetches are independently isolated too. Two bad pages + one good
+  // page still proceeds with the good page.
+  const pageResults = await Promise.all(
+    candidates.map((row) => safeOpenCandidate(row, source, deadline))
   );
 
   const pages = [];
   const pagesTried = [];
   const errors = [];
 
-  for (let i = 0; i < pageSettled.length; i++) {
-    const settled = pageSettled[i];
-    const row = candidates[i];
+  for (const opened of pageResults) {
+    const row = opened.row;
 
-    if (settled.status !== "fulfilled") {
-      errors.push(`${row.url}:${errorCode(settled.reason)}`);
+    if (!opened.ok) {
+      pagesTried.push({
+        title: row.title,
+        url: row.url,
+        searchScore: row.aggressiveScore,
+        usable: false,
+        reason: `FETCH_FAILED_${opened.error}`,
+      });
+      errors.push(`${row.url}:${opened.error}`);
       continue;
     }
 
-    const page = settled.value;
+    const page = opened.page;
     const usable = aggressivePageUsable(
       question,
       analysis,
@@ -3971,14 +4414,93 @@ async function exactTierLookup(question, analysis, source, deadline) {
       pagesTried,
       query: queries.join(" || "),
       queries,
+      searchVariantErrors,
       selected: candidates[0] || null,
       error: errors.join("|") || "NO_USABLE_PAGES",
     };
   }
 
-  // -----------------------------------------------------
-  // 1) Deterministic extraction FIRST across all S+ pages.
-  // -----------------------------------------------------
+  const chunks = buildEvidenceBundle(question, analysis, pages);
+
+  // =====================================================
+  // MULTI-PART: require EVERY requested fact before returning.
+  // =====================================================
+  if (isMultipartAnalysis(analysis)) {
+    const deterministicMulti = deterministicMultipartFromBundle(
+      question,
+      analysis,
+      pages,
+      chunks
+    );
+
+    if (deterministicMulti) {
+      return {
+        result: makeResult(
+          deterministicMulti.answer,
+          analysis.relation,
+          source,
+          deterministicMulti.page,
+          `${source.key}_MULTIPART_DETERMINISTIC`,
+          source.confidence
+        ),
+        search,
+        page: deterministicMulti.page,
+        pages,
+        pagesTried,
+        query: queries.join(" || "),
+        queries,
+        searchVariantErrors,
+        selected: candidates.find((x) => x.url === deterministicMulti.page?.url) || candidates[0],
+        error: null,
+        multipart: deterministicMulti.parts,
+      };
+    }
+
+    const multiAI = await aiExtractMultipartBundle(
+      question,
+      analysis,
+      pages,
+      source,
+      deadline
+    );
+
+    if (multiAI.result) {
+      return {
+        result: multiAI.result,
+        search,
+        page: multiAI.supportingPage || pages[0],
+        pages,
+        pagesTried,
+        query: queries.join(" || "),
+        queries,
+        searchVariantErrors,
+        selected: candidates.find((x) => x.url === multiAI.supportingPage?.url) || candidates[0],
+        error: null,
+        multipart: multiAI.parts,
+      };
+    }
+
+    if (multiAI.error) errors.push(multiAI.error);
+
+    // IMPORTANT: never return a partial single-relation answer for a question
+    // that explicitly requested multiple facts.
+    return {
+      result: null,
+      search,
+      page: null,
+      pages,
+      pagesTried,
+      query: queries.join(" || "),
+      queries,
+      searchVariantErrors,
+      selected: candidates[0] || null,
+      error: errors.join("|") || "MULTIPART_NOT_FULLY_VERIFIED",
+    };
+  }
+
+  // =====================================================
+  // SINGLE-PART: R31 behavior.
+  // =====================================================
   for (const page of pages) {
     const direct = deterministicHighValueExactPage(
       question,
@@ -3993,7 +4515,7 @@ async function exactTierLookup(question, analysis, source, deadline) {
         analysis,
         direct.answer,
         pages,
-        buildEvidenceBundle(question, analysis, pages)
+        chunks
       );
 
       if (check.valid) {
@@ -4005,6 +4527,7 @@ async function exactTierLookup(question, analysis, source, deadline) {
           pagesTried,
           query: queries.join(" || "),
           queries,
+          searchVariantErrors,
           selected: candidates.find((x) => x.url === page.url) || candidates[0],
           error: null,
         };
@@ -4029,7 +4552,7 @@ async function exactTierLookup(question, analysis, source, deadline) {
       analysis,
       deterministic.answer,
       pages,
-      buildEvidenceBundle(question, analysis, pages)
+      chunks
     );
 
     if (check.valid) {
@@ -4044,6 +4567,7 @@ async function exactTierLookup(question, analysis, source, deadline) {
         pagesTried,
         query: queries.join(" || "),
         queries,
+        searchVariantErrors,
         selected: candidates.find((x) => x.url === page.url) || candidates[0],
         error: null,
       };
@@ -4052,9 +4576,6 @@ async function exactTierLookup(question, analysis, source, deadline) {
     errors.push(`${page.url}:DETERMINISTIC_REJECTED_${check.reason}`);
   }
 
-  // -----------------------------------------------------
-  // 2) AI reads several SMALL trusted S+ evidence chunks.
-  // -----------------------------------------------------
   const ai = await aiExtractEvidenceBundle(
     question,
     analysis,
@@ -4072,6 +4593,7 @@ async function exactTierLookup(question, analysis, source, deadline) {
       pagesTried,
       query: queries.join(" || "),
       queries,
+      searchVariantErrors,
       selected: candidates.find((x) => x.url === (ai.supportingPage?.url || "")) || candidates[0],
       error: null,
     };
@@ -4087,6 +4609,7 @@ async function exactTierLookup(question, analysis, source, deadline) {
     pagesTried,
     query: queries.join(" || "),
     queries,
+    searchVariantErrors,
     selected: candidates[0] || null,
     error: errors.join("|") || "NO_VERIFIED_ANSWER_AFTER_AGGRESSIVE_SEARCH",
   };
@@ -4158,6 +4681,7 @@ function finalize(base, question, analysis, startedAt, diagnostics = {}) {
     sources,
     intent: analysis.current ? "CURRENT" : analysis.update ? "UPDATE" : "FACT",
     answerType: analysis.relation,
+    answerTypes: analysis.wantedRelations || [analysis.relation],
     entity: analysis.entity || "UNKNOWN",
     analysisSource: analysis.source,
     searchLatencyMs: nowMs() - startedAt,
@@ -4197,12 +4721,16 @@ async function resolveQuestion(questionObj, lore = "") {
     primaryQueries: [],
     primarySelectedPage: "",
     primaryPagesTried: [],
+    primarySearchVariantErrors: [],
+    primaryMultipart: null,
     primaryError: "",
 
     fandomQuery: "",
     fandomQueries: [],
     fandomSelectedPage: "",
     fandomPagesTried: [],
+    fandomSearchVariantErrors: [],
+    fandomMultipart: null,
     fandomError: "",
 
     wikiQuery: "",
@@ -4231,6 +4759,8 @@ async function resolveQuestion(questionObj, lore = "") {
   diagnostic.primaryQueries = primary.queries || [];
   diagnostic.primarySelectedPage = primary.page?.url || primary.selected?.url || "";
   diagnostic.primaryPagesTried = primary.pagesTried || [];
+  diagnostic.primarySearchVariantErrors = primary.searchVariantErrors || [];
+  diagnostic.primaryMultipart = primary.multipart || null;
   diagnostic.primaryError = primary.error || "";
 
   if (primary.result) {
@@ -4266,6 +4796,8 @@ async function resolveQuestion(questionObj, lore = "") {
     diagnostic.fandomQueries = fandom.queries || [];
     diagnostic.fandomSelectedPage = fandom.page?.url || fandom.selected?.url || "";
     diagnostic.fandomPagesTried = fandom.pagesTried || [];
+    diagnostic.fandomSearchVariantErrors = fandom.searchVariantErrors || [];
+    diagnostic.fandomMultipart = fandom.multipart || null;
     diagnostic.fandomError = fandom.error || "";
 
     if (fandom.result) {
@@ -5039,6 +5571,111 @@ function runSelfTests() {
     validateBundleAnswer(r31OutcomeQ, r31Outcome, "Yess my Resume", [r31RitualPage], r31RitualChunks).valid === true
   );
 
+
+  const r32MultiQ = "How often did the Queen Bee event occur, and what update was it tied to?";
+  const r32Multi = enforceQuestionSemantics(r32MultiQ, analyzeQuestion(r32MultiQ));
+
+  check("R32 multipart detected", isMultipartAnalysis(r32Multi) === true);
+  check(
+    "R32 multipart relations",
+    r32Multi.wantedRelations.includes(REL.FREQUENCY) &&
+    r32Multi.wantedRelations.includes(REL.UPDATE)
+  );
+
+  const r32QueenPage = syntheticPrimaryPage(
+    "RNG Machine + Queen Bee Event",
+    `${PRIMARY_ORIGIN}/events/rng-machine-queen-bee-event-2026-08-08`,
+    [
+      "Queen Bee event",
+      "Update 61",
+      "The Queen Bee event returns every two hours.",
+    ]
+  );
+
+  const r32QueenChunks = buildEvidenceBundle(r32MultiQ, r32Multi, [r32QueenPage]);
+  const r32MultiDet = deterministicMultipartFromBundle(
+    r32MultiQ,
+    r32Multi,
+    [r32QueenPage],
+    r32QueenChunks
+  );
+
+  check(
+    "R32 Queen Bee multipart answer",
+    r32MultiDet?.answer === "Every two hours, Update61",
+    r32MultiDet?.answer || "nil"
+  );
+
+  const r32Merged = mergeSearches([
+    {
+      index: 0,
+      query: "q0",
+      ok: false,
+      search: { answer: "", results: [], errors: ["TAVILY_TIMEOUT"] },
+    },
+    {
+      index: 1,
+      query: "q1",
+      ok: true,
+      search: {
+        answer: "",
+        errors: [],
+        results: [{
+          title: "Queen Bee Event",
+          url: `${PRIMARY_ORIGIN}/events/queen-bee`,
+          content: "Update 61 Queen Bee every two hours",
+          score: 0.8,
+          host: SOURCE.PRIMARY.host,
+        }],
+      },
+    },
+    {
+      index: 2,
+      query: "q2",
+      ok: true,
+      search: {
+        answer: "",
+        errors: [],
+        results: [{
+          title: "Queen Bee Event",
+          url: `${PRIMARY_ORIGIN}/events/queen-bee`,
+          content: "Queen Bee event returns every two hours",
+          score: 0.7,
+          host: SOURCE.PRIMARY.host,
+        }],
+      },
+    },
+  ]);
+
+  check("R32 failed search does not erase results", r32Merged.results.length === 1);
+  check("R32 two successful query hits merged", r32Merged.results[0]?.queryHits === 2);
+
+  const r32OutcomeQ = "Which ritual outcome has a 1% chance in the Job Job Job Sahur ritual?";
+  const r32Outcome = enforceQuestionSemantics(r32OutcomeQ, analyzeQuestion(r32OutcomeQ));
+  const r32OutcomePage = syntheticPrimaryPage(
+    "Job Job Job Sahur Ritual",
+    `${PRIMARY_ORIGIN}/rituals/job-job-job-sahur-ritual`,
+    [
+      "Job Job Job Sahur Ritual",
+      "Yess my Resume with a 99% outcome chance",
+      "Noo my Resume with a 1% outcome chance",
+    ]
+  );
+  check(
+    "R32 existing 1pct outcome preserved",
+    deterministicHighValueExactPage(
+      r32OutcomeQ,
+      r32Outcome,
+      r32OutcomePage,
+      SOURCE.PRIMARY
+    )?.answer === "Noo my Resume"
+  );
+
+  check(
+    "R32 page open failure shape isolated",
+    typeof safeOpenCandidate === "function"
+  );
+
   // Priority behavior: once S+ has a direct value, lower tier disagreement does not participate.
   const primary = makeResult("10x", REL.MULTIPLIER, SOURCE.PRIMARY, mutationPage, "PRIMARY_MUTATION_SECTION", 0.995);
   const fandom = makeResult("9x", REL.MULTIPLIER, SOURCE.FANDOM, { title: "Mutations", url: "fandom" }, "FANDOM_DIRECT", 0.93);
@@ -5251,6 +5888,10 @@ export async function GET(request) {
       exactPageSearchFirst: true,
       cluePreservingSearch: true,
       threeParallelSearchVariants: true,
+      searchVariantFailureIsolation: true,
+      pageFetchFailureIsolation: true,
+      trueMultipartAnswers: true,
+      allMultipartPartsRequired: true,
       softPageFamilyPreference: true,
       topThreePagePool: true,
       parallelPageFetch: true,
