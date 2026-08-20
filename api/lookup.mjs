@@ -1,4 +1,4 @@
-const BUILD_ID = "SAB_EXACT_PAGE_RESILIENT_ENGINE_R28_2026_08_19";
+const BUILD_ID = "SAB_PAGE_GUARD_ENGINE_R29_2026_08_19";
 
 const PRIMARY_ORIGIN = "https://steal-a-brainrot.org";
 const FANDOM_API = "https://stealabrainrot.fandom.com/api.php";
@@ -429,7 +429,7 @@ function analyzeQuestion(question) {
     current,
     intent: inferIntent(q, relation, update, date),
     rawQuestion: q,
-    source: "DETERMINISTIC_R28",
+    source: "DETERMINISTIC_R29",
   };
 }
 
@@ -569,7 +569,7 @@ async function fetchPage(url, source, deadline) {
   const html = await fetchText(source.key, url, {
     headers: {
       Accept: "text/html,application/xhtml+xml",
-      "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R28",
+      "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R29",
     },
   }, timeout);
   const page = {
@@ -903,7 +903,7 @@ function withBridgedUpdate(analysis, update) {
     source:
       analysis.source === "NVIDIA_QUESTION_ROUTER"
         ? "NVIDIA_QUESTION_ROUTER+DATE_BRIDGE"
-        : "DETERMINISTIC_R28+DATE_BRIDGE",
+        : "DETERMINISTIC_R29+DATE_BRIDGE",
   };
 }
 
@@ -1947,7 +1947,7 @@ async function fandomSearchTitles(query, deadline) {
     format: "json",
   });
   try {
-    const data = await fetchJson("FANDOM_SEARCH", `${FANDOM_API}?${params.toString()}`, { headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R28" } }, Math.min(CFG.FANDOM_TIMEOUT_MS, left - 20));
+    const data = await fetchJson("FANDOM_SEARCH", `${FANDOM_API}?${params.toString()}`, { headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R29" } }, Math.min(CFG.FANDOM_TIMEOUT_MS, left - 20));
     return (Array.isArray(data?.query?.search) ? data.query.search : []).map((x) => oneLine(x?.title, 300)).filter(Boolean);
   } catch {
     return [];
@@ -1960,7 +1960,7 @@ async function fetchFandomPage(title, deadline) {
   if (cached) return { ...cached, cache: "HIT" };
   const left = timeLeft(deadline);
   if (left < 250) throw new Error("FANDOM_BUDGET_EXHAUSTED");
-  const data = await fetchJson("FANDOM_PARSE", fandomParseUrl(title), { headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R28" } }, Math.min(CFG.FANDOM_TIMEOUT_MS, left - 20));
+  const data = await fetchJson("FANDOM_PARSE", fandomParseUrl(title), { headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R29" } }, Math.min(CFG.FANDOM_TIMEOUT_MS, left - 20));
   if (data?.error) throw new Error(`FANDOM_PARSE_${data.error.code || "ERROR"}`);
   const p = data?.parse || {};
   const html = typeof p.text === "string" ? p.text : String(p.text?.["*"] || "");
@@ -2513,6 +2513,411 @@ function parseLooseAiExtraction(content) {
   throw new Error("NVIDIA_INVALID_AI_OUTPUT");
 }
 
+
+function expectedPrimaryFamilies(question, analysis) {
+  const q = oneLine(question, 700).toLowerCase();
+  const rel = analysis.relation;
+  const out = [];
+
+  const add = (...items) => {
+    for (const item of items) {
+      if (item && !out.includes(item)) out.push(item);
+    }
+  };
+
+  if ([REL.COST, REL.INCOME, REL.RARITY, REL.BRAINROT, REL.METHOD, REL.STATUS].includes(rel)) {
+    add("/brainrots/");
+  }
+
+  if ([REL.SPAWN, REL.REQUIREMENT, REL.FORMATION, REL.RITUAL, REL.REWARD].includes(rel) || /\britual\b/.test(q)) {
+    add("/rituals/");
+    if (analysis.update || analysis.date) add("/events/");
+  }
+
+  if ([REL.MUTATION, REL.MULTIPLIER, REL.TRAIT].includes(rel) || /\bmutation\b|\btrait\b/.test(q)) {
+    add("/wiki/mutations");
+    add("/events/");
+  }
+
+  if ([REL.REBIRTH, REL.GEAR].includes(rel) || /\brebirth\b/.test(q)) {
+    add("/wiki/rebirth");
+    add("/events/");
+  }
+
+  if (rel === REL.MACHINE || /\bmachine\b/.test(q)) {
+    add("/machines");
+    add("/events/");
+  }
+
+  if ([REL.UPDATE, REL.EVENT, REL.DATE].includes(rel) || analysis.update || analysis.date) {
+    add("/events/");
+  }
+
+  if (rel === REL.CONTENTS || /\blucky block\b/.test(q)) {
+    add("/lucky-blocks");
+  }
+
+  if (rel === REL.COLLECTION) add("/collections");
+
+  return out;
+}
+
+function resultPathname(row) {
+  try {
+    return new URL(row?.url || "").pathname.toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+function primaryFamilyScore(row, question, analysis) {
+  const path = resultPathname(row);
+  const families = expectedPrimaryFamilies(question, analysis);
+
+  if (!families.length) return { allowed: true, score: 0, family: "ANY" };
+
+  for (let i = 0; i < families.length; i++) {
+    const family = families[i].toLowerCase();
+    if (path.startsWith(family) || path === family.replace(/\/$/, "")) {
+      return {
+        allowed: true,
+        score: Math.max(1, 4 - i),
+        family,
+      };
+    }
+  }
+
+  return {
+    allowed: false,
+    score: -12,
+    family: "WRONG_FAMILY",
+  };
+}
+
+function importantQuestionClues(question, analysis) {
+  const q = oneLine(question, 700);
+  const clues = [];
+
+  // Structured values are hard clues.
+  for (const m of q.matchAll(/\$\s*\d+(?:\.\d+)?\s*[KMBTQ]?/gi)) {
+    clues.push({ value: m[0].replace(/\s+/g, ""), weight: 4, kind: "money" });
+  }
+  for (const m of q.matchAll(/\b\d+(?:\.\d+)?\s*%/g)) {
+    clues.push({ value: m[0].replace(/\s+/g, ""), weight: 5, kind: "percent" });
+  }
+  for (const m of q.matchAll(/\b\d+(?:\.\d+)?\s*[x×]\b/gi)) {
+    clues.push({ value: m[0].replace(/\s+/g, ""), weight: 4, kind: "multiplier" });
+  }
+
+  if (analysis.update) clues.push({ value: `Update ${analysis.update}`, weight: 5, kind: "update" });
+  if (analysis.date) clues.push({ value: humanDateFromIso(analysis.date), weight: 5, kind: "date" });
+
+  // Named relation anchors.
+  const anchors = [
+    ["Job Job Job Sahur", 5],
+    ["RNG Machine", 4],
+    ["Rainbow", 3],
+    ["Crystal", 3],
+    ["ritual", 2],
+    ["mutation", 2],
+    ["rebirth", 2],
+    ["machine", 2],
+    ["Secret", 2],
+  ];
+
+  for (const [value, weight] of anchors) {
+    if (q.toLowerCase().includes(value.toLowerCase())) {
+      clues.push({ value, weight, kind: "anchor" });
+    }
+  }
+
+  // Preserve AI/deterministic entity if it looks useful.
+  if (analysis.entity && String(analysis.entity).length >= 4) {
+    clues.push({ value: oneLine(analysis.entity, 180), weight: 5, kind: "entity" });
+  }
+
+  const dedup = new Map();
+  for (const clue of clues) {
+    const key = normalizedClue(clue.value);
+    if (!key) continue;
+    const existing = dedup.get(key);
+    if (!existing || existing.weight < clue.weight) dedup.set(key, clue);
+  }
+
+  return [...dedup.values()].slice(0, 14);
+}
+
+function weightedClueCoverage(question, analysis, text) {
+  const clues = importantQuestionClues(question, analysis);
+  if (!clues.length) {
+    return { matchedWeight: 0, totalWeight: 0, ratio: 1, matched: [], missing: [] };
+  }
+
+  let matchedWeight = 0;
+  let totalWeight = 0;
+  const matched = [];
+  const missing = [];
+
+  for (const clue of clues) {
+    totalWeight += clue.weight;
+    if (pageHasClue(text, clue.value)) {
+      matchedWeight += clue.weight;
+      matched.push(clue.value);
+    } else {
+      missing.push(clue.value);
+    }
+  }
+
+  return {
+    matchedWeight,
+    totalWeight,
+    ratio: totalWeight ? matchedWeight / totalWeight : 1,
+    matched,
+    missing,
+  };
+}
+
+function snippetEligibility(row, question, analysis, source) {
+  if (!row || row.host !== source.host) {
+    return { eligible: false, reason: "WRONG_HOST", score: -999 };
+  }
+
+  let score = scoreExactSearchResult(row, analysis, source);
+  const combined = `${row.title}\n${row.url}\n${row.content}`;
+
+  if (source === SOURCE.PRIMARY) {
+    const family = primaryFamilyScore(row, question, analysis);
+    if (!family.allowed) {
+      return {
+        eligible: false,
+        reason: "WRONG_PAGE_FAMILY",
+        score: score + family.score,
+      };
+    }
+    score += family.score;
+  }
+
+  const coverage = weightedClueCoverage(question, analysis, combined);
+  score += coverage.ratio * 5;
+
+  // Numeric/date/update clues should not be ignored if present in the question.
+  const hardClues = importantQuestionClues(question, analysis)
+    .filter((x) => ["money", "percent", "multiplier", "update", "date"].includes(x.kind));
+
+  if (hardClues.length) {
+    const hardMatched = hardClues.filter((x) => pageHasClue(combined, x.value));
+    if (!hardMatched.length) {
+      score -= 5;
+    }
+  }
+
+  return {
+    eligible: score >= 2,
+    reason: score >= 2 ? "ELIGIBLE" : "WEAK_SNIPPET_MATCH",
+    score,
+    coverage,
+  };
+}
+
+function rankEligibleResults(search, question, analysis, source, limit = 2) {
+  return (search?.results || [])
+    .filter((row) => row.host === source.host)
+    .map((row) => ({
+      ...row,
+      eligibility: snippetEligibility(row, question, analysis, source),
+    }))
+    .filter((row) => row.eligibility.eligible)
+    .sort((a, b) => b.eligibility.score - a.eligibility.score)
+    .slice(0, Math.max(1, limit));
+}
+
+function pageEligibility(question, analysis, page, source) {
+  if (!page?.text) {
+    return { eligible: false, reason: "EMPTY_PAGE", coverage: null };
+  }
+
+  if (source === SOURCE.PRIMARY) {
+    const fakeRow = { url: page.url, host: source.host };
+    const family = primaryFamilyScore(fakeRow, question, analysis);
+    if (!family.allowed) {
+      return {
+        eligible: false,
+        reason: "WRONG_PAGE_FAMILY",
+        coverage: null,
+      };
+    }
+  }
+
+  const coverage = weightedClueCoverage(question, analysis, page.text);
+
+  const hardClues = importantQuestionClues(question, analysis)
+    .filter((x) => ["money", "percent", "multiplier", "update", "date"].includes(x.kind));
+
+  const hardMatched = hardClues.filter((x) => pageHasClue(page.text, x.value));
+
+  // If the question supplied a concrete numeric/date/update clue, the opened
+  // page must contain at least one of those hard clues.
+  if (hardClues.length && !hardMatched.length) {
+    return {
+      eligible: false,
+      reason: "HARD_CLUE_MISSING",
+      coverage,
+    };
+  }
+
+  // Entity / named-anchor questions need meaningful clue overlap.
+  if (coverage.totalWeight >= 7 && coverage.ratio < 0.30) {
+    return {
+      eligible: false,
+      reason: "QUESTION_CLUES_MISSING",
+      coverage,
+    };
+  }
+
+  return {
+    eligible: true,
+    reason: "PAGE_ELIGIBLE",
+    coverage,
+  };
+}
+
+function contextsAroundClues(question, analysis, text, radius = 420) {
+  const raw = String(text || "");
+  const clues = importantQuestionClues(question, analysis);
+  const windows = [];
+  const seen = new Set();
+
+  for (const clue of clues) {
+    const needle = oneLine(clue.value, 180);
+    if (!needle) continue;
+
+    const lowerRaw = raw.toLowerCase();
+    const lowerNeedle = needle.toLowerCase();
+    let from = 0;
+
+    while (from < raw.length) {
+      const idx = lowerRaw.indexOf(lowerNeedle, from);
+      if (idx < 0) break;
+
+      const start = Math.max(0, idx - radius);
+      const end = Math.min(raw.length, idx + needle.length + radius);
+      const chunk = clean(raw.slice(start, end), radius * 2 + needle.length);
+
+      const key = norm(chunk);
+      if (chunk && key && !seen.has(key)) {
+        seen.add(key);
+        windows.push({
+          clue: needle,
+          weight: clue.weight,
+          text: chunk,
+        });
+      }
+
+      from = idx + Math.max(1, needle.length);
+      if (windows.length >= 12) break;
+    }
+    if (windows.length >= 12) break;
+  }
+
+  return windows.sort((a, b) => b.weight - a.weight);
+}
+
+function answerLooksLikeMetadata(answer) {
+  const a = oneLine(answer, 500);
+  if (!a) return true;
+
+  if (/^https?:\/\//i.test(a)) return true;
+  if (/^[0-9a-f]{32,64}$/i.test(a)) return true;
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(a)) return true;
+  if (/^[\[{]/.test(a)) return true;
+  if (/\b(?:request[_ -]?id|trace[_ -]?id|cache[_ -]?key|source[_ -]?id)\b/i.test(a)) return true;
+
+  return false;
+}
+
+function genericRolePhrase(answer) {
+  const a = oneLine(answer, 300).toLowerCase();
+
+  return /\b(?:developer|producer|creator|administrator|moderator|game owner|roblox user|content creator|person|people)\b/.test(a);
+}
+
+function answerTypeValid(question, analysis, answer, page) {
+  const value = oneLine(answer, 500);
+  if (!value || norm(value) === "unknown" || answerLooksLikeMetadata(value)) {
+    return { valid: false, reason: "UNSAFE_OR_EMPTY_ANSWER" };
+  }
+
+  const rel = analysis.relation;
+
+  if (rel === REL.REBIRTH && !/^Rebirth\s*\d+$/i.test(value.replace(/\s+/g, ""))) {
+    return { valid: false, reason: "EXPECTED_REBIRTH" };
+  }
+
+  if (rel === REL.MULTIPLIER && !/\b\d+(?:\.\d+)?\s*[x×]\b/i.test(value)) {
+    return { valid: false, reason: "EXPECTED_MULTIPLIER" };
+  }
+
+  if (rel === REL.DROP_RATE && !/\b\d+(?:\.\d+)?\s*%/.test(value)) {
+    return { valid: false, reason: "EXPECTED_PERCENTAGE" };
+  }
+
+  if ([REL.BRAINROT, REL.SPAWN, REL.REWARD, REL.MUTATION, REL.TRAIT, REL.GEAR, REL.MACHINE].includes(rel)) {
+    if (genericRolePhrase(value)) {
+      return { valid: false, reason: "GENERIC_ROLE_PHRASE" };
+    }
+
+    if (value.length > 140 || value.split(/\s+/).length > 12) {
+      return { valid: false, reason: "ENTITY_ANSWER_TOO_LONG" };
+    }
+  }
+
+  // The answer must appear somewhere on the one opened page.
+  if (!evidenceSupports(value, page?.text || "")) {
+    // Page title is allowed for reverse entity identification.
+    if (!(rel === REL.BRAINROT && similarity(value, page?.title || "") >= 0.82)) {
+      return { valid: false, reason: "ANSWER_NOT_ON_PAGE" };
+    }
+  }
+
+  return { valid: true, reason: "TYPE_OK" };
+}
+
+function answerNearRelevantClue(question, analysis, answer, page) {
+  const value = oneLine(answer, 500);
+  const windows = contextsAroundClues(question, analysis, page?.text || "", 520);
+
+  // Direct entity-page title is strong support for reverse identification.
+  if (
+    analysis.relation === REL.BRAINROT &&
+    similarity(value, page?.title || "") >= 0.82
+  ) {
+    return true;
+  }
+
+  if (!windows.length) {
+    return evidenceSupports(value, page?.text || "");
+  }
+
+  return windows.some((w) => evidenceSupports(value, w.text));
+}
+
+function validateFinalPageAnswer(question, analysis, answer, page) {
+  const type = answerTypeValid(question, analysis, answer, page);
+  if (!type.valid) return type;
+
+  if (!answerNearRelevantClue(question, analysis, answer, page)) {
+    return {
+      valid: false,
+      reason: "ANSWER_NOT_NEAR_RELEVANT_CLUE",
+    };
+  }
+
+  return {
+    valid: true,
+    reason: "PAGE_AND_TYPE_VERIFIED",
+  };
+}
+
 function relationSearchWord(relation) {
   switch (relation) {
     case REL.COST: return "cost price";
@@ -2654,20 +3059,17 @@ function scoreExactSearchResult(row, analysis, source) {
   return score;
 }
 
-function pickExactSearchResult(search, analysis, source) {
-  const ranked = (search?.results || [])
-    .filter((row) => row.host === source.host)
-    .map((row) => ({
-      ...row,
-      exactScore: scoreExactSearchResult(row, analysis, source),
-    }))
-    .sort((a, b) => b.exactScore - a.exactScore);
 
-  const best = ranked[0] || null;
-  if (!best) return null;
+function pickExactSearchResult(search, analysis, source, question = "") {
+  const ranked = rankEligibleResults(
+    search,
+    question || analysis.rawQuestion || "",
+    analysis,
+    source,
+    2
+  );
 
-  // Keep this fairly permissive because AI will still verify the actual page.
-  return best.exactScore >= 1.5 ? best : null;
+  return ranked[0] || null;
 }
 
 function fandomTitleFromResultUrl(url) {
@@ -2787,7 +3189,13 @@ async function aiExtractSinglePage(question, analysis, page, source, deadline) {
                 page: {
                   title: page.title,
                   url: page.url,
-                  text: oneLine(page.text, 12000),
+                  text: (() => {
+                    const windows = contextsAroundClues(question, analysis, page.text, 700);
+                    if (windows.length) {
+                      return windows.slice(0, 7).map((w) => `[CLUE ${w.clue}] ${w.text}`).join("\n---\n");
+                    }
+                    return oneLine(page.text, 12000);
+                  })(),
                 },
               }),
             },
@@ -2817,6 +3225,20 @@ async function aiExtractSinglePage(question, analysis, page, source, deadline) {
       return {
         result: null,
         error: "AI_PAGE_EVIDENCE_NOT_VERIFIED",
+      };
+    }
+
+    const finalCheck = validateFinalPageAnswer(
+      question,
+      analysis,
+      answer,
+      page
+    );
+
+    if (!finalCheck.valid) {
+      return {
+        result: null,
+        error: `AI_ANSWER_REJECTED_${finalCheck.reason}`,
       };
     }
 
@@ -2859,8 +3281,10 @@ function deterministicExactPageFallback(question, analysis, page, source) {
   return null;
 }
 
+
 async function exactTierLookup(question, analysis, source, deadline) {
   const query = exactSearchQuery(question, analysis, source);
+
   const search = await tavilySearch(
     query,
     deadline,
@@ -2868,98 +3292,158 @@ async function exactTierLookup(question, analysis, source, deadline) {
     analysis.current
   );
 
-  const row = pickExactSearchResult(search, analysis, source);
-
-  if (!row) {
-    return {
-      result: null,
-      search,
-      page: null,
-      query,
-      error: "NO_EXACT_SEARCH_RESULT",
-    };
-  }
-
-  let page;
-
-  try {
-    page = await openExactResult(row, source, deadline);
-  } catch (error) {
-    return {
-      result: null,
-      search,
-      page: null,
-      query,
-      selected: row,
-      error: errorCode(error),
-    };
-  }
-
-  const direct = deterministicHighValueExactPage(
+  const candidates = rankEligibleResults(
+    search,
     question,
     analysis,
-    page,
-    source
-  );
-
-  if (direct) {
-    return {
-      result: direct,
-      search,
-      page,
-      query,
-      selected: row,
-      error: null,
-    };
-  }
-
-  const ai = await aiExtractSinglePage(
-    question,
-    analysis,
-    page,
     source,
-    deadline
+    2
   );
 
-  if (ai.result) {
+  if (!candidates.length) {
     return {
-      result: ai.result,
+      result: null,
       search,
-      page,
+      page: null,
+      pagesTried: [],
       query,
-      selected: row,
-      error: null,
+      error: "NO_ELIGIBLE_SEARCH_RESULT",
     };
   }
 
-  const deterministic = deterministicExactPageFallback(
-    question,
-    analysis,
-    page,
-    source
-  );
+  const pagesTried = [];
+  const errors = [];
 
-  if (deterministic) {
-    deterministic.reason = `${source.key}_EXACT_PAGE_DETERMINISTIC`;
-    deterministic.confidence = source.confidence;
+  for (const row of candidates) {
+    if (timeLeft(deadline) < 260) {
+      errors.push("TIER_PAGE_BUDGET_EXHAUSTED");
+      break;
+    }
 
-    return {
-      result: deterministic,
-      search,
+    let page;
+
+    try {
+      page = await openExactResult(row, source, deadline);
+    } catch (error) {
+      errors.push(`${row.url}:${errorCode(error)}`);
+      continue;
+    }
+
+    pagesTried.push({
+      title: page.title,
+      url: page.url,
+      searchScore: row.eligibility?.score || 0,
+    });
+
+    const eligibility = pageEligibility(
+      question,
+      analysis,
       page,
-      query,
-      selected: row,
-      error: ai.error,
-    };
+      source
+    );
+
+    if (!eligibility.eligible) {
+      errors.push(`${page.url}:PAGE_REJECTED_${eligibility.reason}`);
+      continue;
+    }
+
+    // High-value deterministic extraction runs first.
+    const direct = deterministicHighValueExactPage(
+      question,
+      analysis,
+      page,
+      source
+    );
+
+    if (direct) {
+      const check = validateFinalPageAnswer(
+        question,
+        analysis,
+        direct.answer,
+        page
+      );
+
+      if (check.valid) {
+        return {
+          result: direct,
+          search,
+          page,
+          pagesTried,
+          query,
+          selected: row,
+          error: null,
+        };
+      }
+
+      errors.push(`${page.url}:DIRECT_REJECTED_${check.reason}`);
+    }
+
+    // Then AI extracts only from clue-rich regions of THIS exact page.
+    const ai = await aiExtractSinglePage(
+      question,
+      analysis,
+      page,
+      source,
+      deadline
+    );
+
+    if (ai.result) {
+      return {
+        result: ai.result,
+        search,
+        page,
+        pagesTried,
+        query,
+        selected: row,
+        error: null,
+      };
+    }
+
+    if (ai.error) errors.push(`${page.url}:${ai.error}`);
+
+    // Last same-page deterministic parser fallback.
+    const deterministic = deterministicExactPageFallback(
+      question,
+      analysis,
+      page,
+      source
+    );
+
+    if (deterministic) {
+      const check = validateFinalPageAnswer(
+        question,
+        analysis,
+        deterministic.answer,
+        page
+      );
+
+      if (check.valid) {
+        deterministic.reason = `${source.key}_EXACT_PAGE_DETERMINISTIC`;
+        deterministic.confidence = source.confidence;
+
+        return {
+          result: deterministic,
+          search,
+          page,
+          pagesTried,
+          query,
+          selected: row,
+          error: ai.error,
+        };
+      }
+
+      errors.push(`${page.url}:DETERMINISTIC_REJECTED_${check.reason}`);
+    }
   }
 
   return {
     result: null,
     search,
-    page,
+    page: null,
+    pagesTried,
     query,
-    selected: row,
-    error: ai.error || "EXACT_PAGE_NO_SUPPORTED_ANSWER",
+    selected: candidates[0] || null,
+    error: errors.join("|") || "NO_SUPPORTED_ANSWER_ON_ELIGIBLE_PAGES",
   };
 }
 
@@ -3066,14 +3550,17 @@ async function resolveQuestion(questionObj, lore = "") {
 
     primaryQuery: "",
     primarySelectedPage: "",
+    primaryPagesTried: [],
     primaryError: "",
 
     fandomQuery: "",
     fandomSelectedPage: "",
+    fandomPagesTried: [],
     fandomError: "",
 
     wikiQuery: "",
     wikiSelectedPage: "",
+    wikiPagesTried: [],
     wikiError: "",
 
     emergencyErrors: [],
@@ -3093,6 +3580,7 @@ async function resolveQuestion(questionObj, lore = "") {
 
   diagnostic.primaryQuery = primary.query;
   diagnostic.primarySelectedPage = primary.page?.url || primary.selected?.url || "";
+  diagnostic.primaryPagesTried = primary.pagesTried || [];
   diagnostic.primaryError = primary.error || "";
 
   if (primary.result) {
@@ -3126,6 +3614,7 @@ async function resolveQuestion(questionObj, lore = "") {
 
     diagnostic.fandomQuery = fandom.query;
     diagnostic.fandomSelectedPage = fandom.page?.url || fandom.selected?.url || "";
+    diagnostic.fandomPagesTried = fandom.pagesTried || [];
     diagnostic.fandomError = fandom.error || "";
 
     if (fandom.result) {
@@ -3161,6 +3650,7 @@ async function resolveQuestion(questionObj, lore = "") {
 
     diagnostic.wikiQuery = wiki.query;
     diagnostic.wikiSelectedPage = wiki.page?.url || wiki.selected?.url || "";
+    diagnostic.wikiPagesTried = wiki.pagesTried || [];
     diagnostic.wikiError = wiki.error || "";
 
     if (wiki.result) {
@@ -3659,6 +4149,135 @@ function runSelfTests() {
     parseLooseAiExtraction('{"result":"Yetimatic","evidence":"Base Cost $27.5B"}').answer === "Yetimatic"
   );
 
+
+  const r29RitualAnalysis = enforceQuestionSemantics(
+    "What is the 1% outcome from the four-player Job Job Job Sahur ritual?",
+    analyzeQuestion("What is the 1% outcome from the four-player Job Job Job Sahur ritual?")
+  );
+
+  check(
+    "R29 ritual family accepts ritual URL",
+    primaryFamilyScore(
+      { url: `${PRIMARY_ORIGIN}/rituals/job-job-job-sahur-ritual` },
+      "What is the 1% outcome from the four-player Job Job Job Sahur ritual?",
+      r29RitualAnalysis
+    ).allowed === true
+  );
+
+  check(
+    "R29 ritual family rejects creator page",
+    primaryFamilyScore(
+      { url: `${PRIMARY_ORIGIN}/wiki/creator` },
+      "What is the 1% outcome from the four-player Job Job Job Sahur ritual?",
+      r29RitualAnalysis
+    ).allowed === false
+  );
+
+  const r29WrongPage = syntheticPrimaryPage(
+    "SpyderSammy",
+    `${PRIMARY_ORIGIN}/wiki/creator`,
+    [
+      "Roblox developer and game producer",
+      "Steal a Brainrot creator",
+      "August 2026",
+    ]
+  );
+
+  check(
+    "R29 opened wrong ritual page rejected",
+    pageEligibility(
+      "What is the 1% outcome from the four-player Job Job Job Sahur ritual?",
+      r29RitualAnalysis,
+      r29WrongPage,
+      SOURCE.PRIMARY
+    ).eligible === false
+  );
+
+  check(
+    "R29 generic role phrase rejected",
+    validateFinalPageAnswer(
+      "What is the 1% outcome from the four-player Job Job Job Sahur ritual?",
+      r29RitualAnalysis,
+      "Roblox developer and game producer",
+      r29WrongPage
+    ).valid === false
+  );
+
+  const r29GoodRitual = syntheticPrimaryPage(
+    "Job Job Job Sahur Ritual",
+    `${PRIMARY_ORIGIN}/rituals/job-job-job-sahur-ritual`,
+    [
+      "Job Job Job Sahur Ritual",
+      "4 players",
+      "Expected Results",
+      "Yess my Resume with a 99% outcome chance",
+      "Noo my Resume with a 1% outcome chance",
+    ]
+  );
+
+  check(
+    "R29 ritual page eligible",
+    pageEligibility(
+      "What is the 1% outcome from the four-player Job Job Job Sahur ritual?",
+      r29RitualAnalysis,
+      r29GoodRitual,
+      SOURCE.PRIMARY
+    ).eligible === true
+  );
+
+  check(
+    "R29 Noo my Resume clue-local valid",
+    validateFinalPageAnswer(
+      "What is the 1% outcome from the four-player Job Job Job Sahur ritual?",
+      r29RitualAnalysis,
+      "Noo my Resume",
+      r29GoodRitual
+    ).valid === true
+  );
+
+  const r29MutationAnalysis = enforceQuestionSemantics(
+    "Which mutation from Update 59 has a 13x multiplier and came with the Spain event?",
+    analyzeQuestion("Which mutation from Update 59 has a 13x multiplier and came with the Spain event?")
+  );
+
+  check(
+    "R29 mutation family accepts mutations wiki",
+    primaryFamilyScore(
+      { url: `${PRIMARY_ORIGIN}/wiki/mutations` },
+      "Which mutation from Update 59 has a 13x multiplier and came with the Spain event?",
+      r29MutationAnalysis
+    ).allowed === true
+  );
+
+  const r29Rows = {
+    results: [
+      {
+        title: "Creator",
+        url: `${PRIMARY_ORIGIN}/wiki/creator`,
+        content: "Roblox developer and game producer Update 59",
+        score: 0.95,
+        host: SOURCE.PRIMARY.host,
+      },
+      {
+        title: "Mutations",
+        url: `${PRIMARY_ORIGIN}/wiki/mutations`,
+        content: "Update 59 Crystal mutation 13x Spain event",
+        score: 0.60,
+        host: SOURCE.PRIMARY.host,
+      },
+    ],
+  };
+
+  check(
+    "R29 family guard ranks mutation page",
+    pickExactSearchResult(
+      r29Rows,
+      r29MutationAnalysis,
+      SOURCE.PRIMARY,
+      "Which mutation from Update 59 has a 13x multiplier and came with the Spain event?"
+    )?.url.endsWith("/wiki/mutations")
+  );
+
   // Priority behavior: once S+ has a direct value, lower tier disagreement does not participate.
   const primary = makeResult("10x", REL.MULTIPLIER, SOURCE.PRIMARY, mutationPage, "PRIMARY_MUTATION_SECTION", 0.995);
   const fandom = makeResult("9x", REL.MULTIPLIER, SOURCE.FANDOM, { title: "Mutations", url: "fandom" }, "FANDOM_DIRECT", 0.93);
@@ -3782,7 +4401,8 @@ export async function GET(request) {
     const selected = pickExactSearchResult(
       search,
       analysis,
-      SOURCE.PRIMARY
+      SOURCE.PRIMARY,
+      question
     );
 
     return json(200, {
@@ -3794,11 +4414,21 @@ export async function GET(request) {
       selected,
       candidates: search.results
         .filter((row) => row.host === SOURCE.PRIMARY.host)
-        .map((row) => ({
-          title: row.title,
-          url: row.url,
-          score: scoreExactSearchResult(row, analysis, SOURCE.PRIMARY),
-        }))
+        .map((row) => {
+          const eligibility = snippetEligibility(
+            row,
+            question,
+            analysis,
+            SOURCE.PRIMARY
+          );
+          return {
+            title: row.title,
+            url: row.url,
+            score: eligibility.score,
+            eligible: eligibility.eligible,
+            reason: eligibility.reason,
+          };
+        })
         .sort((a, b) => b.score - a.score),
       errors: search.errors,
       ms: nowMs() - started,
@@ -3859,11 +4489,18 @@ export async function GET(request) {
       { tier: "B", source: "steal-a-brainrot.wiki", policy: "USED ONLY WHEN S+ AND A+ MISS" },
       { tier: "C", source: "Tavily/NVIDIA", policy: "EMERGENCY ONLY" },
     ],
-    conflictPolicy: "AI ROUTES QUESTION; CLUES ARE PRESERVED IN SEARCH; ONE EXACT S+ PAGE; DETERMINISTIC HIGH-VALUE FACT OR AI EXTRACTS ONLY FROM THAT PAGE; S+ VERIFIED = 0.995 + STOP; A+ ONLY ON S+ MISS; B ONLY ON S+/A+ MISS",
+    conflictPolicy: "AI ROUTES QUESTION; URL FAMILY + HARD CLUES VALIDATE PAGE BEFORE AI; TRY MAX 2 ELIGIBLE PAGES PER TIER; ANSWER TYPE + CLUE-LOCAL EVIDENCE MUST PASS; S+ VERIFIED = 0.995 + STOP; A+ ONLY ON S+ MISS; B ONLY ON S+/A+ MISS",
     architecture: {
       aiQuestionRouterFirst: true,
       exactPageSearchFirst: true,
       cluePreservingSearch: true,
+      urlFamilyRouting: true,
+      snippetEligibilityGuard: true,
+      openedPageEligibilityGuard: true,
+      maxTwoPagesPerTier: true,
+      clueLocalAiEvidence: true,
+      answerTypeValidation: true,
+      genericRoleAnswerBlock: true,
       reverseEntityExactPage: true,
       chanceResultExactPage: true,
       looseAiOutputRecovery: true,
