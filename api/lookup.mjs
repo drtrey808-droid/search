@@ -1,4 +1,4 @@
-const BUILD_ID = "SAB_EXACT_PAGE_AI_ENGINE_R27_2026_08_19";
+const BUILD_ID = "SAB_EXACT_PAGE_RESILIENT_ENGINE_R28_2026_08_19";
 
 const PRIMARY_ORIGIN = "https://steal-a-brainrot.org";
 const FANDOM_API = "https://stealabrainrot.fandom.com/api.php";
@@ -428,7 +428,8 @@ function analyzeQuestion(question) {
     date,
     current,
     intent: inferIntent(q, relation, update, date),
-    source: "DETERMINISTIC_R27",
+    rawQuestion: q,
+    source: "DETERMINISTIC_R28",
   };
 }
 
@@ -568,7 +569,7 @@ async function fetchPage(url, source, deadline) {
   const html = await fetchText(source.key, url, {
     headers: {
       Accept: "text/html,application/xhtml+xml",
-      "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R27",
+      "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R28",
     },
   }, timeout);
   const page = {
@@ -902,7 +903,7 @@ function withBridgedUpdate(analysis, update) {
     source:
       analysis.source === "NVIDIA_QUESTION_ROUTER"
         ? "NVIDIA_QUESTION_ROUTER+DATE_BRIDGE"
-        : "DETERMINISTIC_R27+DATE_BRIDGE",
+        : "DETERMINISTIC_R28+DATE_BRIDGE",
   };
 }
 
@@ -1946,7 +1947,7 @@ async function fandomSearchTitles(query, deadline) {
     format: "json",
   });
   try {
-    const data = await fetchJson("FANDOM_SEARCH", `${FANDOM_API}?${params.toString()}`, { headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R27" } }, Math.min(CFG.FANDOM_TIMEOUT_MS, left - 20));
+    const data = await fetchJson("FANDOM_SEARCH", `${FANDOM_API}?${params.toString()}`, { headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R28" } }, Math.min(CFG.FANDOM_TIMEOUT_MS, left - 20));
     return (Array.isArray(data?.query?.search) ? data.query.search : []).map((x) => oneLine(x?.title, 300)).filter(Boolean);
   } catch {
     return [];
@@ -1959,7 +1960,7 @@ async function fetchFandomPage(title, deadline) {
   if (cached) return { ...cached, cache: "HIT" };
   const left = timeLeft(deadline);
   if (left < 250) throw new Error("FANDOM_BUDGET_EXHAUSTED");
-  const data = await fetchJson("FANDOM_PARSE", fandomParseUrl(title), { headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R27" } }, Math.min(CFG.FANDOM_TIMEOUT_MS, left - 20));
+  const data = await fetchJson("FANDOM_PARSE", fandomParseUrl(title), { headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R28" } }, Math.min(CFG.FANDOM_TIMEOUT_MS, left - 20));
   if (data?.error) throw new Error(`FANDOM_PARSE_${data.error.code || "ERROR"}`);
   const p = data?.parse || {};
   const html = typeof p.text === "string" ? p.text : String(p.text?.["*"] || "");
@@ -2104,15 +2105,56 @@ function mergeAnalysis(ai, fallback) {
     current: typeof ai.current === "boolean" ? ai.current : fallback.current,
     intent: oneLine(ai.intent, 80) || fallback.intent,
     wanted: oneLine(ai.wanted, 80) || relation,
+    rawQuestion: fallback.rawQuestion || "",
     source: "NVIDIA_QUESTION_ROUTER",
   };
+}
+
+
+function enforceQuestionSemantics(question, analysis) {
+  const q = oneLine(question, 700).toLowerCase();
+  const next = { ...analysis, rawQuestion: oneLine(question, 700) };
+
+  // "What is the rare 1% result from X ritual?" asks for the spawned/result
+  // brainrot, NOT the drop-rate number itself.
+  if (
+    /\b(?:result|outcome)\b/.test(q) &&
+    /\britual\b/.test(q) &&
+    /\b\d+(?:\.\d+)?\s*%/.test(q)
+  ) {
+    next.relation = REL.SPAWN;
+    next.wanted = REL.SPAWN;
+  }
+
+  // Reverse identification: "Which Secret brainrot ... costs $27.5B?"
+  // The requested answer is the brainrot/entity, not the COST value.
+  if (
+    /\b(?:what|which)\b/.test(q) &&
+    /\bbrain\s*rot\b|\bbrainrot\b/.test(q) &&
+    /\b(?:cost|price|income|machine|event|update|rarity|secret)\b/.test(q)
+  ) {
+    next.relation = REL.BRAINROT;
+    next.wanted = REL.BRAINROT;
+  }
+
+  // Same idea for mutation reverse-identification questions.
+  if (
+    /\b(?:what|which)\b/.test(q) &&
+    /\bmutation\b/.test(q) &&
+    /\b\d+(?:\.\d+)?\s*[x×]\b/.test(q)
+  ) {
+    next.relation = REL.MUTATION;
+    next.wanted = REL.MUTATION;
+  }
+
+  return next;
 }
 
 async function analyzeQuestionAI(question, deadline) {
   const fallback = analyzeQuestion(question);
 
   if (!env("NVIDIA_API_KEY") || timeLeft(deadline) < 250) {
-    return { analysis: fallback, aiError: "NVIDIA_ANALYZER_UNAVAILABLE" };
+    return { analysis: enforceQuestionSemantics(question, fallback), aiError: "NVIDIA_ANALYZER_UNAVAILABLE" };
   }
 
   try {
@@ -2169,12 +2211,12 @@ async function analyzeQuestionAI(question, deadline) {
 
     const raw = parseModelJson(data?.choices?.[0]?.message?.content);
     return {
-      analysis: mergeAnalysis(raw, fallback),
+      analysis: enforceQuestionSemantics(question, mergeAnalysis(raw, fallback)),
       aiError: null,
     };
   } catch (error) {
     return {
-      analysis: fallback,
+      analysis: enforceQuestionSemantics(question, fallback),
       aiError: errorCode(error),
     };
   }
@@ -2272,6 +2314,205 @@ async function emergencyStage(question, analysis, evidencePages, deadline) {
 }
 
 
+
+function searchCluesFromQuestion(question) {
+  const q = oneLine(question, 700);
+  const clues = [];
+
+  for (const m of q.matchAll(/\$\s*\d+(?:\.\d+)?\s*[KMBTQ]?/gi)) {
+    clues.push(m[0].replace(/\s+/g, ""));
+  }
+
+  for (const m of q.matchAll(/\b\d+(?:\.\d+)?\s*%/g)) {
+    clues.push(m[0].replace(/\s+/g, ""));
+  }
+
+  for (const phrase of [
+    "RNG Machine",
+    "Job Job Job Sahur",
+    "Secret",
+    "Crystal",
+    "Rainbow",
+    "ritual",
+  ]) {
+    if (q.toLowerCase().includes(phrase.toLowerCase())) clues.push(phrase);
+  }
+
+  return [...new Set(clues)].slice(0, 10);
+}
+
+function normalizedClue(value) {
+  return oneLine(value, 200)
+    .toLowerCase()
+    .replace(/\s+/g, "")
+    .replace(/,/g, "");
+}
+
+function pageHasClue(text, clue) {
+  const hay = normalizedClue(text);
+  const needle = normalizedClue(clue);
+  return Boolean(needle && hay.includes(needle));
+}
+
+function clueCoverage(question, text) {
+  const clues = searchCluesFromQuestion(question);
+  if (!clues.length) return { matched: 0, total: 0, ratio: 1, clues: [] };
+
+  let matched = 0;
+  for (const clue of clues) {
+    if (pageHasClue(text, clue)) matched++;
+  }
+
+  return {
+    matched,
+    total: clues.length,
+    ratio: clues.length ? matched / clues.length : 1,
+    clues,
+  };
+}
+
+function trimChanceCandidate(value) {
+  let v = oneLine(value, 160)
+    .replace(/^Image:\s*/i, "")
+    .replace(/^(?:or|and)\s+/i, "")
+    .replace(/\bwith\s+(?:an?\s+)?\d+(?:\.\d+)?\s*%\s*(?:outcome\s+)?chance.*$/i, "")
+    .replace(/\b(?:outcome|chance|result)\b.*$/i, "")
+    .trim();
+
+  // Remove common heading noise if it leaked in.
+  v = v.replace(/^(?:Brainrot Spawn|Expected Results|Outcome Odds)\s*/i, "").trim();
+  return v;
+}
+
+function extractChanceResultFromPage(question, page) {
+  const q = oneLine(question, 700);
+  const chance = q.match(/\b(\d+(?:\.\d+)?)\s*%/);
+  if (!chance) return null;
+
+  const pct = chance[1].replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const raw = String(page?.text || "");
+
+  const patterns = [
+    new RegExp(`(?:Image:\\s*)?([A-Z][A-Za-z0-9' -]{2,90}?)\\s+with\\s+(?:an?\\s+)?${pct}\\s*%\\s*(?:outcome\\s+)?chance`, "i"),
+    new RegExp(`([A-Z][A-Za-z0-9' -]{2,90}?)\\s+${pct}\\s*%`, "i"),
+    new RegExp(`${pct}\\s*%[^A-Za-z0-9]{0,30}([A-Z][A-Za-z0-9' -]{2,90})`, "i"),
+  ];
+
+  for (const pattern of patterns) {
+    const m = raw.match(pattern);
+    if (!m?.[1]) continue;
+
+    const candidate = trimChanceCandidate(m[1]);
+    if (
+      candidate &&
+      candidate.length >= 2 &&
+      !/^(?:Variable|Success Rate|Potential Rewards)$/i.test(candidate)
+    ) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
+function deterministicHighValueExactPage(question, analysis, page, source) {
+  if (!page || !page.text) return null;
+
+  const coverage = clueCoverage(question, page.text);
+
+  // Reverse identify a brainrot from its properties.
+  if (
+    analysis.relation === REL.BRAINROT &&
+    /\/brainrots\/[^/?#]+/i.test(page.url || "") &&
+    coverage.ratio >= 0.60
+  ) {
+    const title = oneLine(page.title, 160)
+      .replace(/\s*[-|]\s*(?:Secret Brainrot Character.*|Steal a Brainrot.*)$/i, "")
+      .trim();
+
+    if (title) {
+      return makeResult(
+        title,
+        REL.BRAINROT,
+        source,
+        page,
+        `${source.key}_REVERSE_ENTITY_EXACT_PAGE`,
+        source.confidence
+      );
+    }
+  }
+
+  // Chance-based ritual result: "rare 1% result" -> exact brainrot name.
+  if (
+    [REL.SPAWN, REL.REWARD, REL.BRAINROT].includes(analysis.relation) &&
+    /\b\d+(?:\.\d+)?\s*%/.test(question) &&
+    /\britual\b/i.test(question)
+  ) {
+    const candidate = extractChanceResultFromPage(question, page);
+    if (candidate) {
+      return makeResult(
+        candidate,
+        analysis.relation === REL.BRAINROT ? REL.BRAINROT : REL.SPAWN,
+        source,
+        page,
+        `${source.key}_CHANCE_RESULT_EXACT_PAGE`,
+        source.confidence
+      );
+    }
+  }
+
+  return null;
+}
+
+function parseLooseAiExtraction(content) {
+  const rawText = String(content ?? "").trim();
+  if (!rawText) throw new Error("NVIDIA_EMPTY_CONTENT");
+
+  try {
+    const parsed = parseModelJson(rawText);
+    if (parsed && typeof parsed === "object") {
+      return {
+        answer:
+          parsed.answer ??
+          parsed.result ??
+          parsed.value ??
+          parsed.name ??
+          "UNKNOWN",
+        evidence:
+          parsed.evidence ??
+          parsed.quote ??
+          parsed.support ??
+          "",
+        reason: parsed.reason ?? "json",
+      };
+    }
+  } catch {}
+
+  // NVIDIA occasionally returns only the raw value even when asked for JSON.
+  // That is okay only because the answer still has to be verified against the
+  // ONE opened source page below.
+  const stripped = rawText
+    .replace(/^```(?:json|text)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .replace(/^(?:answer|output|result)\s*:\s*/i, "")
+    .trim();
+
+  if (
+    stripped &&
+    stripped.length <= 220 &&
+    !/^[\[{]/.test(stripped) &&
+    !/\b(?:because|therefore|i think|i cannot|not enough information)\b/i.test(stripped)
+  ) {
+    return {
+      answer: stripped,
+      evidence: "",
+      reason: "raw_single_value",
+    };
+  }
+
+  throw new Error("NVIDIA_INVALID_AI_OUTPUT");
+}
+
 function relationSearchWord(relation) {
   switch (relation) {
     case REL.COST: return "cost price";
@@ -2312,6 +2553,7 @@ function humanDateFromIso(date) {
   return `${names[m]} ${d}, ${y}`;
 }
 
+
 function exactSearchQuery(question, analysis, source) {
   const parts = [];
 
@@ -2322,10 +2564,19 @@ function exactSearchQuery(question, analysis, source) {
   const relation = relationSearchWord(analysis.relation);
   if (relation) parts.push(relation);
 
-  // If AI/deterministic routing produced almost no useful keys, preserve the original question.
-  if (!parts.length || (parts.length === 1 && !analysis.entity && !analysis.update && !analysis.date)) {
-    parts.push(oneLine(question, 500));
+  for (const clue of searchCluesFromQuestion(question)) {
+    if (/[\s]/.test(clue)) parts.push(`"${clue}"`);
+    else parts.push(clue);
   }
+
+  // Keep the original wording as unquoted search terms. This preserves clues
+  // such as "$27.5B", "1%", "rare", and route names that structured routing
+  // may intentionally omit.
+  const original = oneLine(question, 500)
+    .replace(/[?!.]+$/g, "")
+    .trim();
+
+  if (original) parts.push(original);
 
   return `site:${source.host} ${parts.join(" ")}`.trim();
 }
@@ -2386,6 +2637,10 @@ function scoreExactSearchResult(row, analysis, source) {
   }
 
   score += relationEvidenceScore(combined, analysis.relation) * 2;
+
+  const clueInfo = clueCoverage(analysis.rawQuestion || "", combined);
+  score += clueInfo.matched * 1.5;
+  if (clueInfo.total >= 2 && clueInfo.ratio >= 0.75) score += 2;
 
   try {
     const url = new URL(row.url);
@@ -2510,6 +2765,9 @@ async function aiExtractSinglePage(question, analysis, page, source, deadline) {
                 "For GEAR return only the item/gear name.",
                 "For MULTIPLIER return only the multiplier.",
                 "For INCOME return only income per second.",
+                "For SPAWN/REWARD/BRAINROT questions return ONLY the brainrot/entity name, never the percentage or an explanatory sentence.",
+                "For reverse identification questions like 'Which Secret brainrot ... has a base cost of $27.5B?', return ONLY the matching page/entity name.",
+                "For chance questions like 'rare 1% result', return ONLY the entity attached to that exact chance.",
                 "For broad UPDATE questions return a short comma-separated list of major additions explicitly stated on this page.",
                 "Also provide a SHORT verbatim evidence fragment copied from the page that supports the answer.",
                 'Return JSON only: {"answer":"UNKNOWN or value","evidence":"short exact page fragment","reason":"short"}',
@@ -2545,7 +2803,7 @@ async function aiExtractSinglePage(question, analysis, page, source, deadline) {
       )
     );
 
-    const raw = parseModelJson(data?.choices?.[0]?.message?.content);
+    const raw = parseLooseAiExtraction(data?.choices?.[0]?.message?.content);
     const answer = oneLine(raw?.answer, 500);
 
     if (!answer || norm(answer) === "unknown") {
@@ -2634,6 +2892,24 @@ async function exactTierLookup(question, analysis, source, deadline) {
       query,
       selected: row,
       error: errorCode(error),
+    };
+  }
+
+  const direct = deterministicHighValueExactPage(
+    question,
+    analysis,
+    page,
+    source
+  );
+
+  if (direct) {
+    return {
+      result: direct,
+      search,
+      page,
+      query,
+      selected: row,
+      error: null,
     };
   }
 
@@ -3296,6 +3572,93 @@ function runSelfTests() {
     trustLogForTier(SOURCE.FANDOM, "Example")[0].startsWith("BEST SOURCE MISS")
   );
 
+
+  const r28Rare = enforceQuestionSemantics(
+    "What is the rare 1% result from the Job Job Job Sahur ritual?",
+    analyzeQuestion("What is the rare 1% result from the Job Job Job Sahur ritual?")
+  );
+  check("R28 rare ritual relation spawn", r28Rare.relation === REL.SPAWN);
+
+  const r28Reverse = enforceQuestionSemantics(
+    "Which Secret brainrot from the RNG Machine in Update 61 has a base cost of $27.5B?",
+    analyzeQuestion("Which Secret brainrot from the RNG Machine in Update 61 has a base cost of $27.5B?")
+  );
+  check("R28 reverse brainrot relation", r28Reverse.relation === REL.BRAINROT);
+
+  check(
+    "R28 reverse query keeps money clue",
+    exactSearchQuery(
+      "Which Secret brainrot from the RNG Machine in Update 61 has a base cost of $27.5B?",
+      r28Reverse,
+      SOURCE.PRIMARY
+    ).includes("$27.5B")
+  );
+
+  check(
+    "R28 ritual query keeps 1pct clue",
+    exactSearchQuery(
+      "What is the rare 1% result from the Job Job Job Sahur ritual?",
+      r28Rare,
+      SOURCE.PRIMARY
+    ).includes("1%")
+  );
+
+  const r28RitualPage = syntheticPrimaryPage(
+    "Job Job Job Sahur Ritual",
+    `${PRIMARY_ORIGIN}/rituals/job-job-job-sahur-ritual`,
+    [
+      "Job Job Job Sahur Ritual",
+      "Expected Results",
+      "Brainrot Spawn",
+      "Yess my Resume with a 99% outcome chance",
+      "Noo my Resume with a 1% outcome chance",
+      "Job Application Trait",
+    ]
+  );
+
+  check(
+    "R28 deterministic rare 1pct result",
+    deterministicHighValueExactPage(
+      "What is the rare 1% result from the Job Job Job Sahur ritual?",
+      r28Rare,
+      r28RitualPage,
+      SOURCE.PRIMARY
+    )?.answer === "Noo my Resume"
+  );
+
+  const r28YetimaticPage = syntheticPrimaryPage(
+    "Yetimatic",
+    `${PRIMARY_ORIGIN}/brainrots/yetimatic`,
+    [
+      "Yetimatic",
+      "Secret",
+      "RNG MACHINE",
+      "Base Cost",
+      "$27.5B",
+      "Available from the RNG Machine during Update 61.",
+    ]
+  );
+
+  check(
+    "R28 reverse exact page Yetimatic",
+    deterministicHighValueExactPage(
+      "Which Secret brainrot from the RNG Machine in Update 61 has a base cost of $27.5B?",
+      r28Reverse,
+      r28YetimaticPage,
+      SOURCE.PRIMARY
+    )?.answer === "Yetimatic"
+  );
+
+  check(
+    "R28 raw AI single value",
+    parseLooseAiExtraction("Noo my Resume").answer === "Noo my Resume"
+  );
+
+  check(
+    "R28 alternate AI json key",
+    parseLooseAiExtraction('{"result":"Yetimatic","evidence":"Base Cost $27.5B"}').answer === "Yetimatic"
+  );
+
   // Priority behavior: once S+ has a direct value, lower tier disagreement does not participate.
   const primary = makeResult("10x", REL.MULTIPLIER, SOURCE.PRIMARY, mutationPage, "PRIMARY_MUTATION_SECTION", 0.995);
   const fandom = makeResult("9x", REL.MULTIPLIER, SOURCE.FANDOM, { title: "Mutations", url: "fandom" }, "FANDOM_DIRECT", 0.93);
@@ -3496,10 +3859,14 @@ export async function GET(request) {
       { tier: "B", source: "steal-a-brainrot.wiki", policy: "USED ONLY WHEN S+ AND A+ MISS" },
       { tier: "C", source: "Tavily/NVIDIA", policy: "EMERGENCY ONLY" },
     ],
-    conflictPolicy: "AI ROUTES QUESTION; SEARCH ONE EXACT S+ PAGE; AI EXTRACTS ONLY FROM THAT PAGE; S+ VERIFIED = 0.995 + STOP; A+ ONLY ON S+ MISS; B ONLY ON S+/A+ MISS",
+    conflictPolicy: "AI ROUTES QUESTION; CLUES ARE PRESERVED IN SEARCH; ONE EXACT S+ PAGE; DETERMINISTIC HIGH-VALUE FACT OR AI EXTRACTS ONLY FROM THAT PAGE; S+ VERIFIED = 0.995 + STOP; A+ ONLY ON S+ MISS; B ONLY ON S+/A+ MISS",
     architecture: {
       aiQuestionRouterFirst: true,
       exactPageSearchFirst: true,
+      cluePreservingSearch: true,
+      reverseEntityExactPage: true,
+      chanceResultExactPage: true,
+      looseAiOutputRecovery: true,
       onePageEvidencePerTier: true,
       aiSinglePageExtraction: true,
       strictEvidenceVerification: true,
