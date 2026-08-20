@@ -1,4 +1,4 @@
-const BUILD_ID = "SAB_SPLUS_PRIORITY_ENGINE_R22_2026_08_19";
+const BUILD_ID = "SAB_DIRECT_SPLUS_LINK_ENGINE_R23_2026_08_19";
 
 const PRIMARY_ORIGIN = "https://steal-a-brainrot.org";
 const FANDOM_API = "https://stealabrainrot.fandom.com/api.php";
@@ -9,12 +9,12 @@ const NVIDIA_URL = "https://integrate.api.nvidia.com/v1/chat/completions";
 const DEFAULT_MODEL = "nvidia/nemotron-3-super-120b-a12b";
 
 const CFG = Object.freeze({
-  GLOBAL_BUDGET_MS: Number(process.env.LOOKUP_BUDGET_MS || 2100),
-  PRIMARY_TIMEOUT_MS: Number(process.env.PRIMARY_TIMEOUT_MS || 900),
-  FANDOM_TIMEOUT_MS: Number(process.env.FANDOM_TIMEOUT_MS || 850),
-  BACKUP_TIMEOUT_MS: Number(process.env.BACKUP_TIMEOUT_MS || 800),
-  TAVILY_TIMEOUT_MS: Number(process.env.TAVILY_TIMEOUT_MS || 900),
-  NVIDIA_TIMEOUT_MS: Number(process.env.NVIDIA_TIMEOUT_MS || 700),
+  GLOBAL_BUDGET_MS: Number(process.env.LOOKUP_BUDGET_MS || 4300),
+  PRIMARY_TIMEOUT_MS: Number(process.env.PRIMARY_TIMEOUT_MS || 1900),
+  FANDOM_TIMEOUT_MS: Number(process.env.FANDOM_TIMEOUT_MS || 1100),
+  BACKUP_TIMEOUT_MS: Number(process.env.BACKUP_TIMEOUT_MS || 950),
+  TAVILY_TIMEOUT_MS: Number(process.env.TAVILY_TIMEOUT_MS || 1000),
+  NVIDIA_TIMEOUT_MS: Number(process.env.NVIDIA_TIMEOUT_MS || 850),
 
   MAX_PRIMARY_PAGES: 7,
   MAX_BACKUP_PAGES: 5,
@@ -379,7 +379,7 @@ function analyzeQuestion(question) {
     rebirth,
     update,
     current,
-    source: "DETERMINISTIC_R22",
+    source: "DETERMINISTIC_R23",
   };
 }
 
@@ -519,7 +519,7 @@ async function fetchPage(url, source, deadline) {
   const html = await fetchText(source.key, url, {
     headers: {
       Accept: "text/html,application/xhtml+xml",
-      "User-Agent": "ChromeCodeSniper-R22",
+      "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R23",
     },
   }, timeout);
   const page = {
@@ -534,12 +534,168 @@ async function fetchPage(url, source, deadline) {
   return { ...page, cache: "MISS" };
 }
 
+
+function absolutePrimaryUrl(href) {
+  const raw = oneLine(href, 1200);
+  if (!raw) return null;
+  try {
+    const url = new URL(raw, PRIMARY_ORIGIN);
+    if (url.origin !== PRIMARY_ORIGIN) return null;
+    url.hash = "";
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+function primaryLinks(page, prefix = "/") {
+  const html = String(page?.html || "");
+  const out = [];
+  const seen = new Set();
+  const re = /<a\b([^>]*?)href\s*=\s*["']([^"']+)["']([^>]*)>([\s\S]*?)<\/a>/gi;
+  let m;
+  while ((m = re.exec(html)) !== null) {
+    const url = absolutePrimaryUrl(m[2]);
+    if (!url) continue;
+    let pathname = "";
+    try { pathname = new URL(url).pathname; } catch {}
+    if (!pathname.startsWith(prefix)) continue;
+    const label = oneLine(htmlToText(m[4], 600), 300);
+    const key = `${url}|${norm(label)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ url, label, pathname });
+  }
+  return out;
+}
+
+function bestPrimaryLink(page, analysis, prefix) {
+  const links = primaryLinks(page, prefix);
+  let best = null;
+  for (const link of links) {
+    const slugText = decodeURIComponent(link.pathname)
+      .replace(/^\/+|\/+$/g, "")
+      .replace(/[-_/]+/g, " ");
+    const value = `${link.label} ${slugText}`;
+    const score = bestEntityScore(analysis, value);
+    if (!best || score > best.score) best = { ...link, score };
+  }
+  return best && best.score >= 0.38 ? best : null;
+}
+
+function isPrimaryEntityFieldRelation(relation) {
+  return [
+    REL.COST,
+    REL.INCOME,
+    REL.RARITY,
+    REL.STATUS,
+    REL.METHOD,
+    REL.DATE,
+  ].includes(relation);
+}
+
+async function primaryFastPath(question, analysis, deadline) {
+  const errors = [];
+  const pages = [];
+  const tried = new Set();
+
+  async function get(url) {
+    if (!url || tried.has(url)) return null;
+    tried.add(url);
+    try {
+      const page = await fetchPage(url, SOURCE.PRIMARY, deadline);
+      pages.push(page);
+      return page;
+    } catch (error) {
+      errors.push(`${url}:${errorCode(error)}`);
+      return null;
+    }
+  }
+
+  // 1) Exact Brainrot page FIRST. Nothing else is allowed to delay this.
+  if (analysis.entity && isPrimaryEntityFieldRelation(analysis.relation)) {
+    const exact = `${PRIMARY_ORIGIN}/brainrots/${slugify(analysis.entity)}`;
+    const page = await get(exact);
+    if (page) {
+      const result = resolvePrimaryEntityPage(page, analysis);
+      if (result) return { result, pages, errors, route: "EXACT_BRAINROT" };
+    }
+  }
+
+  // 2) Rebirth has one canonical primary page.
+  if (
+    analysis.relation === REL.REBIRTH ||
+    analysis.relation === REL.GEAR ||
+    analysis.rebirth ||
+    (analysis.current && question.toLowerCase().includes("rebirth"))
+  ) {
+    const page = await get(`${PRIMARY_ORIGIN}/wiki/rebirth`);
+    if (page) {
+      const result = resolvePrimaryRebirth(page, analysis);
+      if (result) return { result, pages, errors, route: "DIRECT_REBIRTH" };
+    }
+  }
+
+  // 3) Mutation / trait multiplier has one canonical primary page.
+  if (
+    analysis.relation === REL.MULTIPLIER ||
+    analysis.relation === REL.MUTATION ||
+    analysis.relation === REL.TRAIT ||
+    /\b(?:mutation|trait)\b/i.test(question)
+  ) {
+    const page = await get(`${PRIMARY_ORIGIN}/wiki/mutations`);
+    if (page) {
+      const result = resolvePrimaryMutation(page, analysis);
+      if (result) return { result, pages, errors, route: "DIRECT_MUTATIONS" };
+    }
+  }
+
+  // 4) Ritual: open S+ ritual hub, follow the best matching S+ ritual link,
+  // then parse the exact detail page. Tavily is NOT needed for normal rituals.
+  if (
+    [REL.REQUIREMENT, REL.SPAWN, REL.FORMATION, REL.WEATHER, REL.DROP_RATE, REL.RITUAL].includes(analysis.relation) ||
+    /\britual\b/i.test(question)
+  ) {
+    const hub = await get(`${PRIMARY_ORIGIN}/rituals`);
+    if (hub) {
+      // Hub itself can answer some direct spawn questions.
+      const hubResult = resolvePrimaryRitual(hub, analysis);
+      if (hubResult) return { result: hubResult, pages, errors, route: "RITUAL_HUB" };
+
+      const link = bestPrimaryLink(hub, analysis, "/rituals/");
+      if (link) {
+        const detail = await get(link.url);
+        if (detail) {
+          const result = resolvePrimaryRitual(detail, analysis);
+          if (result) return { result, pages, errors, route: "EXACT_RITUAL_LINK" };
+        }
+      }
+    }
+  }
+
+  // 5) Structured S+ hubs for the remaining common categories.
+  const hubs = [];
+  if (analysis.relation === REL.CONTENTS || /\blucky block\b/i.test(question)) hubs.push("/lucky-blocks");
+  if (analysis.relation === REL.MACHINE || /\bmachine\b/i.test(question)) hubs.push("/machines");
+  if ([REL.EVENT, REL.UPDATE].includes(analysis.relation) || /\b(?:event|update)\b/i.test(question)) hubs.push("/events");
+  if (analysis.relation === REL.COLLECTION || /\bcollection\b/i.test(question)) hubs.push("/collections");
+
+  for (const path of hubs) {
+    const page = await get(`${PRIMARY_ORIGIN}${path}`);
+    if (!page) continue;
+    const result = resolvePrimaryGenericPage(page, analysis);
+    if (result) return { result, pages, errors, route: `DIRECT_${path}` };
+  }
+
+  return { result: null, pages, errors, route: "PRIMARY_FAST_MISS" };
+}
+
 function primaryCandidateUrls(question, analysis) {
   const q = question.toLowerCase();
   const urls = [];
   const add = (path) => urls.push(`${PRIMARY_ORIGIN}${path}`);
 
-  if (analysis.entity) {
+  if (analysis.entity && isPrimaryEntityFieldRelation(analysis.relation)) {
     const slug = slugify(analysis.entity);
     if (slug) add(`/brainrots/${slug}`);
   }
@@ -736,14 +892,27 @@ function resolvePrimaryRitual(page, analysis) {
     }
   }
 
-  // Hub page supports ritual -> spawn, even when exact ritual page wasn't discovered.
-  if (analysis.relation === REL.SPAWN) {
-    const lines = page.lines;
-    for (let i = 0; i < lines.length; i++) {
-      if (bestEntityScore(analysis, lines[i]) < 0.35 || !/ritual/i.test(lines[i])) continue;
-      const joined = lines.slice(i, Math.min(lines.length, i + 6)).join(" | ");
-      const m = joined.match(/Rewards?:\s*([^|]{2,100})/i);
-      if (m) return makeResult(m[1], REL.SPAWN, SOURCE.PRIMARY, page, "PRIMARY_RITUAL_HUB", 0.985);
+  // Hub page supports ritual -> spawn from the actual ritual link/card text.
+  if (analysis.relation === REL.SPAWN && /\/rituals\/?$/.test(page.url)) {
+    const links = primaryLinks(page, "/rituals/");
+    let best = null;
+    for (const link of links) {
+      const score = bestEntityScore(analysis, `${link.label} ${link.pathname}`);
+      if (!best || score > best.score) best = { ...link, score };
+    }
+    if (best && best.score >= 0.38) {
+      const m = best.label.match(/Rewards?:\s*([A-Za-z0-9' -]{2,100}?)(?:\s+[a-z-]+\s+trait|\s+\d+\s+players?\s+required|$)/i);
+      if (m?.[1]) return makeResult(m[1], REL.SPAWN, SOURCE.PRIMARY, page, "PRIMARY_RITUAL_HUB_LINK", 0.99);
+    }
+
+    const flat = page.text;
+    const entityParts = (analysis.entities || []).filter(Boolean);
+    for (const entity of entityParts) {
+      const key = entity.split(/\s+/).slice(-1)[0];
+      if (!key || key.length < 4) continue;
+      const re = new RegExp(`${key}\\s+Ritual\\s+Rewards?:\\s*([A-Za-z0-9' -]{2,100}?)(?:\\s+[a-z-]+\\s+trait|\\s+\\d+\\s+players?\\s+required|$)`, "i");
+      const m = flat.match(re);
+      if (m?.[1]) return makeResult(m[1], REL.SPAWN, SOURCE.PRIMARY, page, "PRIMARY_RITUAL_HUB_TEXT", 0.985);
     }
   }
 
@@ -920,7 +1089,7 @@ async function fandomSearchTitles(query, deadline) {
     format: "json",
   });
   try {
-    const data = await fetchJson("FANDOM_SEARCH", `${FANDOM_API}?${params.toString()}`, { headers: { Accept: "application/json", "User-Agent": "ChromeCodeSniper-R22" } }, Math.min(CFG.FANDOM_TIMEOUT_MS, left - 20));
+    const data = await fetchJson("FANDOM_SEARCH", `${FANDOM_API}?${params.toString()}`, { headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R23" } }, Math.min(CFG.FANDOM_TIMEOUT_MS, left - 20));
     return (Array.isArray(data?.query?.search) ? data.query.search : []).map((x) => oneLine(x?.title, 300)).filter(Boolean);
   } catch {
     return [];
@@ -933,7 +1102,7 @@ async function fetchFandomPage(title, deadline) {
   if (cached) return { ...cached, cache: "HIT" };
   const left = timeLeft(deadline);
   if (left < 250) throw new Error("FANDOM_BUDGET_EXHAUSTED");
-  const data = await fetchJson("FANDOM_PARSE", fandomParseUrl(title), { headers: { Accept: "application/json", "User-Agent": "ChromeCodeSniper-R22" } }, Math.min(CFG.FANDOM_TIMEOUT_MS, left - 20));
+  const data = await fetchJson("FANDOM_PARSE", fandomParseUrl(title), { headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R23" } }, Math.min(CFG.FANDOM_TIMEOUT_MS, left - 20));
   if (data?.error) throw new Error(`FANDOM_PARSE_${data.error.code || "ERROR"}`);
   const p = data?.parse || {};
   const html = typeof p.text === "string" ? p.text : String(p.text?.["*"] || "");
@@ -1153,7 +1322,7 @@ function finalize(base, question, analysis, startedAt, diagnostics = {}) {
     searchLatencyMs: nowMs() - startedAt,
     extractionMode: base?.route?.startsWith("PRIMARY") ? "PRIMARY_SPLUS" : base?.route || "REVIEW",
     cache: "MISS",
-    priorityPolicy: "S+ PRIMARY ALWAYS WINS; LOWER TIERS CANNOT DOWNGRADE DIRECT S+ EVIDENCE",
+    priorityPolicy: "DIRECT S+ ALWAYS RETURNS FIRST; LOWER TIERS NEVER DOWNGRADE OR OVERRIDE DIRECT S+ EVIDENCE",
     diagnostics,
   };
 }
@@ -1167,6 +1336,8 @@ async function resolveQuestion(questionObj, lore = "") {
 
   const analysis = analyzeQuestion(question);
   const diagnostic = {
+    primaryFastErrors: [],
+    primaryFastRoute: "",
     primaryErrors: [],
     primaryDiscoveryErrors: [],
     fandomErrors: [],
@@ -1174,10 +1345,26 @@ async function resolveQuestion(questionObj, lore = "") {
     emergencyErrors: [],
   };
 
-  // ---------------- S+ PRIMARY ----------------
+  // ---------------- S+ PRIMARY FAST PATH ----------------
+  // Exact S+ pages are fetched and parsed BEFORE any backup/search work.
+  // A direct S+ answer returns immediately and can never be downgraded.
+  const fast = await primaryFastPath(question, analysis, deadline);
+  diagnostic.primaryFastErrors = fast.errors;
+  diagnostic.primaryFastRoute = fast.route;
+
+  let result = fast.result;
+  if (result) {
+    const final = finalize(result, question, analysis, startedAt, diagnostic);
+    setCachedAnswer(question, final);
+    return final;
+  }
+
+  // ---------------- S+ PRIMARY BROAD PASS ----------------
   const primary = await fetchPrimaryCandidates(question, analysis, deadline);
+  primary.pages.unshift(...fast.pages);
+  primary.pages = [...new Map(primary.pages.map((p) => [p.url, p])).values()];
   diagnostic.primaryErrors = primary.errors;
-  let result = resolvePrimary(question, analysis, primary.pages);
+  result = resolvePrimary(question, analysis, primary.pages);
   if (result) {
     const final = finalize(result, question, analysis, startedAt, diagnostic);
     setCachedAnswer(question, final);
@@ -1335,6 +1522,27 @@ function runSelfTests() {
   check("primary flash reverse", resolvePrimaryRebirth(rebirthPage, analyzeQuestion("What rebirth unlocks Flash Teleport?"))?.answer === "Rebirth18");
   check("primary newest", resolvePrimaryRebirth(rebirthPage, analyzeQuestion("What is the newest rebirth right now?"))?.answer === "Rebirth19");
 
+  const ritualHubHtml = `
+    <h1>Secret Rituals & Traits</h1>
+    <a href="/rituals/crocodilo-ritual">Crocodilo Ritual Rewards: Los Crocodillitos explosive trait 3 players required</a>
+    <a href="/rituals/orcalero-ritual">Orcalero Ritual Rewards: Los Orcalitos water trait 4 players required</a>`;
+  const ritualHub = {
+    title: "Secret Rituals & Traits",
+    url: `${PRIMARY_ORIGIN}/rituals`,
+    html: ritualHubHtml,
+    lines: htmlToLines(ritualHubHtml),
+    text: htmlToText(ritualHubHtml),
+    source: SOURCE.PRIMARY,
+  };
+  check(
+    "primary ritual hub link spawn",
+    resolvePrimaryRitual(ritualHub, analyzeQuestion("What does the Bombardiro Crocodilo ritual spawn?"))?.answer === "Los Crocodillitos"
+  );
+  check(
+    "primary ritual best detail link",
+    bestPrimaryLink(ritualHub, analyzeQuestion("What does the Bombardiro Crocodilo ritual spawn?"), "/rituals/")?.url.endsWith("/rituals/crocodilo-ritual")
+  );
+
   // Priority behavior: once S+ has a direct value, lower tier disagreement does not participate.
   const primary = makeResult("10x", REL.MULTIPLIER, SOURCE.PRIMARY, mutationPage, "PRIMARY_MUTATION_SECTION", 0.995);
   const fandom = makeResult("9x", REL.MULTIPLIER, SOURCE.FANDOM, { title: "Mutations", url: "fandom" }, "FANDOM_DIRECT", 0.93);
@@ -1441,16 +1649,19 @@ export async function GET(request) {
     const started = nowMs();
     const deadline = started + 3000;
     const analysis = analyzeQuestion(question);
+    const fast = await primaryFastPath(question, analysis, deadline);
     const stage = await fetchPrimaryCandidates(question, analysis, deadline);
-    const direct = resolvePrimary(question, analysis, stage.pages);
+    const pages = [...new Map([...fast.pages, ...stage.pages].map((p) => [p.url, p])).values()];
+    const direct = fast.result || resolvePrimary(question, analysis, pages);
     return json(200, {
       ok: Boolean(direct?.answer),
       build: BUILD_ID,
       question,
       analysis,
+      fastRoute: fast.route,
       direct,
-      pages: stage.pages.map((p) => ({ title: p.title, url: p.url, cache: p.cache, lineCount: p.lines.length })),
-      errors: stage.errors,
+      pages: pages.map((p) => ({ title: p.title, url: p.url, cache: p.cache, lineCount: p.lines.length })),
+      errors: [...fast.errors, ...stage.errors],
       ms: nowMs() - started,
     });
   }
@@ -1474,6 +1685,11 @@ export async function GET(request) {
     architecture: {
       primaryFirst: true,
       primaryImmediateReturn: true,
+      exactBrainrotPageFirst: true,
+      directRebirthPageFirst: true,
+      directMutationPageFirst: true,
+      ritualHubLinkFollow: true,
+      exactRitualDetailFollow: true,
       primaryDomainDiscovery: true,
       fandomFallbackOnly: true,
       wikiFallbackOnly: true,
