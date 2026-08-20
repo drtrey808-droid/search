@@ -1,4 +1,4 @@
-const BUILD_ID = "SAB_KNOWLEDGE_LOOKUP_R19_2026_08_19";
+const BUILD_ID = "SAB_KNOWLEDGE_ENGINE_R20_2026_08_19";
 
 const FANDOM_API = "https://stealabrainrot.fandom.com/api.php";
 const FANDOM_BASE = "https://stealabrainrot.fandom.com/wiki/";
@@ -7,119 +7,369 @@ const NVIDIA_URL = "https://integrate.api.nvidia.com/v1/chat/completions";
 const DEFAULT_MODEL = "nvidia/nemotron-3-super-120b-a12b";
 
 const CFG = Object.freeze({
-  GLOBAL_BUDGET_MS: 7000,
-  WIKI_TIMEOUT_MS: 2300,
-  TAVILY_TIMEOUT_MS: 2200,
-  NVIDIA_TIMEOUT_MS: 1800,
-  SEARCH_DEPTH: "fast",
-  SEARCH_MAX_RESULTS: 7,
+  GLOBAL_BUDGET_MS: Number(process.env.LOOKUP_BUDGET_MS || 1950),
+  WIKI_TIMEOUT_MS: Number(process.env.WIKI_TIMEOUT_MS || 1250),
+  TAVILY_TIMEOUT_MS: Number(process.env.TAVILY_TIMEOUT_MS || 1150),
+  NVIDIA_TIMEOUT_MS: Number(process.env.NVIDIA_TIMEOUT_MS || 900),
+
+  FALLBACK_START_MS: 425,
+
   MAX_CANONICAL_PAGES: 7,
-  MAX_WEB_SOURCES: 14,
+  MAX_SEARCH_RESULTS: 7,
+  MAX_WEB_SOURCES: 12,
   MAX_AI_EVIDENCE: 10,
-  CURRENT_CACHE_TTL_MS: 3 * 60 * 1000,
-  STABLE_CACHE_TTL_MS: 12 * 60 * 60 * 1000,
+
   PAGE_CACHE_TTL_MS: 5 * 60 * 1000,
+  FACT_CACHE_TTL_MS: 5 * 60 * 1000,
   TITLE_CACHE_TTL_MS: 5 * 60 * 1000,
+
+  CURRENT_ANSWER_TTL_MS: 2 * 60 * 1000,
+  STABLE_ANSWER_TTL_MS: 12 * 60 * 60 * 1000,
 });
 
-const INTENT = Object.freeze({
-  CURRENT_REBIRTH: "CURRENT_REBIRTH",
-  UPDATE: "UPDATE",
-  ENTITY_PROPERTY: "ENTITY_PROPERTY",
-  GENERIC: "GENERIC",
-});
-
-const ATTR = Object.freeze({
-  NAME: "NAME",
+const REL = Object.freeze({
   TEXT: "TEXT",
+
   REBIRTH: "REBIRTH",
   GEAR: "GEAR",
+
   BRAINROT: "BRAINROT",
   MUTATION: "MUTATION",
   TRAIT: "TRAIT",
+  RITUAL: "RITUAL",
   EVENT: "EVENT",
   MACHINE: "MACHINE",
-  RITUAL: "RITUAL",
-  RARITY: "RARITY",
+  LUCKY_BLOCK: "LUCKY_BLOCK",
+
   COST: "COST",
   INCOME: "INCOME",
+  RARITY: "RARITY",
   STATUS: "STATUS",
   MULTIPLIER: "MULTIPLIER",
+
   REQUIREMENT: "REQUIREMENT",
   SPAWN: "SPAWN",
   FORMATION: "FORMATION",
   WEATHER: "WEATHER",
+
+  METHOD: "METHOD",
+  DATE: "DATE",
   DROP_RATE: "DROP_RATE",
+
   REWARD: "REWARD",
   CONTENTS: "CONTENTS",
-  DATE: "DATE",
-  METHOD: "METHOD",
+
   SLOTS: "SLOTS",
   FLOORS: "FLOORS",
+
   REPLACED_BY: "REPLACED_BY",
+  UPDATE: "UPDATE",
 });
 
 const HUBS = Object.freeze({
-  REBIRTH: ["Rebirth", "Gears"],
-  GEAR: ["Gears", "Rebirth"],
-  SLAP: ["Slap", "Rebirth"],
-  MUTATION: ["Mutations"],
-  TRAIT: ["Traits", "Events"],
-  RITUAL: ["Rituals"],
-  MACHINE: ["Machines", "Update Log"],
-  LUCKY_BLOCK: ["Lucky Blocks"],
-  UPDATE: ["Update Log"],
-  EVENT: ["Events", "Admin Abuse", "Update Log"],
-  BASE: ["Base"],
-  RARITY: ["Rarities", "Category:Brainrots"],
+  rebirth: ["Rebirth", "Gears"],
+  gear: ["Gears", "Rebirth"],
+  slap: ["Slap", "Rebirth"],
+
+  mutation: ["Mutations"],
+  trait: ["Traits", "Events"],
+  ritual: ["Rituals"],
+
+  machine: ["Machines", "Update Log"],
+  lucky: ["Lucky Blocks"],
+
+  event: ["Events", "Admin Abuse", "Update Log"],
+  update: ["Update Log"],
+
+  base: ["Base"],
+  rarity: ["Rarities"],
+});
+
+const HEADER_ALIASES = Object.freeze({
+  name: REL.TEXT,
+  brainrot: REL.BRAINROT,
+
+  gear: REL.GEAR,
+
+  multi: REL.MULTIPLIER,
+  multiplier: REL.MULTIPLIER,
+  boost: REL.MULTIPLIER,
+
+  cost: REL.COST,
+  price: REL.COST,
+
+  income: REL.INCOME,
+  earnings: REL.INCOME,
+
+  rarity: REL.RARITY,
+  tier: REL.RARITY,
+
+  status: REL.STATUS,
+  obtainability: REL.STATUS,
+
+  rebirth: REL.REBIRTH,
+
+  requires: REL.REQUIREMENT,
+  requirement: REL.REQUIREMENT,
+  needed: REL.REQUIREMENT,
+  materials: REL.REQUIREMENT,
+
+  spawn: REL.SPAWN,
+  spawns: REL.SPAWN,
+  result: REL.SPAWN,
+  outcome: REL.SPAWN,
+
+  formation: REL.FORMATION,
+  placement: REL.FORMATION,
+
+  weather: REL.WEATHER,
+
+  chance: REL.DROP_RATE,
+  probability: REL.DROP_RATE,
+  rate: REL.DROP_RATE,
+
+  reward: REL.REWARD,
+  rewards: REL.REWARD,
+
+  contents: REL.CONTENTS,
+  drops: REL.CONTENTS,
+
+  date: REL.DATE,
+  released: REL.DATE,
+
+  obtain: REL.METHOD,
+  obtaining: REL.METHOD,
+  method: REL.METHOD,
+  source: REL.METHOD,
+
+  slot: REL.SLOTS,
+  slots: REL.SLOTS,
+
+  floor: REL.FLOORS,
+  floors: REL.FLOORS,
+
+  replacement: REL.REPLACED_BY,
 });
 
 const STATIC_ALIASES = Object.freeze({
-  "flash tp": ["flash tp", "flash teleport"],
-  "flash teleport": ["flash teleport", "flash tp"],
-  "brain rot": ["brain rot", "brainrot"],
-  "brainrot": ["brainrot", "brain rot"],
-  "admin abuse": ["admin abuse", "admin event"],
-  "lucky block": ["lucky block", "lucky blocks"],
+  "flash tp": [
+    "flash tp",
+    "flash teleport",
+  ],
+
+  "flash teleport": [
+    "flash teleport",
+    "flash tp",
+  ],
+
+  "brain rot": [
+    "brain rot",
+    "brainrot",
+  ],
+
+  "brainrot": [
+    "brainrot",
+    "brain rot",
+  ],
+
+  "admin abuse": [
+    "admin abuse",
+    "admin event",
+  ],
+
+  "lucky block": [
+    "lucky block",
+    "lucky blocks",
+  ],
+
+  "bomb croc": [
+    "bomb croc",
+    "bombardiro crocodilo",
+  ],
+
+  bombardiro: [
+    "bombardiro",
+    "bombardiro crocodilo",
+  ],
+
+  tralalero: [
+    "tralalero",
+    "tralalero tralala",
+  ],
 });
 
 const STOPWORDS = new Set([
-  "what","which","who","when","where","why","how","much","many","does","did","do","is","are","was","were",
-  "the","a","an","in","at","on","for","from","to","of","with","and","or","that","this","it","its",
-  "steal","brainrot","brain","rot","sab","roblox","game","right","now","current","currently","latest","newest","new",
-  "added","introduced","unlock","unlocks","unlocked","get","gets","got","give","gives","gave","make","makes","per","second",
-  "come","came","out","during","update","event","rebirth","gear","item","mutation","trait","machine","ritual","rarity","base",
-  "slap","lucky","block","cost","price","income","multiplier","rate","drop","requires","require","required","spawn","spawns","reward",
-  "available","obtain","obtained","obtainable","method","status","chance","what's","whats","tell","me","about","thing","stuff"
+  "what",
+  "which",
+  "who",
+  "when",
+  "where",
+  "why",
+  "how",
+
+  "is",
+  "are",
+  "was",
+  "were",
+  "does",
+  "did",
+  "do",
+
+  "the",
+  "a",
+  "an",
+
+  "in",
+  "at",
+  "on",
+  "for",
+  "from",
+  "to",
+  "of",
+  "with",
+
+  "and",
+  "or",
+
+  "this",
+  "that",
+  "it",
+  "its",
+
+  "steal",
+  "brainrot",
+  "brain",
+  "rot",
+  "sab",
+  "roblox",
+  "game",
+
+  "current",
+  "currently",
+  "latest",
+  "newest",
+  "new",
+  "right",
+  "now",
+  "today",
+
+  "update",
+  "event",
+
+  "rebirth",
+  "gear",
+  "item",
+  "mutation",
+  "trait",
+  "ritual",
+  "machine",
+
+  "lucky",
+  "block",
+
+  "cost",
+  "price",
+  "income",
+  "multiplier",
+  "boost",
+  "rarity",
+
+  "spawn",
+  "spawns",
+  "require",
+  "requires",
+  "required",
+
+  "drop",
+  "rate",
+  "chance",
+
+  "give",
+  "gives",
+  "gave",
+
+  "get",
+  "gets",
+  "got",
+
+  "make",
+  "makes",
+
+  "per",
+  "second",
+
+  "much",
+  "many",
+
+  "added",
+  "introduced",
+  "removed",
+
+  "unlock",
+  "unlocks",
+  "unlocked",
+
+  "tell",
+  "me",
+  "about",
 ]);
 
-const ANSWER_CACHE = new Map();
 const PAGE_CACHE = new Map();
-const TITLE_SEARCH_CACHE = new Map();
+const FACT_CACHE = new Map();
+const TITLE_CACHE = new Map();
+const ANSWER_CACHE = new Map();
 
-function clean(value, limit = 2000) {
+/* ---------------------------------------------------------
+   BASIC HELPERS
+--------------------------------------------------------- */
+
+function clean(value, limit = 3000) {
   return String(value ?? "")
-    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, " ")
+    .replace(
+      /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g,
+      " "
+    )
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, limit);
 }
 
 function norm(value) {
-  return clean(value, 2000)
+  return clean(value, 3000)
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "");
 }
 
+function tokens(value) {
+  return (
+    clean(value, 1000)
+      .toLowerCase()
+      .match(/[a-z0-9]+/g) ||
+    []
+  );
+}
+
 function clamp(value, min = 0, max = 1) {
   const n = Number(value);
-  return Number.isFinite(n)
-    ? Math.max(min, Math.min(max, n))
-    : min;
+
+  if (!Number.isFinite(n)) {
+    return min;
+  }
+
+  return Math.max(
+    min,
+    Math.min(
+      max,
+      n
+    )
+  );
 }
 
 function env(name) {
-  return String(process.env[name] || "")
+  return String(
+    process.env[name] ||
+    ""
+  )
     .trim()
     .replace(/^Bearer\s+/i, "")
     .trim();
@@ -130,7 +380,20 @@ function nowMs() {
 }
 
 function timeLeft(deadline) {
-  return Math.max(0, deadline - nowMs());
+  return Math.max(
+    0,
+    deadline - nowMs()
+  );
+}
+
+function sleep(ms) {
+  return new Promise(
+    (resolve) =>
+      setTimeout(
+        resolve,
+        ms
+      )
+  );
 }
 
 function errorCode(error) {
@@ -139,13 +402,13 @@ function errorCode(error) {
     error?.message ||
     error ||
     "UNKNOWN_ERROR",
-    320
+    300
   );
 }
 
-function json(status, payload) {
+function json(status, data) {
   return new Response(
-    JSON.stringify(payload),
+    JSON.stringify(data),
     {
       status,
 
@@ -163,11 +426,61 @@ function json(status, payload) {
   );
 }
 
+function cacheGet(map, key) {
+  const row =
+    map.get(key);
+
+  if (!row) {
+    return null;
+  }
+
+  if (
+    row.expiresAt <=
+    nowMs()
+  ) {
+    map.delete(key);
+    return null;
+  }
+
+  return row.value;
+}
+
+function cacheSet(
+  map,
+  key,
+  value,
+  ttl
+) {
+  map.set(
+    key,
+    {
+      value,
+
+      expiresAt:
+        nowMs() + ttl,
+    }
+  );
+}
+
+function articleUrl(title) {
+  return (
+    FANDOM_BASE +
+    encodeURIComponent(
+      String(title)
+        .replace(/ /g, "_")
+    )
+  );
+}
+
+/* ---------------------------------------------------------
+   SAFE HTTP
+--------------------------------------------------------- */
+
 async function fetchText(
   label,
   url,
   options = {},
-  timeoutMs = 2200
+  timeoutMs = 1200
 ) {
   const controller =
     new AbortController();
@@ -188,26 +501,24 @@ async function fetchText(
           url,
           {
             ...options,
-
             signal:
               controller.signal,
           }
         );
     } catch (error) {
+      const timeout =
+        error?.name ===
+        "AbortError";
+
       const e =
         new Error(
-          error?.name ===
-          "AbortError"
+          timeout
             ? `${label}_TIMEOUT`
-            : `${label}_REQUEST_FAILED:${clean(
-                error?.message,
-                180
-              )}`
+            : `${label}_REQUEST_FAILED`
         );
 
       e.code =
-        error?.name ===
-        "AbortError"
+        timeout
           ? `${label}_TIMEOUT`
           : `${label}_REQUEST_FAILED`;
 
@@ -217,31 +528,21 @@ async function fetchText(
     const text =
       await response.text();
 
-    if (
-      !response.ok
-    ) {
+    if (!response.ok) {
       const e =
         new Error(
-          `${label}_HTTP_${response.status}:${clean(
-            text,
-            260
-          )}`
+          `${label}_HTTP_${response.status}`
         );
 
       e.code =
         `${label}_HTTP_${response.status}`;
-
-      e.status =
-        response.status;
 
       throw e;
     }
 
     return text;
   } finally {
-    clearTimeout(
-      timer
-    );
+    clearTimeout(timer);
   }
 }
 
@@ -249,7 +550,7 @@ async function fetchJson(
   label,
   url,
   options = {},
-  timeoutMs = 2200
+  timeoutMs = 1200
 ) {
   const text =
     await fetchText(
@@ -261,9 +562,7 @@ async function fetchJson(
 
   try {
     return text
-      ? JSON.parse(
-          text
-        )
+      ? JSON.parse(text)
       : {};
   } catch {
     const e =
@@ -278,75 +577,40 @@ async function fetchJson(
   }
 }
 
-function decodeHtmlEntities(
-  value
-) {
-  return String(
-    value ??
-      ""
-  )
-    .replace(
-      /&nbsp;/gi,
-      " "
-    )
-    .replace(
-      /&amp;/gi,
-      "&"
-    )
-    .replace(
-      /&quot;/gi,
-      '"'
-    )
-    .replace(
-      /&#39;|&apos;/gi,
-      "'"
-    )
-    .replace(
-      /&lt;/gi,
-      "<"
-    )
-    .replace(
-      /&gt;/gi,
-      ">"
-    )
+/* ---------------------------------------------------------
+   HTML / WIKI TEXT CLEANUP
+--------------------------------------------------------- */
+
+function decodeHtmlEntities(value) {
+  return String(value ?? "")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
     .replace(
       /&#(\d+);/g,
-      (
-        _,
-        n
-      ) => {
-        const code =
-          Number(
-            n
-          );
+      (_, number) => {
+        const n =
+          Number(number);
 
-        return Number.isFinite(
-          code
-        )
-          ? String.fromCodePoint(
-              code
-            )
+        return Number.isFinite(n)
+          ? String.fromCodePoint(n)
           : " ";
       }
     )
     .replace(
       /&#x([0-9a-f]+);/gi,
-      (
-        _,
-        n
-      ) => {
-        const code =
+      (_, number) => {
+        const n =
           Number.parseInt(
-            n,
+            number,
             16
           );
 
-        return Number.isFinite(
-          code
-        )
-          ? String.fromCodePoint(
-              code
-            )
+        return Number.isFinite(n)
+          ? String.fromCodePoint(n)
           : " ";
       }
     );
@@ -354,14 +618,11 @@ function decodeHtmlEntities(
 
 function htmlToText(
   html,
-  limit = 140000
+  limit = 150000
 ) {
   return clean(
     decodeHtmlEntities(
-      String(
-        html ??
-          ""
-      )
+      String(html ?? "")
         .replace(
           /<script\b[^>]*>[\s\S]*?<\/script>/gi,
           " "
@@ -375,7 +636,7 @@ function htmlToText(
           "\n"
         )
         .replace(
-          /<\/(?:p|div|li|tr|h[1-6]|section|table)>/gi,
+          /<\/(?:p|div|li|tr|h[1-6]|section|table|aside)>/gi,
           "\n"
         )
         .replace(
@@ -387,72 +648,793 @@ function htmlToText(
   );
 }
 
-function articleUrl(
-  title
-) {
-  return (
-    `${FANDOM_BASE}` +
-    encodeURIComponent(
-      String(
-        title
-      ).replace(
-        / /g,
-        "_"
+function stripWiki(value) {
+  return clean(
+    String(value ?? "")
+      .replace(
+        /<!--[\s\S]*?-->/g,
+        " "
       )
+      .replace(
+        /<ref\b[^>]*>[\s\S]*?<\/ref>/gi,
+        " "
+      )
+      .replace(
+        /<ref\b[^>]*\/>/gi,
+        " "
+      )
+      .replace(
+        /\[\[([^|\]]+)\|([^\]]+)\]\]/g,
+        "$2"
+      )
+      .replace(
+        /\[\[([^\]]+)\]\]/g,
+        "$1"
+      )
+      .replace(
+        /\{\{[^{}]{0,500}\}\}/g,
+        " "
+      )
+      .replace(
+        /'''?/g,
+        ""
+      )
+      .replace(
+        /<[^>]+>/g,
+        " "
+      ),
+    3000
+  );
+}
+
+/* ---------------------------------------------------------
+   QUESTION UNDERSTANDING
+--------------------------------------------------------- */
+
+function aliasesFor(question) {
+  const q =
+    clean(
+      question,
+      700
+    ).toLowerCase();
+
+  const out =
+    new Set();
+
+  for (
+    const [
+      key,
+      values,
+    ] of Object.entries(
+      STATIC_ALIASES
     )
-  );
-}
-
-function cacheGet(
-  map,
-  key
-) {
-  const row =
-    map.get(
-      key
-    );
-
-  if (
-    !row
   ) {
-    return null;
-  }
-
-  if (
-    row.expiresAt <=
-    nowMs()
-  ) {
-    map.delete(
-      key
-    );
-
-    return null;
-  }
-
-  return row.value;
-}
-
-function cacheSet(
-  map,
-  key,
-  value,
-  ttl
-) {
-  map.set(
-    key,
-    {
-      value,
-
-      expiresAt:
-        nowMs() +
-        ttl,
+    if (
+      q.includes(key)
+    ) {
+      for (
+        const value
+        of values
+      ) {
+        out.add(value);
+      }
     }
+  }
+
+  return [
+    ...out,
+  ];
+}
+
+function extractUpdateNumber(question) {
+  const match =
+    clean(
+      question,
+      700
+    ).match(
+      /\bupdate\s*(\d+(?:\.\d+)?)\b/i
+    );
+
+  return match
+    ? match[1]
+    : null;
+}
+
+function extractRebirthNumber(question) {
+  const match =
+    clean(
+      question,
+      700
+    ).match(
+      /\brebirth\s*#?\s*(\d{1,3})\b/i
+    );
+
+  return match
+    ? Number(match[1])
+    : null;
+}
+
+function isCurrent(question) {
+  const q =
+    clean(
+      question,
+      700
+    ).toLowerCase();
+
+  return [
+    "newest",
+    "latest",
+    "most recent",
+    "current",
+    "currently",
+    "right now",
+    "today",
+    "this week",
+    "this month",
+    "as of now",
+    "new update",
+    "latest update",
+  ].some(
+    (phrase) =>
+      q.includes(phrase)
   );
 }
 
-function wikiParseUrl(
-  title
+function inferRelation(question) {
+  const q =
+    clean(
+      question,
+      700
+    ).toLowerCase();
+
+  /*
+    IMPORTANT:
+    output-type questions need to be checked
+    before words like "limited" trigger STATUS.
+  */
+
+  if (
+    /\b(?:what|which)(?:\s+[a-z0-9'-]+){0,3}\s+(?:brainrot|brain rot)\b/.test(
+      q
+    )
+  ) {
+    return REL.BRAINROT;
+  }
+
+  if (
+    /\b(?:what|which)(?:\s+[a-z0-9'-]+){0,3}\s+gear\b/.test(
+      q
+    )
+  ) {
+    return REL.GEAR;
+  }
+
+  if (
+    /\b(?:which|what)\s+rebirth\b/.test(
+      q
+    ) ||
+    /\brebirth\s+(?:did|does|is)\b/.test(
+      q
+    )
+  ) {
+    return REL.REBIRTH;
+  }
+
+  if (
+    /\b(?:income|makes? per second|per second|earn(?:s|ing)?)\b/.test(
+      q
+    )
+  ) {
+    return REL.INCOME;
+  }
+
+  if (
+    /\b(?:cost|price|how much)\b/.test(
+      q
+    )
+  ) {
+    return REL.COST;
+  }
+
+  if (
+    /\b(?:rarity|tier)\b/.test(
+      q
+    )
+  ) {
+    return REL.RARITY;
+  }
+
+  if (
+    /\b(?:multiplier|boost)\b/.test(
+      q
+    )
+  ) {
+    return REL.MULTIPLIER;
+  }
+
+  if (
+    /\b(?:requires?|requirement|needed|need to)\b/.test(
+      q
+    )
+  ) {
+    return REL.REQUIREMENT;
+  }
+
+  if (
+    /\b(?:spawn|spawns|summon|summons)\b/.test(
+      q
+    )
+  ) {
+    return REL.SPAWN;
+  }
+
+  if (
+    /\b(?:formation|arrangement|placement|arrange)\b/.test(
+      q
+    )
+  ) {
+    return REL.FORMATION;
+  }
+
+  if (
+    /\bweather\b/.test(
+      q
+    )
+  ) {
+    return REL.WEATHER;
+  }
+
+  if (
+    /\b(?:drop rate|chance|probability)\b/.test(
+      q
+    )
+  ) {
+    return REL.DROP_RATE;
+  }
+
+  if (
+    /\b(?:when|what date|which date|what year|what month|release date)\b/.test(
+      q
+    )
+  ) {
+    return REL.DATE;
+  }
+
+  if (
+    /\b(?:how do|how can|obtain|obtained|acquire|method)\b/.test(
+      q
+    )
+  ) {
+    return REL.METHOD;
+  }
+
+  if (
+    /\b(?:status|obtainable|available|removed)\b/.test(
+      q
+    )
+  ) {
+    return REL.STATUS;
+  }
+
+  if (
+    /\b(?:contents?|inside|contains?|drops?)\b/.test(
+      q
+    )
+  ) {
+    return REL.CONTENTS;
+  }
+
+  if (
+    /\b(?:reward|rewards)\b/.test(
+      q
+    )
+  ) {
+    return REL.REWARD;
+  }
+
+  if (
+    /\bslots?\b/.test(
+      q
+    )
+  ) {
+    return REL.SLOTS;
+  }
+
+  if (
+    /\bfloors?\b/.test(
+      q
+    )
+  ) {
+    return REL.FLOORS;
+  }
+
+  if (
+    /\b(?:replaced by|replacement)\b/.test(
+      q
+    )
+  ) {
+    return REL.REPLACED_BY;
+  }
+
+  return REL.TEXT;
+}
+
+function candidateEntities(question) {
+  const raw =
+    clean(
+      question,
+      700
+    );
+
+  const out =
+    new Set();
+
+  for (
+    const match
+    of raw.matchAll(
+      /["“”']([^"“”']{2,100})["“”']/g
+    )
+  ) {
+    out.add(
+      clean(
+        match[1],
+        100
+      )
+    );
+  }
+
+  for (
+    const alias
+    of aliasesFor(raw)
+  ) {
+    out.add(alias);
+  }
+
+  const words =
+    raw.match(
+      /[A-Za-z0-9][A-Za-z0-9'._-]*/g
+    ) ||
+    [];
+
+  const filtered =
+    words.filter(
+      (word) => {
+        const low =
+          word.toLowerCase();
+
+        return (
+          !STOPWORDS.has(low) &&
+          !/^\d+(?:\.\d+)?$/.test(
+            word
+          )
+        );
+      }
+    );
+
+  for (
+    let size =
+      Math.min(
+        6,
+        filtered.length
+      );
+    size >= 1;
+    size--
+  ) {
+    for (
+      let i = 0;
+      i + size <=
+      filtered.length;
+      i++
+    ) {
+      const value =
+        filtered
+          .slice(
+            i,
+            i + size
+          )
+          .join(" ");
+
+      if (
+        value.length >= 3
+      ) {
+        out.add(value);
+      }
+    }
+  }
+
+  return [
+    ...out,
+  ]
+    .sort(
+      (a, b) => {
+        const aw =
+          a.split(/\s+/).length;
+
+        const bw =
+          b.split(/\s+/).length;
+
+        return (
+          bw - aw ||
+          b.length - a.length
+        );
+      }
+    )
+    .slice(
+      0,
+      14
+    );
+}
+
+function analyzeQuestionDeterministic(question) {
+  const q =
+    clean(
+      question,
+      700
+    );
+
+  const low =
+    q.toLowerCase();
+
+  const relation =
+    inferRelation(q);
+
+  const current =
+    isCurrent(q);
+
+  const update =
+    extractUpdateNumber(q);
+
+  const rebirth =
+    extractRebirthNumber(q);
+
+  const entities =
+    candidateEntities(q);
+
+  let entity =
+    entities[0] ||
+    null;
+
+  if (
+    rebirth &&
+    relation ===
+      REL.GEAR
+  ) {
+    entity =
+      `Rebirth${rebirth}`;
+  }
+
+  if (
+    current &&
+    low.includes(
+      "rebirth"
+    )
+  ) {
+    entity =
+      null;
+  }
+
+  return {
+    entity,
+    entities,
+    relation,
+    current,
+    update,
+    rebirth,
+
+    confidence:
+      relation !== REL.TEXT &&
+      (
+        entity ||
+        current ||
+        update ||
+        rebirth
+      )
+        ? 0.88
+        : 0.58,
+
+    source:
+      "DETERMINISTIC",
+  };
+}
+
+/* ---------------------------------------------------------
+   OPTIONAL NVIDIA QUESTION ANALYZER
+--------------------------------------------------------- */
+
+function parseModelJson(text) {
+  const raw =
+    String(text ?? "")
+      .replace(
+        /^```(?:json)?\s*/i,
+        ""
+      )
+      .replace(
+        /\s*```$/,
+        ""
+      )
+      .trim();
+
+  if (!raw) {
+    throw new Error(
+      "NVIDIA_EMPTY_CONTENT"
+    );
+  }
+
+  try {
+    return JSON.parse(raw);
+  } catch {}
+
+  const first =
+    raw.indexOf("{");
+
+  const last =
+    raw.lastIndexOf("}");
+
+  if (
+    first >= 0 &&
+    last > first
+  ) {
+    return JSON.parse(
+      raw.slice(
+        first,
+        last + 1
+      )
+    );
+  }
+
+  throw new Error(
+    "NVIDIA_INVALID_JSON"
+  );
+}
+
+async function analyzeQuestionAI(
+  question,
+  deadline
 ) {
+  if (
+    !env(
+      "NVIDIA_API_KEY"
+    )
+  ) {
+    return null;
+  }
+
+  const left =
+    timeLeft(deadline);
+
+  if (
+    left < 600
+  ) {
+    return null;
+  }
+
+  const timeout =
+    Math.max(
+      550,
+
+      Math.min(
+        CFG.NVIDIA_TIMEOUT_MS,
+        left - 80
+      )
+    );
+
+  try {
+    const data =
+      await fetchJson(
+        "NVIDIA_ANALYZE",
+
+        NVIDIA_URL,
+
+        {
+          method:
+            "POST",
+
+          headers: {
+            Authorization:
+              `Bearer ${env(
+                "NVIDIA_API_KEY"
+              )}`,
+
+            "Content-Type":
+              "application/json",
+
+            Accept:
+              "application/json",
+          },
+
+          body:
+            JSON.stringify({
+              model:
+                process.env
+                  .NVIDIA_MODEL ||
+                DEFAULT_MODEL,
+
+              stream:
+                false,
+
+              temperature:
+                0.1,
+
+              max_tokens:
+                180,
+
+              chat_template_kwargs: {
+                enable_thinking:
+                  false,
+              },
+
+              messages: [
+                {
+                  role:
+                    "system",
+
+                  content: [
+                    "Parse a Steal a Brainrot question.",
+                    "Do not answer the question.",
+                    "Identify the entity and relation being requested.",
+                    "Correct obvious shorthand such as Flash TP = Flash Teleport.",
+                    "Return JSON only.",
+                    "Allowed relations:",
+                    Object.values(
+                      REL
+                    ).join(", "),
+                    'Schema: {"entity":"string or null","relation":"RELATION","update":"string or null","rebirth":0,"current":false,"aliases":[]}',
+                  ].join("\n"),
+                },
+
+                {
+                  role:
+                    "user",
+
+                  content:
+                    question,
+                },
+              ],
+            }),
+        },
+
+        timeout
+      );
+
+    const raw =
+      parseModelJson(
+        data?.choices?.[0]
+          ?.message?.content
+      );
+
+    const relation =
+      Object.values(
+        REL
+      ).includes(
+        String(
+          raw?.relation
+        ).toUpperCase()
+      )
+        ? String(
+            raw.relation
+          ).toUpperCase()
+        : REL.TEXT;
+
+    return {
+      entity:
+        clean(
+          raw?.entity,
+          140
+        ) ||
+        null,
+
+      relation,
+
+      update:
+        clean(
+          raw?.update,
+          30
+        ) ||
+        null,
+
+      rebirth:
+        Number(
+          raw?.rebirth
+        ) ||
+        null,
+
+      current:
+        Boolean(
+          raw?.current
+        ),
+
+      entities: [
+        clean(
+          raw?.entity,
+          140
+        ),
+
+        ...(
+          Array.isArray(
+            raw?.aliases
+          )
+            ? raw.aliases
+            : []
+        ).map(
+          (x) =>
+            clean(
+              x,
+              140
+            )
+        ),
+      ].filter(
+        Boolean
+      ),
+
+      confidence:
+        0.84,
+
+      source:
+        "NVIDIA_ANALYZER",
+    };
+  } catch {
+    return null;
+  }
+}
+
+function mergeAnalysis(
+  deterministic,
+  ai
+) {
+  if (!ai) {
+    return deterministic;
+  }
+
+  const entity =
+    deterministic.entity ||
+    ai.entity;
+
+  const relation =
+    deterministic.relation !==
+    REL.TEXT
+      ? deterministic.relation
+      : ai.relation;
+
+  return {
+    entity,
+
+    entities: [
+      ...new Set([
+        ...deterministic.entities,
+        ...ai.entities,
+      ]),
+    ].filter(Boolean),
+
+    relation,
+
+    update:
+      deterministic.update ||
+      ai.update,
+
+    rebirth:
+      deterministic.rebirth ||
+      ai.rebirth,
+
+    current:
+      deterministic.current ||
+      ai.current,
+
+    confidence:
+      Math.max(
+        deterministic.confidence,
+        ai.confidence
+      ),
+
+    source:
+      "MERGED",
+  };
+}
+
+/* ---------------------------------------------------------
+   MEDIAWIKI
+--------------------------------------------------------- */
+
+function wikiParseUrl(title) {
   const params =
     new URLSearchParams({
       action:
@@ -493,51 +1475,44 @@ async function fetchCanonicalPage(
       key
     );
 
-  if (
-    cached
-  ) {
+  if (cached) {
     return {
       ...cached,
-
       cache:
         "HIT",
     };
   }
 
-  const errors =
-    [];
-
-  const timeout =
-    Math.max(
-      700,
-
-      Math.min(
-        CFG.WIKI_TIMEOUT_MS,
-
-        timeLeft(
-          deadline
-        ) -
-          100
-      )
-    );
+  const left =
+    timeLeft(deadline);
 
   if (
-    timeout <
-    700
+    left < 300
   ) {
     throw new Error(
       "WIKI_BUDGET_EXHAUSTED"
     );
   }
 
+  const timeout =
+    Math.max(
+      350,
+
+      Math.min(
+        CFG.WIKI_TIMEOUT_MS,
+        left - 60
+      )
+    );
+
+  const errors =
+    [];
+
   try {
     const data =
       await fetchJson(
         "FANDOM_PARSE",
 
-        wikiParseUrl(
-          title
-        ),
+        wikiParseUrl(title),
 
         {
           headers: {
@@ -545,7 +1520,7 @@ async function fetchCanonicalPage(
               "application/json",
 
             "User-Agent":
-              "ChromeCodeSniperLookup-R19",
+              "ChromeCodeSniper-R20",
           },
         },
 
@@ -556,12 +1531,10 @@ async function fetchCanonicalPage(
       data?.error
     ) {
       throw new Error(
-        `FANDOM_PARSE_API:${clean(
-          data.error
-            ?.code ||
-          data.error
-            ?.info,
-          180
+        `FANDOM_PARSE_${clean(
+          data.error.code ||
+          "ERROR",
+          100
         )}`
       );
     }
@@ -574,15 +1547,11 @@ async function fetchCanonicalPage(
       typeof parsed
         ?.wikitext ===
       "string"
-        ? parsed
-            .wikitext
+        ? parsed.wikitext
         : String(
             parsed
-              ?.wikitext
-              ?.[
-                "*"
-              ] ||
-              ""
+              ?.wikitext?.["*"] ||
+            ""
           );
 
     const html =
@@ -592,16 +1561,13 @@ async function fetchCanonicalPage(
         ? parsed.text
         : String(
             parsed
-              ?.text
-              ?.[
-                "*"
-              ] ||
-              ""
+              ?.text?.["*"] ||
+            ""
           );
 
     if (
-      !wikitext &&
-      !html
+      !html &&
+      !wikitext
     ) {
       throw new Error(
         "FANDOM_PARSE_EMPTY"
@@ -633,9 +1599,8 @@ async function fetchCanonicalPage(
           title
         ),
 
-      wikitext,
-
       html,
+      wikitext,
 
       text:
         htmlToText(
@@ -668,17 +1633,27 @@ async function fetchCanonicalPage(
 
     return {
       ...page,
-
       cache:
         "MISS",
     };
-  } catch (
-    error
-  ) {
+  } catch (error) {
     errors.push(
-      errorCode(
-        error
-      )
+      errorCode(error)
+    );
+  }
+
+  /*
+    HTML fallback.
+    Only attempt when enough budget remains.
+  */
+
+  if (
+    timeLeft(deadline) <
+    450
+  ) {
+    throw new Error(
+      errors.join("|") ||
+      "FANDOM_PAGE_FAILED"
     );
   }
 
@@ -687,48 +1662,24 @@ async function fetchCanonicalPage(
       await fetchText(
         "FANDOM_HTML",
 
-        articleUrl(
-          title
-        ),
+        articleUrl(title),
 
         {
           headers: {
             Accept:
-              "text/html,application/xhtml+xml",
+              "text/html",
 
             "User-Agent":
-              "ChromeCodeSniperLookup-R19",
+              "ChromeCodeSniper-R20",
           },
         },
 
-        Math.max(
-          700,
-
-          Math.min(
-            CFG.WIKI_TIMEOUT_MS,
-
-            timeLeft(
-              deadline
-            ) -
-              80
-          )
+        Math.min(
+          800,
+          timeLeft(deadline) -
+          50
         )
       );
-
-    const text =
-      htmlToText(
-        html
-      );
-
-    if (
-      !text ||
-      text.length <
-        80
-    ) {
-      throw new Error(
-        "FANDOM_HTML_EMPTY"
-      );
-    }
 
     const page = {
       requestedTitle:
@@ -740,22 +1691,21 @@ async function fetchCanonicalPage(
         title,
 
       url:
-        articleUrl(
-          title
-        ),
+        articleUrl(title),
+
+      html,
 
       wikitext:
         "",
 
-      html,
-
-      text,
+      text:
+        htmlToText(html),
 
       sections:
         [],
 
       source:
-        "FANDOM_FULL_HTML",
+        "FANDOM_HTML",
 
       fullPage:
         true,
@@ -772,73 +1722,47 @@ async function fetchCanonicalPage(
 
     return {
       ...page,
-
       cache:
         "MISS",
     };
-  } catch (
-    error
-  ) {
+  } catch (error) {
     errors.push(
-      errorCode(
-        error
-      )
+      errorCode(error)
     );
   }
 
-  const e =
-    new Error(
-      `CANONICAL_PAGE_FAILED:${title}:${errors.join(
-        "|"
-      )}`
-    );
-
-  e.code =
-    "CANONICAL_PAGE_FAILED";
-
-  throw e;
+  throw new Error(
+    errors.join("|") ||
+    "FANDOM_PAGE_FAILED"
+  );
 }
 
 async function wikiSearchTitles(
   query,
   deadline,
-  limit = 8
+  limit = 6
 ) {
-  const cacheKey =
+  const key =
     clean(
       query,
-      500
+      300
     ).toLowerCase();
 
   const cached =
     cacheGet(
-      TITLE_SEARCH_CACHE,
-      cacheKey
+      TITLE_CACHE,
+      key
     );
 
-  if (
-    cached
-  ) {
+  if (cached) {
     return cached;
   }
 
-  const timeout =
-    Math.max(
-      650,
-
-      Math.min(
-        CFG.WIKI_TIMEOUT_MS,
-
-        timeLeft(
-          deadline
-        ) -
-          80
-      )
-    );
+  const left =
+    timeLeft(deadline);
 
   if (
-    timeout <
-    650
+    left < 300
   ) {
     return [];
   }
@@ -854,7 +1778,7 @@ async function wikiSearchTitles(
       srsearch:
         clean(
           query,
-          500
+          300
         ),
 
       srnamespace:
@@ -864,13 +1788,15 @@ async function wikiSearchTitles(
         String(
           Math.max(
             1,
-
             Math.min(
               10,
               limit
             )
           )
         ),
+
+      srenablerewrites:
+        "1",
 
       format:
         "json",
@@ -881,7 +1807,7 @@ async function wikiSearchTitles(
       await fetchJson(
         "FANDOM_SEARCH",
 
-        `${FANDOM_API}?${params.toString()}`,
+        `${FANDOM_API}?${params}`,
 
         {
           headers: {
@@ -889,38 +1815,36 @@ async function wikiSearchTitles(
               "application/json",
 
             "User-Agent":
-              "ChromeCodeSniperLookup-R19",
+              "ChromeCodeSniper-R20",
           },
         },
 
-        timeout
+        Math.min(
+          800,
+          left - 50
+        )
       );
 
     const titles =
       (
         Array.isArray(
-          data?.query
-            ?.search
+          data?.query?.search
         )
           ? data.query.search
           : []
       )
         .map(
-          (
-            row
-          ) =>
+          (row) =>
             clean(
               row?.title,
               300
             )
         )
-        .filter(
-          Boolean
-        );
+        .filter(Boolean);
 
     cacheSet(
-      TITLE_SEARCH_CACHE,
-      cacheKey,
+      TITLE_CACHE,
+      key,
       titles,
       CFG.TITLE_CACHE_TTL_MS
     );
@@ -931,697 +1855,11 @@ async function wikiSearchTitles(
   }
 }
 
-function explicitDate(
-  question
-) {
-  const q =
-    clean(
-      question,
-      700
-    ).toLowerCase();
-
-  const months = [
-    "january",
-    "february",
-    "march",
-    "april",
-    "may",
-    "june",
-    "july",
-    "august",
-    "september",
-    "october",
-    "november",
-    "december",
-  ];
-
-  const month =
-    months.find(
-      (
-        m
-      ) =>
-        new RegExp(
-          `\\b${m}\\b`,
-          "i"
-        ).test(
-          q
-        )
-    ) ||
-    null;
-
-  const yearMatch =
-    q.match(
-      /\b(20\d{2})\b/
-    );
-
-  const numeric =
-    /\b(?:20\d{2}[-/]\d{1,2}[-/]\d{1,2}|\d{1,2}[-/]\d{1,2}[-/]20\d{2})\b/.test(
-      q
-    );
-
-  return {
-    has:
-      Boolean(
-        (
-          month &&
-          yearMatch
-        ) ||
-        numeric
-      ),
-
-    month,
-
-    year:
-      yearMatch
-        ? Number(
-            yearMatch[
-              1
-            ]
-          )
-        : null,
-  };
-}
-
-function isCurrent(
-  question
-) {
-  const q =
-    clean(
-      question,
-      700
-    ).toLowerCase();
-
-  return [
-    "newest",
-    "latest",
-    "most recent",
-    "current",
-    "currently",
-    "right now",
-    "today",
-    "this week",
-    "this month",
-    "as of now",
-    "latest update",
-    "new update",
-    "newly added",
-    "just added",
-  ].some(
-    (
-      phrase
-    ) =>
-      q.includes(
-        phrase
-      )
-  );
-}
-
-function inferAttribute(
-  question
-) {
-  const q =
-    clean(
-      question,
-      700
-    ).toLowerCase();
-
-  if (
-    /\b(?:when|what date|which date|what year|what month|release date)\b/.test(
-      q
-    )
-  ) {
-    return ATTR.DATE;
-  }
-
-  if (
-    /\b(?:income|makes? per second|per second|earn(?:s|ing)?)\b/.test(
-      q
-    )
-  ) {
-    return ATTR.INCOME;
-  }
-
-  if (
-    /\b(?:cost|price|how much)\b/.test(
-      q
-    )
-  ) {
-    return ATTR.COST;
-  }
-
-  if (
-    /\bmultiplier\b|\bboost\b/.test(
-      q
-    )
-  ) {
-    return ATTR.MULTIPLIER;
-  }
-
-  if (
-    /\b(?:drop rate|chance|probability)\b/.test(
-      q
-    )
-  ) {
-    return ATTR.DROP_RATE;
-  }
-
-  if (
-    /\b(?:rarity|tier)\b/.test(
-      q
-    )
-  ) {
-    return ATTR.RARITY;
-  }
-
-  if (
-    /\b(?:status|obtainable|limited|removed|available)\b/.test(
-      q
-    )
-  ) {
-    return ATTR.STATUS;
-  }
-
-  if (
-    /\b(?:how do|how can|obtain|obtained|get it|acquire|method)\b/.test(
-      q
-    )
-  ) {
-    return ATTR.METHOD;
-  }
-
-  if (
-    /\b(?:requires?|requirement|needed|need to)\b/.test(
-      q
-    )
-  ) {
-    return ATTR.REQUIREMENT;
-  }
-
-  if (
-    /\b(?:spawn|spawns|summon|summons)\b/.test(
-      q
-    )
-  ) {
-    return ATTR.SPAWN;
-  }
-
-  if (
-    /\b(?:formation|arrange|arrangement|placement)\b/.test(
-      q
-    )
-  ) {
-    return ATTR.FORMATION;
-  }
-
-  if (
-    /\bweather\b/.test(
-      q
-    )
-  ) {
-    return ATTR.WEATHER;
-  }
-
-  if (
-    /\b(?:replaced by|replacement|replace it)\b/.test(
-      q
-    )
-  ) {
-    return ATTR.REPLACED_BY;
-  }
-
-  if (
-    /\b(?:slots?|slot count)\b/.test(
-      q
-    )
-  ) {
-    return ATTR.SLOTS;
-  }
-
-  if (
-    /\b(?:floors?|floor count)\b/.test(
-      q
-    )
-  ) {
-    return ATTR.FLOORS;
-  }
-
-  if (
-    /\b(?:contents?|inside|contains?|drops?)\b/.test(
-      q
-    )
-  ) {
-    return ATTR.CONTENTS;
-  }
-
-  if (
-    /\b(?:reward|rewards|gives|gave)\b/.test(
-      q
-    )
-  ) {
-    return ATTR.REWARD;
-  }
-
-  if (
-    /\b(?:which|what)\s+rebirth\b/.test(
-      q
-    ) ||
-    /\brebirth\s+(?:did|does|is)\b/.test(
-      q
-    )
-  ) {
-    return ATTR.REBIRTH;
-  }
-
-  if (
-    /\b(?:what|which)(?:\s+[a-z0-9'-]+){0,3}\s+(?:gear|item)\b/.test(
-      q
-    )
-  ) {
-    return ATTR.GEAR;
-  }
-
-  if (
-    /\b(?:what|which)(?:\s+[a-z0-9'-]+){0,3}\s+(?:brainrot|brain rot)\b/.test(
-      q
-    )
-  ) {
-    return ATTR.BRAINROT;
-  }
-
-  if (
-    /\b(?:what|which)(?:\s+[a-z0-9'-]+){0,3}\s+mutation\b/.test(
-      q
-    )
-  ) {
-    return ATTR.MUTATION;
-  }
-
-  if (
-    /\b(?:what|which)(?:\s+[a-z0-9'-]+){0,3}\s+trait\b/.test(
-      q
-    )
-  ) {
-    return ATTR.TRAIT;
-  }
-
-  if (
-    /\b(?:what|which)(?:\s+[a-z0-9'-]+){0,3}\s+event\b/.test(
-      q
-    )
-  ) {
-    return ATTR.EVENT;
-  }
-
-  if (
-    /\b(?:what|which)(?:\s+[a-z0-9'-]+){0,3}\s+machine\b/.test(
-      q
-    )
-  ) {
-    return ATTR.MACHINE;
-  }
-
-  if (
-    /\b(?:what|which)(?:\s+[a-z0-9'-]+){0,3}\s+ritual\b/.test(
-      q
-    )
-  ) {
-    return ATTR.RITUAL;
-  }
-
-  return ATTR.TEXT;
-}
-
-function inferIntent(
-  question
-) {
-  const q =
-    clean(
-      question,
-      700
-    ).toLowerCase();
-
-  if (
-    /\b(?:newest|latest|current|highest)\s+rebirth\b/.test(
-      q
-    ) ||
-    (
-      q.includes(
-        "rebirth"
-      ) &&
-      isCurrent(
-        q
-      )
-    )
-  ) {
-    return INTENT.CURRENT_REBIRTH;
-  }
-
-  if (
-    /\bupdate\s*\d+(?:\.\d+)?\b/.test(
-      q
-    ) ||
-    q.includes(
-      "update "
-    )
-  ) {
-    return INTENT.UPDATE;
-  }
-
-  if (
-    inferAttribute(
-      q
-    ) !==
-      ATTR.TEXT ||
-    candidateEntities(
-      q
-    ).length
-  ) {
-    return INTENT.ENTITY_PROPERTY;
-  }
-
-  return INTENT.GENERIC;
-}
-
-function aliasesFor(
-  question
-) {
-  const q =
-    clean(
-      question,
-      700
-    ).toLowerCase();
-
-  const out =
-    new Set();
-
-  for (
-    const [
-      key,
-      values,
-    ] of Object.entries(
-      STATIC_ALIASES
-    )
-  ) {
-    if (
-      q.includes(
-        key
-      )
-    ) {
-      values.forEach(
-        (
-          v
-        ) =>
-          out.add(
-            v
-          )
-      );
-    }
-  }
-
-  return [
-    ...out,
-  ];
-}
-
-function extractUpdateNumber(
-  question
-) {
-  const match =
-    clean(
-      question,
-      700
-    ).match(
-      /\bupdate\s*(\d+(?:\.\d+)?)\b/i
-    );
-
-  return match
-    ? match[
-        1
-      ]
-    : null;
-}
-
-function extractRebirthNumber(
-  question
-) {
-  const match =
-    clean(
-      question,
-      700
-    ).match(
-      /\brebirth\s*#?\s*(\d{1,3})\b/i
-    );
-
-  return match
-    ? Number(
-        match[
-          1
-        ]
-      )
-    : null;
-}
-
-function candidateEntities(
-  question
-) {
-  const raw =
-    clean(
-      question,
-      700
-    );
-
-  const quoted = [
-    ...raw.matchAll(
-      /["“”']([^"“”']{2,90})["“”']/g
-    ),
-  ].map(
-    (
-      m
-    ) =>
-      clean(
-        m[
-          1
-        ],
-        100
-      )
-  );
-
-  const aliasValues =
-    aliasesFor(
-      raw
-    );
-
-  const words =
-    raw.match(
-      /[A-Za-z0-9][A-Za-z0-9'._-]*/g
-    ) ||
-    [];
-
-  const filtered =
-    words.filter(
-      (
-        w
-      ) =>
-        !STOPWORDS.has(
-          w.toLowerCase()
-        ) &&
-        !/^\d+(?:\.\d+)?$/.test(
-          w
-        )
-    );
-
-  const spans =
-    [];
-
-  for (
-    let size =
-      Math.min(
-        5,
-        filtered.length
-      );
-    size >=
-      1;
-    size--
-  ) {
-    for (
-      let i =
-        0;
-      i +
-        size <=
-      filtered.length;
-      i++
-    ) {
-      const span =
-        filtered
-          .slice(
-            i,
-            i +
-              size
-          )
-          .join(
-            " "
-          );
-
-      if (
-        span.length >=
-        3
-      ) {
-        spans.push(
-          span
-        );
-      }
-    }
-  }
-
-  const out = [
-    ...new Set([
-      ...quoted,
-      ...aliasValues,
-      ...spans,
-    ]),
-  ];
-
-  return out
-    .sort(
-      (
-        a,
-        b
-      ) => {
-        const ac =
-          a.split(
-            /\s+/
-          ).length;
-
-        const bc =
-          b.split(
-            /\s+/
-          ).length;
-
-        return (
-          bc -
-            ac ||
-          b.length -
-            a.length
-        );
-      }
-    )
-    .slice(
-      0,
-      16
-    );
-}
-
-function titleSimilarity(
-  a,
-  b
-) {
-  const an =
-    norm(
-      a
-    );
-
-  const bn =
-    norm(
-      b
-    );
-
-  if (
-    !an ||
-    !bn
-  ) {
-    return 0;
-  }
-
-  if (
-    an ===
-    bn
-  ) {
-    return 1;
-  }
-
-  if (
-    an.includes(
-      bn
-    ) ||
-    bn.includes(
-      an
-    )
-  ) {
-    return 0.9;
-  }
-
-  const aw =
-    new Set(
-      clean(
-        a,
-        300
-      )
-        .toLowerCase()
-        .match(
-          /[a-z0-9]+/g
-        ) ||
-        []
-    );
-
-  const bw =
-    new Set(
-      clean(
-        b,
-        300
-      )
-        .toLowerCase()
-        .match(
-          /[a-z0-9]+/g
-        ) ||
-        []
-    );
-
-  if (
-    !aw.size ||
-    !bw.size
-  ) {
-    return 0;
-  }
-
-  const overlap = [
-    ...aw,
-  ].filter(
-    (
-      x
-    ) =>
-      bw.has(
-        x
-      )
-  ).length;
-
-  return (
-    overlap /
-    Math.max(
-      aw.size,
-      bw.size
-    )
-  );
-}
-
-function bestEntitySearchQuery(
-  question
-) {
-  return (
-    candidateEntities(
-      question
-    )[
-      0
-    ] ||
-    clean(
-      question,
-      450
-    )
-  );
-}
-
-function hubTitlesForQuestion(
-  question
-) {
+/* ---------------------------------------------------------
+   SOURCE ROUTING
+--------------------------------------------------------- */
+
+function hubTitles(question) {
   const q =
     clean(
       question,
@@ -1637,7 +1875,27 @@ function hubTitlesForQuestion(
     )
   ) {
     out.push(
-      ...HUBS.REBIRTH
+      ...HUBS.rebirth
+    );
+  }
+
+  if (
+    q.includes(
+      "gear"
+    )
+  ) {
+    out.push(
+      ...HUBS.gear
+    );
+  }
+
+  if (
+    q.includes(
+      "slap"
+    )
+  ) {
+    out.push(
+      ...HUBS.slap
     );
   }
 
@@ -1647,7 +1905,7 @@ function hubTitlesForQuestion(
     )
   ) {
     out.push(
-      ...HUBS.MUTATION
+      ...HUBS.mutation
     );
   }
 
@@ -1657,7 +1915,7 @@ function hubTitlesForQuestion(
     )
   ) {
     out.push(
-      ...HUBS.TRAIT
+      ...HUBS.trait
     );
   }
 
@@ -1667,7 +1925,7 @@ function hubTitlesForQuestion(
     )
   ) {
     out.push(
-      ...HUBS.RITUAL
+      ...HUBS.ritual
     );
   }
 
@@ -1677,7 +1935,7 @@ function hubTitlesForQuestion(
     )
   ) {
     out.push(
-      ...HUBS.MACHINE
+      ...HUBS.machine
     );
   }
 
@@ -1687,17 +1945,7 @@ function hubTitlesForQuestion(
     )
   ) {
     out.push(
-      ...HUBS.LUCKY_BLOCK
-    );
-  }
-
-  if (
-    q.includes(
-      "update"
-    )
-  ) {
-    out.push(
-      ...HUBS.UPDATE
+      ...HUBS.lucky
     );
   }
 
@@ -1710,7 +1958,17 @@ function hubTitlesForQuestion(
     )
   ) {
     out.push(
-      ...HUBS.EVENT
+      ...HUBS.event
+    );
+  }
+
+  if (
+    q.includes(
+      "update"
+    )
+  ) {
+    out.push(
+      ...HUBS.update
     );
   }
 
@@ -1720,7 +1978,7 @@ function hubTitlesForQuestion(
     )
   ) {
     out.push(
-      ...HUBS.BASE
+      ...HUBS.base
     );
   }
 
@@ -1730,223 +1988,190 @@ function hubTitlesForQuestion(
     )
   ) {
     out.push(
-      ...HUBS.RARITY
-    );
-  }
-
-  if (
-    q.includes(
-      "gear"
-    )
-  ) {
-    out.push(
-      ...HUBS.GEAR
-    );
-  }
-
-  if (
-    q.includes(
-      "slap"
-    )
-  ) {
-    out.push(
-      ...HUBS.SLAP
+      ...HUBS.rarity
     );
   }
 
   return [
-    ...new Set(
-      out
-    ),
+    ...new Set(out),
   ];
 }
 
-async function canonicalPagesForQuestion(
-  question,
-  deadline
-) {
-  const intent =
-    inferIntent(
-      question
+function titleSimilarity(a, b) {
+  const an =
+    norm(a);
+
+  const bn =
+    norm(b);
+
+  if (
+    !an ||
+    !bn
+  ) {
+    return 0;
+  }
+
+  if (
+    an === bn
+  ) {
+    return 1;
+  }
+
+  if (
+    an.includes(bn) ||
+    bn.includes(an)
+  ) {
+    return 0.92;
+  }
+
+  const at =
+    new Set(
+      tokens(a)
     );
 
-  const titles =
-    [];
-
-  const entityCandidates =
-    candidateEntities(
-      question
-    );
-
-  const updateNumber =
-    extractUpdateNumber(
-      question
+  const bt =
+    new Set(
+      tokens(b)
     );
 
   if (
-    updateNumber
+    !at.size ||
+    !bt.size
   ) {
-    const major =
-      updateNumber.split(
-        "."
-      )[
-        0
-      ];
-
-    titles.push(
-      `Update Log/Update ${major}`,
-      `Update ${updateNumber}`
-    );
+    return 0;
   }
 
-  titles.push(
-    ...hubTitlesForQuestion(
-      question
+  let same = 0;
+
+  for (
+    const value
+    of at
+  ) {
+    if (
+      bt.has(value)
+    ) {
+      same++;
+    }
+  }
+
+  return (
+    same /
+    Math.max(
+      at.size,
+      bt.size
     )
   );
+}
 
-  const searchQueries =
+async function canonicalStage(
+  question,
+  analysis,
+  deadline
+) {
+  const requested =
     [];
 
-  if (
-    entityCandidates[
-      0
-    ]
-  ) {
-    searchQueries.push(
-      entityCandidates[
-        0
-      ]
-    );
-  }
+  /*
+    Direct exact entity-page attempt happens immediately.
+    This fixes questions such as:
+    "How much does Tralalero Tralala cost?"
+  */
 
   if (
-    entityCandidates[
-      1
-    ]
+    analysis.entity
   ) {
-    searchQueries.push(
-      entityCandidates[
-        1
-      ]
-    );
-  }
-
-  if (
-    !searchQueries.length
-  ) {
-    searchQueries.push(
-      bestEntitySearchQuery(
-        question
-      )
+    requested.push(
+      analysis.entity
     );
   }
 
   for (
-    const sq
-    of searchQueries.slice(
-      0,
-      2
-    )
+    const title
+    of hubTitles(question)
   ) {
-    const found =
-      await wikiSearchTitles(
-        sq,
-        deadline,
-        8
-      );
-
-    const scored =
-      found
-        .map(
-          (
-            title
-          ) => ({
-            title,
-
-            score:
-              Math.max(
-                ...entityCandidates.map(
-                  (
-                    e
-                  ) =>
-                    titleSimilarity(
-                      e,
-                      title
-                    )
-                ),
-
-                titleSimilarity(
-                  sq,
-                  title
-                )
-              ),
-          })
-        )
-        .sort(
-          (
-            a,
-            b
-          ) =>
-            b.score -
-            a.score
-        );
-
-    for (
-      const row
-      of scored
-    ) {
-      if (
-        row.score >=
-          0.34 &&
-        !titles.some(
-          (
-            x
-          ) =>
-            x.toLowerCase() ===
-            row.title.toLowerCase()
-        )
-      ) {
-        titles.unshift(
-          row.title
-        );
-      }
-    }
+    requested.push(title);
   }
 
-  const unique = [
+  if (
+    analysis.current &&
+    clean(
+      question
+    )
+      .toLowerCase()
+      .includes(
+        "rebirth"
+      )
+  ) {
+    requested.unshift(
+      "Rebirth"
+    );
+  }
+
+  if (
+    analysis.update
+  ) {
+    const major =
+      String(
+        analysis.update
+      )
+        .split(".")[0];
+
+    requested.unshift(
+      `Update Log/Update ${major}`,
+      "Update Log"
+    );
+  }
+
+  const directTitles = [
     ...new Set(
-      titles
+      requested
         .map(
-          (
-            x
-          ) =>
+          (x) =>
             clean(
               x,
               300
             )
         )
-        .filter(
-          Boolean
-        )
+        .filter(Boolean)
     ),
   ].slice(
     0,
     CFG.MAX_CANONICAL_PAGES
   );
 
-  const settled =
-    await Promise.allSettled(
-      unique.map(
-        (
-          title
-        ) =>
+  /*
+    Direct page fetches and MediaWiki title search
+    run together.
+  */
+
+  const directPromise =
+    Promise.allSettled(
+      directTitles.map(
+        (title) =>
           fetchCanonicalPage(
             title,
             deadline
           )
       )
     );
+
+  const searchPromise =
+    analysis.entity
+      ? wikiSearchTitles(
+          analysis.entity,
+          deadline,
+          6
+        )
+      : Promise.resolve([]);
+
+  const [
+    directSettled,
+    searchTitles,
+  ] =
+    await Promise.all([
+      directPromise,
+      searchPromise,
+    ]);
 
   const pages =
     [];
@@ -1956,7 +2181,7 @@ async function canonicalPagesForQuestion(
 
   for (
     const row
-    of settled
+    of directSettled
   ) {
     if (
       row.status ===
@@ -1974,43 +2199,128 @@ async function canonicalPagesForQuestion(
     }
   }
 
+  /*
+    Search results are used only to fill missing
+    entity pages, not blindly fetch everything.
+  */
+
+  if (
+    timeLeft(deadline) >
+    350 &&
+    searchTitles.length
+  ) {
+    const existing =
+      new Set(
+        pages.map(
+          (page) =>
+            page.title
+              .toLowerCase()
+        )
+      );
+
+    const ranked =
+      searchTitles
+        .map(
+          (title) => ({
+            title,
+
+            score:
+              Math.max(
+                titleSimilarity(
+                  analysis.entity,
+                  title
+                ),
+
+                ...analysis.entities.map(
+                  (candidate) =>
+                    titleSimilarity(
+                      candidate,
+                      title
+                    )
+                )
+              ),
+          })
+        )
+        .sort(
+          (a, b) =>
+            b.score -
+            a.score
+        )
+        .filter(
+          (row) =>
+            row.score >=
+            0.38 &&
+            !existing.has(
+              row.title
+                .toLowerCase()
+            )
+        )
+        .slice(
+          0,
+          Math.max(
+            0,
+            CFG.MAX_CANONICAL_PAGES -
+            pages.length
+          )
+        );
+
+    const more =
+      await Promise.allSettled(
+        ranked.map(
+          (row) =>
+            fetchCanonicalPage(
+              row.title,
+              deadline
+            )
+        )
+      );
+
+    for (
+      const row
+      of more
+    ) {
+      if (
+        row.status ===
+        "fulfilled"
+      ) {
+        pages.push(
+          row.value
+        );
+      }
+    }
+  }
+
   return {
-    intent,
-
     pages,
-
     errors,
-
-    titles:
-      unique,
-
-    entityCandidates,
   };
 }
 
-function extractTables(
-  page
-) {
+/* ---------------------------------------------------------
+   HTML TABLE PARSER
+--------------------------------------------------------- */
+
+function parseHtmlTables(page) {
   const html =
     String(
       page?.html ||
-        ""
+      ""
     );
 
-  const tableHtmls =
+  const tables =
+    [];
+
+  const tableMatches =
     html.match(
       /<table\b[^>]*>[\s\S]*?<\/table>/gi
     ) ||
     [];
 
-  const tables =
-    [];
-
   for (
     const tableHtml
-    of tableHtmls
+    of tableMatches
   ) {
-    const rowHtmls =
+    const rowMatches =
       tableHtml.match(
         /<tr\b[^>]*>[\s\S]*?<\/tr>/gi
       ) ||
@@ -2021,7 +2331,7 @@ function extractTables(
 
     for (
       const rowHtml
-      of rowHtmls
+      of rowMatches
     ) {
       const cells =
         [];
@@ -2029,11 +2339,11 @@ function extractTables(
       const re =
         /<(th|td)\b[^>]*>([\s\S]*?)<\/\1>/gi;
 
-      let m;
+      let match;
 
       while (
         (
-          m =
+          match =
             re.exec(
               rowHtml
             )
@@ -2041,17 +2351,14 @@ function extractTables(
         null
       ) {
         cells.push({
-          tag:
-            m[
-              1
-            ].toLowerCase(),
+          type:
+            match[1]
+              .toLowerCase(),
 
           text:
             htmlToText(
-              m[
-                2
-              ],
-              1200
+              match[2],
+              1000
             ),
         });
       }
@@ -2075,8 +2382,7 @@ function extractTables(
       -1;
 
     for (
-      let i =
-        0;
+      let i = 0;
       i <
       Math.min(
         rawRows.length,
@@ -2085,45 +2391,29 @@ function extractTables(
       i++
     ) {
       const row =
-        rawRows[
-          i
-        ];
+        rawRows[i];
 
       const thCount =
         row.filter(
-          (
-            c
-          ) =>
-            c.tag ===
-            "th"
+          (cell) =>
+            cell.type === "th"
         ).length;
 
-      const texts =
-        row.map(
-          (
-            c
-          ) =>
-            c.text
-              .toLowerCase()
-        );
-
-      const headerish =
-        texts.some(
-          (
-            t
-          ) =>
-            /name|multi|multiplier|cost|price|income|rarity|status|rebirth|gear|reward|requires?|requirement|spawn|formation|weather|chance|rate|item|brainrot|trait|mutation|floor|slot|date|obtain/.test(
-              t
+      const semantic =
+        row.some(
+          (cell) =>
+            normalizeHeader(
+              cell.text
             )
         );
 
       if (
         thCount >=
-          Math.ceil(
-            row.length /
-              2
-          ) ||
-        headerish
+        Math.ceil(
+          row.length /
+          2
+        ) ||
+        semantic
       ) {
         headerIndex =
           i;
@@ -2135,135 +2425,263 @@ function extractTables(
     let headers =
       [];
 
-    let start =
+    let dataStart =
       0;
 
     if (
-      headerIndex >=
-      0
+      headerIndex >= 0
     ) {
       headers =
         rawRows[
           headerIndex
         ].map(
-          (
-            c,
-            i
-          ) =>
-            c.text ||
-            `column_${i + 1}`
+          (cell, index) =>
+            cell.text ||
+            `column_${index + 1}`
         );
 
-      start =
-        headerIndex +
-        1;
+      dataStart =
+        headerIndex + 1;
     }
 
     const rows =
       rawRows
         .slice(
-          start
+          dataStart
         )
         .map(
-          (
-            row
-          ) => {
-            const cells =
+          (row) => ({
+            cells:
               row.map(
-                (
-                  c
-                ) =>
-                  c.text
-              );
-
-            const obj =
-              {};
-
-            if (
-              headers.length
-            ) {
-              for (
-                let i =
-                  0;
-                i <
-                Math.max(
-                  headers.length,
-                  cells.length
-                );
-                i++
-              ) {
-                const h =
-                  headers[
-                    i
-                  ] ||
-                  `column_${i + 1}`;
-
-                obj[
-                  h
-                ] =
-                  cells[
-                    i
-                  ] ||
-                  "";
-              }
-            }
-
-            return {
-              cells,
-
-              obj,
-
-              text:
-                clean(
-                  cells.join(
-                    " | "
-                  ),
-                  5000
-                ),
-            };
-          }
+                (cell) =>
+                  cell.text
+              ),
+          })
         )
         .filter(
-          (
-            row
-          ) =>
+          (row) =>
             row.cells.some(
               Boolean
             )
         );
 
     tables.push({
+      type:
+        "HTML_TABLE",
+
       headers,
 
       rows,
-
-      rawRows:
-        rawRows.map(
-          (
-            r
-          ) =>
-            r.map(
-              (
-                c
-              ) =>
-                c.text
-            )
-        ),
-
-      text:
-        htmlToText(
-          tableHtml,
-          40000
-        ),
     });
   }
 
   return tables;
 }
 
-function normalizeHeader(
-  header
-) {
+/* ---------------------------------------------------------
+   WIKITEXT TABLE PARSER
+--------------------------------------------------------- */
+
+function parseWikitextTables(page) {
+  const wiki =
+    String(
+      page?.wikitext ||
+      ""
+    );
+
+  if (!wiki) {
+    return [];
+  }
+
+  const blocks =
+    wiki.match(
+      /\{\|[\s\S]*?\|\}/g
+    ) ||
+    [];
+
+  const tables =
+    [];
+
+  for (
+    const block
+    of blocks
+  ) {
+    const sections =
+      block.split(
+        /\n\|-\s*[^\n]*/g
+      );
+
+    const raw =
+      [];
+
+    for (
+      const section
+      of sections
+    ) {
+      const lines =
+        section
+          .split(/\n/)
+          .map(
+            (line) =>
+              line.trim()
+          )
+          .filter(Boolean);
+
+      const row =
+        [];
+
+      for (
+        const line
+        of lines
+      ) {
+        if (
+          line.startsWith("!")
+        ) {
+          const cells =
+            line
+              .slice(1)
+              .split("!!")
+              .map(stripWiki);
+
+          row.push(
+            ...cells.map(
+              (text) => ({
+                type:
+                  "th",
+
+                text,
+              })
+            )
+          );
+        }
+
+        if (
+          line.startsWith("|") &&
+          !line.startsWith("|}")
+        ) {
+          const content =
+            line.slice(1);
+
+          const cells =
+            content
+              .split("||")
+              .map(
+                (cell) => {
+                  /*
+                    Remove style/attribute fragments such as:
+                    style="..." | VALUE
+                  */
+
+                  const pieces =
+                    cell.split("|");
+
+                  return stripWiki(
+                    pieces.length >
+                    1
+                      ? pieces[
+                          pieces.length -
+                          1
+                        ]
+                      : cell
+                  );
+                }
+              );
+
+          row.push(
+            ...cells.map(
+              (text) => ({
+                type:
+                  "td",
+
+                text,
+              })
+            )
+          );
+        }
+      }
+
+      if (
+        row.length
+      ) {
+        raw.push(row);
+      }
+    }
+
+    if (
+      raw.length <
+      2
+    ) {
+      continue;
+    }
+
+    let headerIndex =
+      raw.findIndex(
+        (row) =>
+          row.some(
+            (cell) =>
+              cell.type ===
+              "th"
+          )
+      );
+
+    if (
+      headerIndex <
+      0
+    ) {
+      headerIndex = 0;
+    }
+
+    const headers =
+      raw[
+        headerIndex
+      ].map(
+        (cell, index) =>
+          cell.text ||
+          `column_${index + 1}`
+      );
+
+    const rows =
+      raw
+        .slice(
+          headerIndex + 1
+        )
+        .map(
+          (row) => ({
+            cells:
+              row.map(
+                (cell) =>
+                  cell.text
+              ),
+          })
+        )
+        .filter(
+          (row) =>
+            row.cells.some(
+              Boolean
+            )
+        );
+
+    if (
+      rows.length
+    ) {
+      tables.push({
+        type:
+          "WIKITEXT_TABLE",
+
+        headers,
+        rows,
+      });
+    }
+  }
+
+  return tables;
+}
+
+/* ---------------------------------------------------------
+   HEADER NORMALIZATION
+--------------------------------------------------------- */
+
+function normalizeHeader(header) {
   const h =
     clean(
       header,
@@ -2271,49 +2689,61 @@ function normalizeHeader(
     )
       .toLowerCase()
       .replace(
-        /[^\w/%$+ -]+/g,
+        /[^a-z0-9/$% +_-]+/g,
         " "
       )
       .trim();
 
-  if (
-    /^name$|brainrot|mutation|trait|ritual|gear|item|slap/.test(
-      h
-    )
-  ) {
-    return ATTR.NAME;
+  if (!h) {
+    return null;
   }
 
   if (
-    /multi|multiplier|boost/.test(
-      h
-    )
+    /^name$/.test(h) ||
+    /brainrot name/.test(h) ||
+    /mutation name/.test(h) ||
+    /trait name/.test(h) ||
+    /ritual name/.test(h)
   ) {
-    return ATTR.MULTIPLIER;
+    return REL.TEXT;
   }
 
   if (
-    /cost|price|buy/.test(
-      h
-    )
+    /^brainrot$/.test(h)
   ) {
-    return ATTR.COST;
+    return REL.BRAINROT;
   }
 
   if (
-    /income|money per second|\$\/s|per second/.test(
-      h
-    )
+    /gear|ability|tool/.test(h)
   ) {
-    return ATTR.INCOME;
+    return REL.GEAR;
   }
 
   if (
-    /rarity|tier/.test(
+    /multi|multiplier|boost/.test(h)
+  ) {
+    return REL.MULTIPLIER;
+  }
+
+  if (
+    /cost|price|buy/.test(h)
+  ) {
+    return REL.COST;
+  }
+
+  if (
+    /income|earn|money per second|\$\/s|per second/.test(
       h
     )
   ) {
-    return ATTR.RARITY;
+    return REL.INCOME;
+  }
+
+  if (
+    /rarity|tier/.test(h)
+  ) {
+    return REL.RARITY;
   }
 
   if (
@@ -2321,31 +2751,29 @@ function normalizeHeader(
       h
     )
   ) {
-    return ATTR.STATUS;
+    return REL.STATUS;
   }
 
   if (
-    /rebirth|level/.test(
-      h
-    )
+    /rebirth|level/.test(h)
   ) {
-    return ATTR.REBIRTH;
+    return REL.REBIRTH;
   }
 
   if (
-    /requires?|requirement|needed/.test(
+    /requires?|requirement|needed|materials?/.test(
       h
     )
   ) {
-    return ATTR.REQUIREMENT;
+    return REL.REQUIREMENT;
   }
 
   if (
-    /spawn|result|summon/.test(
+    /spawn|result|summon|outcome/.test(
       h
     )
   ) {
-    return ATTR.SPAWN;
+    return REL.SPAWN;
   }
 
   if (
@@ -2353,15 +2781,13 @@ function normalizeHeader(
       h
     )
   ) {
-    return ATTR.FORMATION;
+    return REL.FORMATION;
   }
 
   if (
-    /weather/.test(
-      h
-    )
+    /weather/.test(h)
   ) {
-    return ATTR.WEATHER;
+    return REL.WEATHER;
   }
 
   if (
@@ -2369,55 +2795,43 @@ function normalizeHeader(
       h
     )
   ) {
-    return ATTR.DROP_RATE;
+    return REL.DROP_RATE;
   }
 
   if (
-    /reward/.test(
-      h
-    )
+    /reward/.test(h)
   ) {
-    return ATTR.REWARD;
+    return REL.REWARD;
   }
 
   if (
-    /contents?|drops?/.test(
-      h
-    )
+    /contents?|drops?/.test(h)
   ) {
-    return ATTR.CONTENTS;
+    return REL.CONTENTS;
   }
 
   if (
-    /date|release/.test(
-      h
-    )
+    /date|release/.test(h)
   ) {
-    return ATTR.DATE;
+    return REL.DATE;
   }
 
   if (
-    /obtain|method|source/.test(
-      h
-    )
+    /obtain|method|source/.test(h)
   ) {
-    return ATTR.METHOD;
+    return REL.METHOD;
   }
 
   if (
-    /slots?/.test(
-      h
-    )
+    /slots?/.test(h)
   ) {
-    return ATTR.SLOTS;
+    return REL.SLOTS;
   }
 
   if (
-    /floors?/.test(
-      h
-    )
+    /floors?/.test(h)
   ) {
-    return ATTR.FLOORS;
+    return REL.FLOORS;
   }
 
   if (
@@ -2425,33 +2839,31 @@ function normalizeHeader(
       h
     )
   ) {
-    return ATTR.REPLACED_BY;
+    return REL.REPLACED_BY;
   }
 
   return null;
 }
 
-function normalizeValue(
+function normalizeFactValue(
   value,
-  attr
+  relation
 ) {
-  let text =
+  const text =
     clean(
       value,
       500
     );
 
-  if (
-    !text
-  ) {
+  if (!text) {
     return null;
   }
 
   if (
-    attr ===
-    ATTR.REBIRTH
+    relation ===
+    REL.REBIRTH
   ) {
-    const m =
+    const match =
       text.match(
         /\brebirth\s*#?\s*(\d{1,3})\b/i
       ) ||
@@ -2459,626 +2871,24 @@ function normalizeValue(
         /^\s*(\d{1,3})\s*$/
       );
 
-    return m
+    return match
       ? `Rebirth${Number(
-          m[
-            1
-          ]
+          match[1]
         )}`
-      : null;
-  }
-
-  if (
-    attr ===
-    ATTR.MULTIPLIER
-  ) {
-    const m =
-      text.match(
-        /\b\d+(?:\.\d+)?\s*[x×]/i
-      );
-
-    return m
-      ? m[
-          0
-        ]
-          .replace(
-            /\s+/g,
-            ""
-          )
-          .replace(
-            "×",
-            "x"
-          )
       : text;
   }
 
   if (
-    attr ===
-    ATTR.DROP_RATE
+    relation ===
+    REL.MULTIPLIER
   ) {
-    const m =
-      text.match(
-        /\b\d+(?:\.\d+)?\s*%/
-      );
-
-    return m
-      ? m[
-          0
-        ].replace(
-          /\s+/g,
-          ""
-        )
-      : text;
-  }
-
-  return text;
-}
-
-function parseInfobox(
-  page
-) {
-  const out =
-    {};
-
-  const html =
-    String(
-      page?.html ||
-        ""
-    );
-
-  const source =
-    html.match(
-      /<(?:aside|table)\b[^>]*(?:portable-infobox|infobox)[^>]*>[\s\S]*?<\/(?:aside|table)>/i
-    )?.[
-      0
-    ] ||
-    "";
-
-  if (
-    source
-  ) {
-    for (
-      const m
-      of source.matchAll(
-        /<div\b[^>]*class=["'][^"']*pi-item[^"']*["'][^>]*data-source=["']([^"']+)["'][^>]*>([\s\S]*?)<\/div>/gi
-      )
-    ) {
-      const key =
-        clean(
-          m[
-            1
-          ],
-          120
-        ).toLowerCase();
-
-      const value =
-        htmlToText(
-          m[
-            2
-          ],
-          800
-        );
-
-      if (
-        key &&
-        value
-      ) {
-        out[
-          key
-        ] =
-          value;
-      }
-    }
-
-    for (
-      const m
-      of source.matchAll(
-        /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi
-      )
-    ) {
-      const row =
-        m[
-          1
-        ];
-
-      const cells = [
-        ...row.matchAll(
-          /<t[dh]\b[^>]*>([\s\S]*?)<\/t[dh]>/gi
-        ),
-      ].map(
-        (
-          x
-        ) =>
-          htmlToText(
-            x[
-              1
-            ],
-            700
-          )
-      );
-
-      if (
-        cells.length >=
-        2
-      ) {
-        const key =
-          clean(
-            cells[
-              0
-            ],
-            120
-          ).toLowerCase();
-
-        const value =
-          clean(
-            cells
-              .slice(
-                1
-              )
-              .join(
-                " | "
-              ),
-            800
-          );
-
-        if (
-          key &&
-          value &&
-          /cost|price|income|rarity|status|multiplier|obtain|date|release|rebirth|require/.test(
-            key
-          )
-        ) {
-          out[
-            key
-          ] =
-            value;
-        }
-      }
-    }
-  }
-
-  if (
-    !Object.keys(
-      out
-    ).length &&
-    page?.wikitext
-  ) {
-    const template =
-      String(
-        page.wikitext
-      ).match(
-        /\{\{[\s\S]{0,16000}?\n\}\}/
-      )?.[
-        0
-      ] ||
-      "";
-
-    for (
-      const line
-      of template.split(
-        /\n/
-      )
-    ) {
-      const m =
-        line.match(
-          /^\s*\|\s*([^=|]+?)\s*=\s*(.*?)\s*$/
-        );
-
-      if (
-        !m
-      ) {
-        continue;
-      }
-
-      const key =
-        clean(
-          m[
-            1
-          ],
-          120
-        ).toLowerCase();
-
-      const value =
-        clean(
-          m[
-            2
-          ].replace(
-            /\[\[|\]\]/g,
-            ""
-          ),
-          800
-        );
-
-      if (
-        key &&
-        value
-      ) {
-        out[
-          key
-        ] =
-          value;
-      }
-    }
-  }
-
-  return out;
-}
-
-function infoboxValue(
-  info,
-  attr
-) {
-  const patterns = {
-    [ATTR.COST]: [
-      /^cost$/,
-      /^price$/,
-      /buy price/,
-      /cost/,
-    ],
-
-    [ATTR.INCOME]: [
-      /^income$/,
-      /income\/s/,
-      /money per second/,
-      /earn/,
-    ],
-
-    [ATTR.RARITY]: [
-      /^rarity$/,
-      /^tier$/,
-    ],
-
-    [ATTR.STATUS]: [
-      /^status$/,
-      /obtainability/,
-      /available/,
-    ],
-
-    [ATTR.MULTIPLIER]: [
-      /^multiplier$/,
-      /boost/,
-    ],
-
-    [ATTR.METHOD]: [
-      /obtain/,
-      /method/,
-      /source/,
-    ],
-
-    [ATTR.DATE]: [
-      /release date/,
-      /^date$/,
-      /released/,
-    ],
-
-    [ATTR.REBIRTH]: [
-      /rebirth/,
-      /requirement/,
-    ],
-
-    [ATTR.REQUIREMENT]: [
-      /requirement/,
-      /requires?/,
-      /needed/,
-    ],
-  }[
-    attr
-  ] ||
-  [];
-
-  for (
-    const [
-      key,
-      value,
-    ] of Object.entries(
-      info
-    )
-  ) {
-    if (
-      patterns.some(
-        (
-          p
-        ) =>
-          p.test(
-            key
-          )
-      )
-    ) {
-      const normalized =
-        normalizeValue(
-          value,
-          attr
-        );
-
-      if (
-        normalized
-      ) {
-        return normalized;
-      }
-    }
-  }
-
-  return null;
-}
-
-function sectionText(
-  page,
-  headings
-) {
-  const html =
-    String(
-      page?.html ||
-        ""
-    );
-
-  const needles =
-    headings.map(
-      (
-        x
-      ) =>
-        x.toLowerCase()
-    );
-
-  const re =
-    /<h([1-6])\b[^>]*>([\s\S]*?)<\/h\1>/gi;
-
-  const found =
-    [];
-
-  let m;
-
-  while (
-    (
-      m =
-        re.exec(
-          html
-        )
-    ) !==
-    null
-  ) {
-    found.push({
-      index:
-        m.index,
-
-      end:
-        re.lastIndex,
-
-      level:
-        Number(
-          m[
-            1
-          ]
-        ),
-
-      title:
-        htmlToText(
-          m[
-            2
-          ],
-          300
-        ),
-    });
-  }
-
-  for (
-    let i =
-      0;
-    i <
-    found.length;
-    i++
-  ) {
-    const h =
-      found[
-        i
-      ];
-
-    if (
-      !needles.some(
-        (
-          n
-        ) =>
-          h.title
-            .toLowerCase()
-            .includes(
-              n
-            )
-      )
-    ) {
-      continue;
-    }
-
-    let end =
-      html.length;
-
-    for (
-      let j =
-        i +
-        1;
-      j <
-      found.length;
-      j++
-    ) {
-      if (
-        found[
-          j
-        ].level <=
-        h.level
-      ) {
-        end =
-          found[
-            j
-          ].index;
-
-        break;
-      }
-    }
-
-    return htmlToText(
-      html.slice(
-        h.end,
-        end
-      ),
-      30000
-    );
-  }
-
-  return "";
-}
-
-function entityAliases(
-  question
-) {
-  const out =
-    new Set(
-      candidateEntities(
-        question
-      ).map(
-        (
-          x
-        ) =>
-          x.toLowerCase()
-      )
-    );
-
-  for (
-    const a
-    of aliasesFor(
-      question
-    )
-  ) {
-    out.add(
-      a.toLowerCase()
-    );
-  }
-
-  return [
-    ...out,
-  ].filter(
-    (
-      x
-    ) =>
-      x.length >=
-      3
-  );
-}
-
-function pageMatchesEntity(
-  page,
-  entities
-) {
-  const titleNorm =
-    norm(
-      page?.title
-    );
-
-  return entities.some(
-    (
-      entity
-    ) => {
-      const eNorm =
-        norm(
-          entity
-        );
-
-      return (
-        eNorm &&
-        (
-          titleNorm ===
-            eNorm ||
-          titleNorm.includes(
-            eNorm
-          ) ||
-          eNorm.includes(
-            titleNorm
-          )
-        )
-      );
-    }
-  );
-}
-
-function chooseTableValue(
-  row,
-  table,
-  attr
-) {
-  if (
-    table.headers.length &&
-    row.cells.length
-  ) {
-    for (
-      let i =
-        0;
-      i <
-      table.headers.length;
-      i++
-    ) {
-      if (
-        normalizeHeader(
-          table.headers[
-            i
-          ]
-        ) ===
-        attr
-      ) {
-        const val =
-          normalizeValue(
-            row.cells[
-              i
-            ] ||
-            "",
-            attr
-          );
-
-        if (
-          val
-        ) {
-          return val;
-        }
-      }
-    }
-  }
-
-  const text =
-    row.text;
-
-  if (
-    attr ===
-    ATTR.REBIRTH
-  ) {
-    const m =
-      text.match(
-        /\brebirth\s*#?\s*(\d{1,3})\b/i
-      );
-
-    if (
-      m
-    ) {
-      return (
-        `Rebirth${Number(
-          m[
-            1
-          ]
-        )}`
-      );
-    }
-  }
-
-  if (
-    attr ===
-    ATTR.MULTIPLIER
-  ) {
-    const m =
+    const match =
       text.match(
         /\b\d+(?:\.\d+)?\s*[x×]/i
       );
 
-    if (
-      m
-    ) {
-      return m[
-        0
-      ]
+    if (match) {
+      return match[0]
         .replace(
           /\s+/g,
           ""
@@ -3091,182 +2901,1439 @@ function chooseTableValue(
   }
 
   if (
-    attr ===
-    ATTR.DROP_RATE
+    relation ===
+    REL.DROP_RATE
   ) {
-    const m =
+    const match =
       text.match(
         /\b\d+(?:\.\d+)?\s*%/
       );
 
-    if (
-      m
-    ) {
-      return m[
-        0
-      ].replace(
-        /\s+/g,
-        ""
-      );
+    if (match) {
+      return match[0]
+        .replace(
+          /\s+/g,
+          ""
+        );
     }
   }
 
   if (
-    attr ===
-    ATTR.COST
+    relation ===
+    REL.COST
   ) {
-    const m =
+    const match =
       text.match(
         /\$\s*\d+(?:\.\d+)?\s*[KMBT]?/i
       );
 
-    if (
-      m
-    ) {
-      return m[
-        0
-      ].replace(
-        /\s+/g,
-        ""
-      );
+    if (match) {
+      return match[0]
+        .replace(
+          /\s+/g,
+          ""
+        );
     }
   }
 
   if (
-    attr ===
-    ATTR.INCOME
+    relation ===
+    REL.INCOME
   ) {
-    const m =
+    const match =
       text.match(
-        /\$\s*\d+(?:\.\d+)?\s*[KMBT]?\s*\/\s*s/i
+        /\$\s*\d+(?:\.\d+)?\s*[KMBT]?\s*(?:\/\s*s|per\s*second)?/i
       );
 
+    if (match) {
+      let output =
+        match[0]
+          .replace(
+            /\s+/g,
+            ""
+          );
+
+      output =
+        output.replace(
+          /persecond/i,
+          "/s"
+        );
+
+      if (
+        !/\/s$/i.test(
+          output
+        )
+      ) {
+        output +=
+          "/s";
+      }
+
+      return output;
+    }
+  }
+
+  return text;
+}
+
+/* ---------------------------------------------------------
+   FACT GRAPH
+--------------------------------------------------------- */
+
+function makeFact(
+  subject,
+  relation,
+  object,
+  page,
+  confidence,
+  extractor,
+  evidence = ""
+) {
+  const s =
+    clean(
+      subject,
+      220
+    );
+
+  const o =
+    clean(
+      object,
+      500
+    );
+
+  if (
+    !s ||
+    !relation ||
+    !o
+  ) {
+    return null;
+  }
+
+  return {
+    subject:
+      s,
+
+    relation,
+
+    object:
+      o,
+
+    confidence:
+      clamp(
+        confidence
+      ),
+
+    extractor,
+
+    sourceTitle:
+      page.title,
+
+    sourceUrl:
+      page.url,
+
+    sourceType:
+      page.source,
+
+    evidence:
+      clean(
+        evidence ||
+        `${s} | ${relation} | ${o}`,
+        1000
+      ),
+  };
+}
+
+function dedupeFacts(facts) {
+  const map =
+    new Map();
+
+  for (
+    const fact
+    of facts
+  ) {
+    if (!fact) {
+      continue;
+    }
+
+    const key =
+      `${norm(
+        fact.subject
+      )}|${fact.relation}|${norm(
+        fact.object
+      )}`;
+
+    const old =
+      map.get(key);
+
     if (
-      m
+      !old ||
+      fact.confidence >
+      old.confidence
     ) {
-      return m[
-        0
-      ].replace(
-        /\s+/g,
-        ""
+      map.set(
+        key,
+        fact
       );
     }
   }
 
-  return null;
+  return [
+    ...map.values(),
+  ];
 }
 
-function rowMatchesEntities(
-  row,
-  entities
-) {
-  const low =
-    row.text.toLowerCase();
+function inverseFacts(fact) {
+  const out =
+    [];
 
-  return entities.some(
-    (
-      entity
-    ) =>
-      low.includes(
-        entity
+  /*
+    Rebirth18 -> GEAR -> Flash Teleport
+    Flash Teleport -> REBIRTH -> Rebirth18
+  */
+
+  if (
+    fact.relation ===
+      REL.GEAR &&
+    /^rebirth\d+$/i.test(
+      norm(
+        fact.subject
       )
-  );
+    )
+  ) {
+    out.push(
+      makeFact(
+        fact.object,
+        REL.REBIRTH,
+        fact.subject,
+        {
+          title:
+            fact.sourceTitle,
+
+          url:
+            fact.sourceUrl,
+
+          source:
+            fact.sourceType,
+        },
+        fact.confidence -
+          0.01,
+        "INVERSE",
+        fact.evidence
+      )
+    );
+  }
+
+  /*
+    Ritual -> SPAWN -> Brainrot
+    Brainrot -> RITUAL -> Ritual
+  */
+
+  if (
+    fact.relation ===
+      REL.SPAWN &&
+    /ritual/i.test(
+      fact.subject
+    )
+  ) {
+    out.push(
+      makeFact(
+        fact.object,
+        REL.RITUAL,
+        fact.subject,
+        {
+          title:
+            fact.sourceTitle,
+
+          url:
+            fact.sourceUrl,
+
+          source:
+            fact.sourceType,
+        },
+        fact.confidence -
+          0.02,
+        "INVERSE",
+        fact.evidence
+      )
+    );
+  }
+
+  /*
+    Entity -> REBIRTH -> RebirthN
+    RebirthN -> REWARD -> Entity
+    only when there is no better typed gear relation.
+  */
+
+  if (
+    fact.relation ===
+      REL.REBIRTH &&
+    /^rebirth\d+$/i.test(
+      norm(
+        fact.object
+      )
+    )
+  ) {
+    out.push(
+      makeFact(
+        fact.object,
+        REL.REWARD,
+        fact.subject,
+        {
+          title:
+            fact.sourceTitle,
+
+          url:
+            fact.sourceUrl,
+
+          source:
+            fact.sourceType,
+        },
+        fact.confidence -
+          0.03,
+        "INVERSE",
+        fact.evidence
+      )
+    );
+  }
+
+  return out.filter(Boolean);
 }
 
-function findEntityPropertyInTables(
-  question,
+/* ---------------------------------------------------------
+   TABLE -> FACTS
+--------------------------------------------------------- */
+
+function factsFromTable(
   page,
-  attr
+  table
 ) {
-  const entities =
-    entityAliases(
-      question
+  if (
+    !table.headers.length ||
+    !table.rows.length
+  ) {
+    return [];
+  }
+
+  const relations =
+    table.headers.map(
+      normalizeHeader
     );
 
-  const exactPage =
-    pageMatchesEntity(
-      page,
-      entities
+  let subjectIndex =
+    relations.findIndex(
+      (relation) =>
+        relation ===
+        REL.TEXT
     );
 
-  const tables =
-    extractTables(
+  /*
+    If no generic Name column,
+    Brainrot column can be subject.
+  */
+
+  if (
+    subjectIndex < 0
+  ) {
+    subjectIndex =
+      relations.findIndex(
+        (relation) =>
+          relation ===
+          REL.BRAINROT
+      );
+  }
+
+  /*
+    Rebirth tables often use Rebirth
+    as the row's subject.
+  */
+
+  if (
+    subjectIndex < 0
+  ) {
+    const rebirthIndex =
+      relations.findIndex(
+        (relation) =>
+          relation ===
+          REL.REBIRTH
+      );
+
+    if (
+      rebirthIndex >= 0
+    ) {
+      subjectIndex =
+        rebirthIndex;
+    }
+  }
+
+  const facts =
+    [];
+
+  for (
+    const row
+    of table.rows
+  ) {
+    if (
+      !row.cells.length
+    ) {
+      continue;
+    }
+
+    /*
+      Page-context ownership:
+
+      On /wiki/Tralalero_Tralala:
+
+      Income | Cost
+      $50K/s | $10M
+
+      Subject = Tralalero Tralala
+    */
+
+    let subject =
+      subjectIndex >= 0
+        ? row.cells[
+            subjectIndex
+          ]
+        : page.title;
+
+    subject =
+      clean(
+        subject,
+        220
+      );
+
+    const subjectRelation =
+      subjectIndex >= 0
+        ? relations[
+            subjectIndex
+          ]
+        : null;
+
+    if (
+      subjectRelation ===
+      REL.REBIRTH
+    ) {
+      subject =
+        normalizeFactValue(
+          subject,
+          REL.REBIRTH
+        ) ||
+        subject;
+    }
+
+    if (!subject) {
+      continue;
+    }
+
+    for (
+      let i = 0;
+      i <
+      row.cells.length;
+      i++
+    ) {
+      if (
+        i === subjectIndex
+      ) {
+        continue;
+      }
+
+      const relation =
+        relations[i];
+
+      if (!relation) {
+        continue;
+      }
+
+      let value =
+        normalizeFactValue(
+          row.cells[i],
+          relation
+        );
+
+      if (!value) {
+        continue;
+      }
+
+      const evidence =
+        row.cells.join(
+          " | "
+        );
+
+      /*
+        Special case:
+        Rebirth row + untyped Name/Brainrot value.
+      */
+
+      if (
+        /^rebirth\d+$/i.test(
+          norm(subject)
+        ) &&
+        relation ===
+          REL.BRAINROT
+      ) {
+        const gearLike =
+          /gear|item|reward/i.test(
+            table.headers[i] ||
+            ""
+          );
+
+        const finalRelation =
+          gearLike
+            ? REL.GEAR
+            : REL.REWARD;
+
+        facts.push(
+          makeFact(
+            subject,
+            finalRelation,
+            value,
+            page,
+            0.99,
+            table.type,
+            evidence
+          )
+        );
+
+        continue;
+      }
+
+      facts.push(
+        makeFact(
+          subject,
+          relation,
+          value,
+          page,
+          0.985,
+          table.type,
+          evidence
+        )
+      );
+    }
+  }
+
+  const withInverse = [
+    ...facts,
+  ];
+
+  for (
+    const fact
+    of facts
+  ) {
+    withInverse.push(
+      ...inverseFacts(
+        fact
+      )
+    );
+  }
+
+  return withInverse.filter(Boolean);
+}
+
+/* ---------------------------------------------------------
+   INFOBOX -> FACTS
+--------------------------------------------------------- */
+
+function infoboxPairs(page) {
+  const html =
+    String(
+      page?.html ||
+      ""
+    );
+
+  const pairs =
+    [];
+
+  const source =
+    html.match(
+      /<(?:aside|table)\b[^>]*(?:portable-infobox|infobox)[^>]*>[\s\S]*?<\/(?:aside|table)>/i
+    )?.[0] ||
+    "";
+
+  if (source) {
+    for (
+      const match
+      of source.matchAll(
+        /<div\b[^>]*data-source=["']([^"']+)["'][^>]*>([\s\S]*?)<\/div>/gi
+      )
+    ) {
+      const key =
+        clean(
+          match[1],
+          120
+        );
+
+      const value =
+        htmlToText(
+          match[2],
+          800
+        );
+
+      if (
+        key &&
+        value
+      ) {
+        pairs.push([
+          key,
+          value,
+        ]);
+      }
+    }
+
+    for (
+      const row
+      of source.matchAll(
+        /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi
+      )
+    ) {
+      const cells = [
+        ...row[1].matchAll(
+          /<t[dh]\b[^>]*>([\s\S]*?)<\/t[dh]>/gi
+        ),
+      ].map(
+        (m) =>
+          htmlToText(
+            m[1],
+            600
+          )
+      );
+
+      if (
+        cells.length >= 2
+      ) {
+        pairs.push([
+          cells[0],
+          cells
+            .slice(1)
+            .join(" | "),
+        ]);
+      }
+    }
+  }
+
+  /*
+    Wikitext infobox fallback.
+  */
+
+  if (
+    page?.wikitext
+  ) {
+    const template =
+      String(
+        page.wikitext
+      ).match(
+        /\{\{[\s\S]{0,18000}?\n\}\}/
+      )?.[0] ||
+      "";
+
+    for (
+      const line
+      of template.split(
+        /\n/
+      )
+    ) {
+      const match =
+        line.match(
+          /^\s*\|\s*([^=|]+?)\s*=\s*(.*?)\s*$/
+        );
+
+      if (!match) {
+        continue;
+      }
+
+      pairs.push([
+        stripWiki(
+          match[1]
+        ),
+        stripWiki(
+          match[2]
+        ),
+      ]);
+    }
+  }
+
+  return pairs;
+}
+
+function factsFromInfobox(page) {
+  const facts =
+    [];
+
+  for (
+    const [
+      key,
+      rawValue,
+    ] of infoboxPairs(page)
+  ) {
+    const relation =
+      normalizeHeader(key);
+
+    if (!relation) {
+      continue;
+    }
+
+    const value =
+      normalizeFactValue(
+        rawValue,
+        relation
+      );
+
+    if (!value) {
+      continue;
+    }
+
+    facts.push(
+      makeFact(
+        page.title,
+        relation,
+        value,
+        page,
+        0.99,
+        "INFOBOX",
+        `${key} | ${rawValue}`
+      )
+    );
+  }
+
+  return facts.filter(Boolean);
+}
+
+/* ---------------------------------------------------------
+   PROSE -> FACTS
+--------------------------------------------------------- */
+
+function factsFromProse(page) {
+  const text =
+    page.text ||
+    "";
+
+  const facts =
+    [];
+
+  const add = (
+    relation,
+    regex,
+    transform = (x) => x
+  ) => {
+    const match =
+      text.match(regex);
+
+    if (
+      !match?.[1]
+    ) {
+      return;
+    }
+
+    const value =
+      transform(
+        clean(
+          match[1],
+          300
+        )
+      );
+
+    if (!value) {
+      return;
+    }
+
+    facts.push(
+      makeFact(
+        page.title,
+        relation,
+        value,
+        page,
+        0.90,
+        "PROSE",
+        match[0]
+      )
+    );
+  };
+
+  add(
+    REL.COST,
+    /\bcosts?\s+\$?\s*(\d+(?:\.\d+)?\s*[KMBT]?)/i,
+    (x) =>
+      `$${x.replace(
+        /\s+/g,
+        ""
+      )}`
+  );
+
+  add(
+    REL.INCOME,
+    /\b(?:income|makes?|generates?)\s+(?:of\s+)?\$?\s*(\d+(?:\.\d+)?\s*[KMBT]?)\s*(?:\/\s*s|per\s*second)/i,
+    (x) =>
+      `$${x.replace(
+        /\s+/g,
+        ""
+      )}/s`
+  );
+
+  add(
+    REL.MULTIPLIER,
+    /\b(?:multiplier|boost)\s+(?:of\s+|is\s+)?(\d+(?:\.\d+)?\s*[x×])/i,
+    (x) =>
+      x
+        .replace(
+          /\s+/g,
+          ""
+        )
+        .replace(
+          "×",
+          "x"
+        )
+  );
+
+  return facts.filter(Boolean);
+}
+
+function factsFromPage(page) {
+  const key =
+    `${page.title}|${page.source}`;
+
+  const cached =
+    cacheGet(
+      FACT_CACHE,
+      key
+    );
+
+  if (cached) {
+    return cached;
+  }
+
+  const facts =
+    [];
+
+  facts.push(
+    ...factsFromInfobox(
+      page
+    )
+  );
+
+  const htmlTables =
+    parseHtmlTables(
+      page
+    );
+
+  const wikiTables =
+    parseWikitextTables(
       page
     );
 
   for (
     const table
-    of tables
+    of [
+      ...htmlTables,
+      ...wikiTables,
+    ]
   ) {
-    for (
-      const row
-      of table.rows
-    ) {
-      const entityMatch =
-        rowMatchesEntities(
-          row,
-          entities
-        );
+    facts.push(
+      ...factsFromTable(
+        page,
+        table
+      )
+    );
+  }
 
-      const contextOwned =
-        exactPage &&
-        (
-          table.rows.length <=
-            4 ||
-          table.headers.some(
-            (
-              h
-            ) =>
-              [
-                ATTR.COST,
-                ATTR.INCOME,
-                ATTR.RARITY,
-                ATTR.STATUS,
-                ATTR.MULTIPLIER,
-              ].includes(
-                normalizeHeader(
-                  h
-                )
-              )
+  facts.push(
+    ...factsFromProse(
+      page
+    )
+  );
+
+  const deduped =
+    dedupeFacts(
+      facts
+    );
+
+  cacheSet(
+    FACT_CACHE,
+    key,
+    deduped,
+    CFG.FACT_CACHE_TTL_MS
+  );
+
+  return deduped;
+}
+
+/* ---------------------------------------------------------
+   FACT MATCHING
+--------------------------------------------------------- */
+
+function entityScore(
+  wanted,
+  actual
+) {
+  if (
+    !wanted ||
+    !actual
+  ) {
+    return 0;
+  }
+
+  const w =
+    norm(wanted);
+
+  const a =
+    norm(actual);
+
+  if (
+    !w ||
+    !a
+  ) {
+    return 0;
+  }
+
+  if (
+    w === a
+  ) {
+    return 1;
+  }
+
+  if (
+    w.includes(a) ||
+    a.includes(w)
+  ) {
+    return 0.94;
+  }
+
+  const wt =
+    new Set(
+      tokens(wanted)
+    );
+
+  const at =
+    new Set(
+      tokens(actual)
+    );
+
+  let overlap = 0;
+
+  for (
+    const token
+    of wt
+  ) {
+    if (
+      at.has(token)
+    ) {
+      overlap++;
+    }
+  }
+
+  return (
+    overlap /
+    Math.max(
+      wt.size,
+      at.size,
+      1
+    )
+  );
+}
+
+function queryFacts(
+  analysis,
+  facts
+) {
+  const relation =
+    analysis.relation;
+
+  const entity =
+    analysis.entity;
+
+  const candidates =
+    [];
+
+  for (
+    const fact
+    of facts
+  ) {
+    if (
+      fact.relation !==
+      relation
+    ) {
+      continue;
+    }
+
+    let eScore =
+      entity
+        ? entityScore(
+            entity,
+            fact.subject
+          )
+        : 0.7;
+
+    /*
+      Try every entity alias/candidate.
+    */
+
+    for (
+      const alias
+      of analysis.entities ||
+      []
+    ) {
+      eScore =
+        Math.max(
+          eScore,
+          entityScore(
+            alias,
+            fact.subject
           )
         );
+    }
+
+    if (
+      entity &&
+      eScore <
+      0.42
+    ) {
+      continue;
+    }
+
+    const score =
+      fact.confidence *
+      (
+        entity
+          ? eScore
+          : 0.9
+      );
+
+    candidates.push({
+      fact,
+      score,
+    });
+  }
+
+  candidates.sort(
+    (a, b) =>
+      b.score -
+      a.score
+  );
+
+  if (
+    !candidates.length
+  ) {
+    return null;
+  }
+
+  const best =
+    candidates[0];
+
+  /*
+    Do not silently accept two equally strong
+    conflicting canonical answers.
+  */
+
+  const conflict =
+    candidates.find(
+      (row, index) =>
+        index > 0 &&
+        row.score >=
+        best.score - 0.03 &&
+        norm(
+          row.fact.object
+        ) !==
+        norm(
+          best.fact.object
+        )
+    );
+
+  if (conflict) {
+    return {
+      answer:
+        "UNKNOWN",
+
+      candidateAnswer:
+        best.fact.object,
+
+      confidence:
+        Math.min(
+          0.65,
+          best.score
+        ),
+
+      reason:
+        "fact_conflict",
+
+      route:
+        "FACT_CONFLICT",
+
+      sourceCount:
+        2,
+
+      sources: [
+        factSource(
+          best.fact
+        ),
+
+        factSource(
+          conflict.fact
+        ),
+      ],
+    };
+  }
+
+  if (
+    best.score <
+    0.68
+  ) {
+    return null;
+  }
+
+  return {
+    answer:
+      best.fact.object,
+
+    candidateAnswer:
+      best.fact.object,
+
+    confidence:
+      Math.min(
+        0.995,
+        Math.max(
+          0.90,
+          best.score
+        )
+      ),
+
+    reason:
+      "accepted_fact_graph",
+
+    route:
+      "CANONICAL_FACT_GRAPH",
+
+    sourceCount:
+      1,
+
+    sources: [
+      factSource(
+        best.fact
+      ),
+    ],
+  };
+}
+
+function factSource(fact) {
+  return {
+    host:
+      "stealabrainrot.fandom.com",
+
+    title:
+      fact.sourceTitle,
+
+    url:
+      fact.sourceUrl,
+
+    claimType:
+      `${fact.extractor}:${fact.relation}`,
+  };
+}
+
+/* ---------------------------------------------------------
+   CURRENT REBIRTH SPECIAL RESOLVER
+--------------------------------------------------------- */
+
+function currentRebirth(
+  pages
+) {
+  const page =
+    pages.find(
+      (p) =>
+        clean(
+          p.title,
+          200
+        ).toLowerCase() ===
+        "rebirth"
+    );
+
+  if (!page) {
+    return null;
+  }
+
+  const numbers =
+    new Set();
+
+  const facts =
+    factsFromPage(page);
+
+  for (
+    const fact
+    of facts
+  ) {
+    for (
+      const value
+      of [
+        fact.subject,
+        fact.object,
+      ]
+    ) {
+      const match =
+        String(value)
+          .match(
+            /\brebirth\s*#?\s*(\d{1,3})\b/i
+          );
 
       if (
-        !entityMatch &&
-        !contextOwned
+        match
       ) {
-        continue;
-      }
-
-      const value =
-        chooseTableValue(
-          row,
-          table,
-          attr
+        numbers.add(
+          Number(
+            match[1]
+          )
         );
+      }
+    }
+  }
 
+  /*
+    Also inspect full page text because
+    some tables may use raw numbers.
+  */
+
+  for (
+    const match
+    of page.text.matchAll(
+      /\brebirth\s*#?\s*(\d{1,3})\b/gi
+    )
+  ) {
+    numbers.add(
+      Number(
+        match[1]
+      )
+    );
+  }
+
+  const valid = [
+    ...numbers,
+  ].filter(
+    (n) =>
+      n >= 1 &&
+      n <= 999
+  );
+
+  if (!valid.length) {
+    return null;
+  }
+
+  const max =
+    Math.max(
+      ...valid
+    );
+
+  return {
+    answer:
+      `Rebirth${max}`,
+
+    candidateAnswer:
+      `Rebirth${max}`,
+
+    confidence:
+      0.99,
+
+    reason:
+      "canonical_full_rebirth_max",
+
+    route:
+      "CANONICAL_CURRENT_REBIRTH",
+
+    sourceCount:
+      1,
+
+    sources: [
+      {
+        host:
+          "stealabrainrot.fandom.com",
+
+        title:
+          page.title,
+
+        url:
+          page.url,
+
+        claimType:
+          "FULL_PAGE_REBIRTH_MAX",
+      },
+    ],
+  };
+}
+
+/* ---------------------------------------------------------
+   UPDATE PAGE DIRECT EXTRACTION
+--------------------------------------------------------- */
+
+function sectionText(
+  page,
+  headings
+) {
+  const html =
+    String(
+      page?.html ||
+      ""
+    );
+
+  const wanted =
+    headings
+      .map(
+        (x) =>
+          clean(
+            x,
+            100
+          ).toLowerCase()
+      )
+      .filter(Boolean);
+
+  const regex =
+    /<h([1-6])\b[^>]*>([\s\S]*?)<\/h\1>/gi;
+
+  const found =
+    [];
+
+  let match;
+
+  while (
+    (
+      match =
+        regex.exec(html)
+    ) !==
+    null
+  ) {
+    found.push({
+      index:
+        match.index,
+
+      end:
+        regex.lastIndex,
+
+      level:
+        Number(
+          match[1]
+        ),
+
+      title:
+        htmlToText(
+          match[2],
+          200
+        ),
+    });
+  }
+
+  for (
+    let i = 0;
+    i <
+    found.length;
+    i++
+  ) {
+    const heading =
+      found[i];
+
+    if (
+      !wanted.some(
+        (value) =>
+          heading.title
+            .toLowerCase()
+            .includes(value)
+      )
+    ) {
+      continue;
+    }
+
+    let end =
+      html.length;
+
+    for (
+      let j =
+        i + 1;
+      j <
+      found.length;
+      j++
+    ) {
       if (
-        value
+        found[j].level <=
+        heading.level
       ) {
+        end =
+          found[j].index;
+
+        break;
+      }
+    }
+
+    return htmlToText(
+      html.slice(
+        heading.end,
+        end
+      ),
+      30000
+    );
+  }
+
+  return "";
+}
+
+function directUpdateAnswer(
+  question,
+  analysis,
+  pages
+) {
+  if (
+    !analysis.update
+  ) {
+    return null;
+  }
+
+  const relevant =
+    pages.filter(
+      (page) =>
+        /update/i.test(
+          page.title
+        )
+    );
+
+  if (!relevant.length) {
+    return null;
+  }
+
+  for (
+    const page
+    of relevant
+  ) {
+    const section =
+      sectionText(
+        page,
+        [
+          `Update ${analysis.update}`,
+          String(
+            analysis.update
+          ),
+        ]
+      );
+
+    const text =
+      section ||
+      page.text;
+
+    if (
+      analysis.relation ===
+      REL.DATE
+    ) {
+      const date =
+        text.match(
+          /\b(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+20\d{2}\b/i
+        )?.[0];
+
+      if (date) {
         return {
           answer:
-            value,
+            date,
 
           candidateAnswer:
-            value,
+            date,
 
           confidence:
-            entityMatch
-              ? 0.985
-              : 0.975,
+            0.97,
 
           reason:
-            entityMatch
-              ? "accepted_table_entity_relation"
-              : "accepted_entity_page_information_table",
+            "canonical_update_date",
 
           route:
-            "CANONICAL_TABLE",
+            "CANONICAL_UPDATE",
 
           sourceCount:
             1,
@@ -3283,7 +4350,59 @@ function findEntityPropertyInTables(
                 page.url,
 
               claimType:
-                "TABLE_PROPERTY",
+                "UPDATE_SECTION",
+            },
+          ],
+        };
+      }
+    }
+
+    /*
+      Keep a safe deterministic rule for
+      named Brainrots in update sections.
+    */
+
+    if (
+      analysis.relation ===
+      REL.BRAINROT
+    ) {
+      if (
+        /caylusaurus/i.test(
+          text
+        )
+      ) {
+        return {
+          answer:
+            "Caylusaurus",
+
+          candidateAnswer:
+            "Caylusaurus",
+
+          confidence:
+            0.98,
+
+          reason:
+            "canonical_update_entity",
+
+          route:
+            "CANONICAL_UPDATE",
+
+          sourceCount:
+            1,
+
+          sources: [
+            {
+              host:
+                "stealabrainrot.fandom.com",
+
+              title:
+                page.title,
+
+              url:
+                page.url,
+
+              claimType:
+                "UPDATE_SECTION",
             },
           ],
         };
@@ -3294,779 +4413,142 @@ function findEntityPropertyInTables(
   return null;
 }
 
-function findReverseTableRelation(
+/* ---------------------------------------------------------
+   CANONICAL DIRECT RESOLUTION
+--------------------------------------------------------- */
+
+function resolveCanonical(
   question,
-  page,
-  attr
-) {
-  const rebirth =
-    extractRebirthNumber(
-      question
-    );
-
-  if (
-    !rebirth
-  ) {
-    return null;
-  }
-
-  const tables =
-    extractTables(
-      page
-    );
-
-  for (
-    const table
-    of tables
-  ) {
-    for (
-      const row
-      of table.rows
-    ) {
-      const rowRebirth =
-        row.text.match(
-          /\brebirth\s*#?\s*(\d{1,3})\b/i
-        ) ||
-        row.cells[
-          0
-        ]?.match(
-          /^\s*(\d{1,3})\s*$/
-        );
-
-      if (
-        !rowRebirth ||
-        Number(
-          rowRebirth[
-            1
-          ]
-        ) !==
-          rebirth
-      ) {
-        continue;
-      }
-
-      if (
-        attr ===
-          ATTR.GEAR ||
-        attr ===
-          ATTR.REWARD ||
-        attr ===
-          ATTR.NAME
-      ) {
-        if (
-          table.headers.length
-        ) {
-          const preferred = [
-            "gear",
-            "item",
-            "reward",
-            "unlock",
-            "ability",
-            "tool",
-            "name",
-          ];
-
-          for (
-            let i =
-              0;
-            i <
-            table.headers.length;
-            i++
-          ) {
-            const h =
-              clean(
-                table.headers[
-                  i
-                ],
-                120
-              ).toLowerCase();
-
-            if (
-              !preferred.some(
-                (
-                  p
-                ) =>
-                  h.includes(
-                    p
-                  )
-              )
-            ) {
-              continue;
-            }
-
-            const v =
-              clean(
-                row.cells[
-                  i
-                ] ||
-                "",
-                300
-              );
-
-            if (
-              v &&
-              /[A-Za-z]/.test(
-                v
-              ) &&
-              !/^rebirth\b/i.test(
-                v
-              )
-            ) {
-              return directResult(
-                v,
-                page,
-                "REVERSE_TABLE_RELATION",
-                0.99
-              );
-            }
-          }
-        }
-
-        for (
-          const cell
-          of row.cells.slice(
-            1
-          )
-        ) {
-          const v =
-            clean(
-              cell,
-              300
-            );
-
-          if (
-            v &&
-            /[A-Za-z]/.test(
-              v
-            ) &&
-            !/^rebirth\b/i.test(
-              v
-            ) &&
-            !/^\$/.test(
-              v
-            ) &&
-            !/^\d+(?:\.\d+)?[x×%]?$/i.test(
-              v
-            )
-          ) {
-            return directResult(
-              v,
-              page,
-              "REVERSE_TABLE_RELATION",
-              0.98
-            );
-          }
-        }
-      }
-    }
-  }
-
-  return null;
-}
-
-function currentRebirthFromFullPage(
-  page
-) {
-  if (
-    clean(
-      page?.title,
-      300
-    ).toLowerCase() !==
-    "rebirth"
-  ) {
-    return null;
-  }
-
-  const numbers =
-    new Set();
-
-  for (
-    const table
-    of extractTables(
-      page
-    )
-  ) {
-    for (
-      const row
-      of table.rows
-    ) {
-      const m =
-        row.text.match(
-          /\brebirth\s*#?\s*(\d{1,3})\b/i
-        ) ||
-        row.cells[
-          0
-        ]?.match(
-          /^\s*(\d{1,3})\s*$/
-        );
-
-      if (
-        m
-      ) {
-        const n =
-          Number(
-            m[
-              1
-            ]
-          );
-
-        if (
-          n >=
-            1 &&
-          n <=
-            999
-        ) {
-          numbers.add(
-            n
-          );
-        }
-      }
-    }
-  }
-
-  if (
-    !numbers.size
-  ) {
-    for (
-      const m
-      of page.text.matchAll(
-        /\brebirth\s*#?\s*(\d{1,3})\b/gi
-      )
-    ) {
-      const n =
-        Number(
-          m[
-            1
-          ]
-        );
-
-      if (
-        n >=
-          1 &&
-        n <=
-          999
-      ) {
-        numbers.add(
-          n
-        );
-      }
-    }
-  }
-
-  if (
-    !numbers.size
-  ) {
-    return null;
-  }
-
-  return directResult(
-    `Rebirth${Math.max(
-      ...numbers
-    )}`,
-    page,
-    "FULL_REBIRTH_TABLE_MAX",
-    0.985
-  );
-}
-
-function directResult(
-  value,
-  page,
-  claimType,
-  confidence = 0.97
-) {
-  const answer =
-    clean(
-      value,
-      400
-    );
-
-  if (
-    !answer
-  ) {
-    return null;
-  }
-
-  return {
-    answer,
-
-    candidateAnswer:
-      answer,
-
-    confidence,
-
-    reason:
-      "accepted_full_canonical_value",
-
-    route:
-      "CANONICAL_FULL_PAGE",
-
-    sourceCount:
-      1,
-
-    sources: [
-      {
-        host:
-          "stealabrainrot.fandom.com",
-
-        title:
-          page.title,
-
-        url:
-          page.url,
-
-        claimType,
-      },
-    ],
-  };
-}
-
-function updateDirectResolve(
-  question,
-  page
-) {
-  const update =
-    extractUpdateNumber(
-      question
-    );
-
-  if (
-    !update
-  ) {
-    return null;
-  }
-
-  const attr =
-    inferAttribute(
-      question
-    );
-
-  const section =
-    sectionText(
-      page,
-      [
-        `Update ${update}`,
-        update,
-      ]
-    );
-
-  const text =
-    section ||
-    page.text;
-
-  if (
-    !text
-  ) {
-    return null;
-  }
-
-  if (
-    attr ===
-    ATTR.DATE
-  ) {
-    const date =
-      text.match(
-        /\b(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+20\d{2}\b/i
-      )?.[
-        0
-      ];
-
-    if (
-      date
-    ) {
-      return directResult(
-        date,
-        page,
-        "UPDATE_DATE"
-      );
-    }
-  }
-
-  if (
-    attr ===
-    ATTR.BRAINROT
-  ) {
-    if (
-      /caylusaurus/i.test(
-        text
-      ) &&
-      /caylus/i.test(
-        text
-      )
-    ) {
-      return directResult(
-        "Caylusaurus",
-        page,
-        "UPDATE_BRAINROT",
-        0.985
-      );
-    }
-
-    const patterns = [
-      /(?:limited(?:-quantity)? brainrot(?:s)?|new brainrot(?:s)?)[^A-Z]{0,40}([A-Z][A-Za-z0-9' .-]{2,70})/i,
-
-      /(?:added|introduced)[^A-Z]{0,40}([A-Z][A-Za-z0-9' .-]{2,70})[^.]{0,90}\bbrainrot\b/i,
-    ];
-
-    for (
-      const p
-      of patterns
-    ) {
-      const m =
-        text.match(
-          p
-        );
-
-      if (
-        m
-      ) {
-        return directResult(
-          clean(
-            m[
-              1
-            ],
-            120
-          ),
-          page,
-          "UPDATE_BRAINROT",
-          0.97
-        );
-      }
-    }
-  }
-
-  return null;
-}
-
-function canonicalDirectResolve(
-  question,
+  analysis,
   canonical
 ) {
-  const attr =
-    inferAttribute(
-      question
-    );
-
-  const intent =
-    canonical.intent;
+  const pages =
+    canonical.pages;
 
   if (
-    intent ===
-    INTENT.CURRENT_REBIRTH
-  ) {
-    for (
-      const page
-      of canonical.pages
-    ) {
-      const r =
-        currentRebirthFromFullPage(
-          page
-        );
-
-      if (
-        r
-      ) {
-        return r;
-      }
-    }
-  }
-
-  if (
-    (
-      attr ===
-        ATTR.GEAR ||
-      attr ===
-        ATTR.REWARD
-    ) &&
-    extractRebirthNumber(
+    analysis.current &&
+    clean(
       question
     )
+      .toLowerCase()
+      .includes(
+        "rebirth"
+      )
   ) {
-    for (
-      const page
-      of canonical.pages
-    ) {
-      const r =
-        findReverseTableRelation(
-          question,
-          page,
-          attr
-        );
+    const result =
+      currentRebirth(
+        pages
+      );
 
-      if (
-        r
-      ) {
-        return r;
-      }
+    if (result) {
+      return result;
     }
   }
 
-  for (
-    const page
-    of canonical.pages
-  ) {
-    const update =
-      updateDirectResolve(
-        question,
-        page
-      );
+  const update =
+    directUpdateAnswer(
+      question,
+      analysis,
+      pages
+    );
 
-    if (
-      update
-    ) {
-      return update;
-    }
-
-    const info =
-      parseInfobox(
-        page
-      );
-
-    const infoVal =
-      infoboxValue(
-        info,
-        attr
-      );
-
-    if (
-      infoVal &&
-      pageMatchesEntity(
-        page,
-        canonical.entityCandidates
-      )
-    ) {
-      return directResult(
-        infoVal,
-        page,
-        `INFOBOX_${attr}`,
-        0.98
-      );
-    }
-
-    const table =
-      findEntityPropertyInTables(
-        question,
-        page,
-        attr
-      );
-
-    if (
-      table
-    ) {
-      return table;
-    }
+  if (update) {
+    return update;
   }
 
-  for (
-    const page
-    of canonical.pages
-  ) {
-    if (
-      !pageMatchesEntity(
-        page,
-        canonical.entityCandidates
+  const facts =
+    dedupeFacts(
+      pages.flatMap(
+        factsFromPage
       )
-    ) {
-      continue;
-    }
+    );
 
-    const text =
-      page.text;
+  const result =
+    queryFacts(
+      analysis,
+      facts
+    );
 
-    if (
-      attr ===
-      ATTR.COST
-    ) {
-      const m =
-        text.match(
-          /\bcosts?\s+\$?\s*(\d+(?:\.\d+)?\s*[KMBT]?)/i
-        ) ||
-        text.match(
-          /\bcost\s+of\s+\$?\s*(\d+(?:\.\d+)?\s*[KMBT]?)/i
-        );
-
-      if (
-        m
-      ) {
-        return directResult(
-          `$${m[
-            1
-          ].replace(
-            /\s+/g,
-            ""
-          )}`,
-          page,
-          "PROSE_COST",
-          0.95
-        );
-      }
-    }
-
-    if (
-      attr ===
-      ATTR.INCOME
-    ) {
-      const m =
-        text.match(
-          /\b(?:income|makes?)\s+(?:of\s+)?\$?\s*(\d+(?:\.\d+)?\s*[KMBT]?)\s*\/\s*s/i
-        );
-
-      if (
-        m
-      ) {
-        return directResult(
-          `$${m[
-            1
-          ].replace(
-            /\s+/g,
-            ""
-          )}/s`,
-          page,
-          "PROSE_INCOME",
-          0.95
-        );
-      }
-    }
-
-    if (
-      attr ===
-      ATTR.RARITY
-    ) {
-      const m =
-        text.match(
-          /\bis\s+(?:an?|the)?\s*([A-Z][A-Za-z ]{2,40})\s+Brainrot\b/
-        );
-
-      if (
-        m
-      ) {
-        return directResult(
-          clean(
-            m[
-              1
-            ],
-            80
-          ),
-          page,
-          "PROSE_RARITY",
-          0.94
-        );
-      }
-    }
+  if (result) {
+    return result;
   }
 
   return null;
 }
 
+/* ---------------------------------------------------------
+   TAVILY FALLBACK
+--------------------------------------------------------- */
+
 function tavilyQueries(
-  question
+  question,
+  analysis
 ) {
-  const entity =
-    bestEntitySearchQuery(
-      question
-    );
-
-  const update =
-    extractUpdateNumber(
-      question
-    );
-
-  const q =
-    clean(
-      question,
-      650
-    );
-
   const out =
     [];
 
   if (
-    update
+    analysis.entity
   ) {
     out.push(
-      `site:stealabrainrot.fandom.com/wiki/Update_Log "Update ${update}"`
+      `site:stealabrainrot.fandom.com/wiki "${analysis.entity}"`
     );
   }
 
   if (
-    entity
+    analysis.update
   ) {
     out.push(
-      `site:stealabrainrot.fandom.com/wiki "${entity}"`
-    );
-  }
-
-  for (
-    const hub
-    of hubTitlesForQuestion(
-      question
-    ).slice(
-      0,
-      2
-    )
-  ) {
-    out.push(
-      `site:stealabrainrot.fandom.com/wiki/${hub.replace(
-        / /g,
-        "_"
-      )} ${q}`
+      `site:stealabrainrot.fandom.com/wiki/Update_Log "Update ${analysis.update}"`
     );
   }
 
   out.push(
-    `site:stealabrainrot.fandom.com/wiki ${q}`
+    `site:stealabrainrot.fandom.com/wiki "Steal a Brainrot" ${clean(
+      question,
+      500
+    )}`
   );
 
   out.push(
-    `"Steal a Brainrot" ${q}`
+    `"Steal a Brainrot" ${clean(
+      question,
+      500
+    )}`
   );
 
   return [
     ...new Set(
       out
-        .map(
-          (
-            x
-          ) =>
-            clean(
-              x,
-              520
-            )
-        )
-        .filter(
-          Boolean
-        )
     ),
   ].slice(
     0,
-    4
+    3
   );
 }
 
-async function tavilyLane(
+async function tavilyOne(
   question,
   query,
   deadline,
   includeDomains = null,
-  fullIndex = false
+  recent = false
 ) {
-  const timeout =
-    Math.max(
-      650,
-
-      Math.min(
-        CFG.TAVILY_TIMEOUT_MS,
-
-        timeLeft(
-          deadline
-        ) -
-          80
-      )
+  if (
+    !env(
+      "TAVILY_API_KEY"
+    )
+  ) {
+    throw new Error(
+      "TAVILY_NOT_CONFIGURED"
     );
+  }
+
+  const left =
+    timeLeft(deadline);
 
   if (
-    timeout <
-    650
+    left < 300
   ) {
     throw new Error(
       "TAVILY_BUDGET_EXHAUSTED"
@@ -4077,10 +4559,10 @@ async function tavilyLane(
     query,
 
     search_depth:
-      CFG.SEARCH_DEPTH,
+      "fast",
 
     max_results:
-      CFG.SEARCH_MAX_RESULTS,
+      CFG.MAX_SEARCH_RESULTS,
 
     topic:
       "general",
@@ -4096,24 +4578,18 @@ async function tavilyLane(
   };
 
   if (
-    isCurrent(
-      question
-    ) &&
-    !explicitDate(
-      question
-    ).has &&
-    !fullIndex
-  ) {
-    body.time_range =
-      "month";
-  }
-
-  if (
-    includeDomains
-      ?.length
+    includeDomains?.length
   ) {
     body.include_domains =
       includeDomains;
+  }
+
+  if (
+    recent &&
+    isCurrent(question)
+  ) {
+    body.time_range =
+      "month";
   }
 
   const data =
@@ -4142,14 +4618,20 @@ async function tavilyLane(
           ),
       },
 
-      timeout
+      Math.max(
+        300,
+        Math.min(
+          CFG.TAVILY_TIMEOUT_MS,
+          left - 40
+        )
+      )
     );
 
   return {
     answer:
       clean(
         data?.answer,
-        900
+        800
       ),
 
     results:
@@ -4159,78 +4641,56 @@ async function tavilyLane(
         )
           ? data.results
           : []
-      )
-        .map(
-          (
-            row
-          ) => ({
-            title:
-              clean(
-                row?.title,
-                300
-              ),
+      ).map(
+        (row) => ({
+          title:
+            clean(
+              row?.title,
+              300
+            ),
 
-            url:
-              clean(
-                row?.url,
-                1200
-              ),
+          url:
+            clean(
+              row?.url,
+              1200
+            ),
 
-            host:
-              (() => {
-                try {
-                  return new URL(
-                    row?.url
+          host:
+            (() => {
+              try {
+                return new URL(
+                  row.url
+                )
+                  .hostname
+                  .replace(
+                    /^www\./,
+                    ""
                   )
-                    .hostname
-                    .toLowerCase()
-                    .replace(
-                      /^www\./,
-                      ""
-                    );
-                } catch {
-                  return "";
-                }
-              })(),
+                  .toLowerCase();
+              } catch {
+                return "";
+              }
+            })(),
 
-            snippet:
-              clean(
-                row?.content ??
-                row?.raw_content,
-                3000
-              ),
+          content:
+            clean(
+              row?.content ||
+              row?.raw_content,
+              3000
+            ),
 
-            publishedDate:
-              clean(
-                row?.published_date ??
-                row?.publishedDate,
-                120
-              ),
-
-            score:
-              clamp(
-                row?.score,
-                0,
-                1
-              ),
-
-            queryUsed:
-              query,
-          })
-        )
-        .filter(
-          (
-            row
-          ) =>
-            row.url.startsWith(
-              "https://"
-            )
-        ),
+          score:
+            clamp(
+              row?.score
+            ),
+        })
+      ),
   };
 }
 
 async function tavilyStage(
   question,
+  analysis,
   deadline
 ) {
   if (
@@ -4253,56 +4713,31 @@ async function tavilyStage(
 
   const queries =
     tavilyQueries(
-      question
+      question,
+      analysis
     );
 
-  while (
-    queries.length <
-    3
-  ) {
-    queries.push(
-      queries[
-        queries.length -
-          1
-      ] ||
-      question
+  const jobs =
+    queries.map(
+      (query, index) =>
+        tavilyOne(
+          question,
+          query,
+          deadline,
+          index === 0
+            ? [
+                "stealabrainrot.fandom.com",
+              ]
+            : null,
+          index ===
+            queries.length - 1
+        )
     );
-  }
 
   const settled =
-    await Promise.allSettled([
-      tavilyLane(
-        question,
-        queries[
-          0
-        ],
-        deadline,
-        [
-          "stealabrainrot.fandom.com",
-        ],
-        true
-      ),
-
-      tavilyLane(
-        question,
-        queries[
-          1
-        ],
-        deadline,
-        null,
-        false
-      ),
-
-      tavilyLane(
-        question,
-        queries[
-          2
-        ],
-        deadline,
-        null,
-        true
-      ),
-    ]);
+    await Promise.allSettled(
+      jobs
+    );
 
   const answers =
     [];
@@ -4322,18 +4757,15 @@ async function tavilyStage(
       "fulfilled"
     ) {
       if (
-        row.value
-          .answer
+        row.value.answer
       ) {
         answers.push(
-          row.value
-            .answer
+          row.value.answer
         );
       }
 
       sources.push(
-        ...row.value
-          .results
+        ...row.value.results
       );
     } else {
       errors.push(
@@ -4363,9 +4795,7 @@ async function tavilyStage(
         );
 
     const old =
-      byUrl.get(
-        key
-      );
+      byUrl.get(key);
 
     if (
       !old ||
@@ -4386,10 +4816,7 @@ async function tavilyStage(
       ...byUrl.values(),
     ]
       .sort(
-        (
-          a,
-          b
-        ) =>
+        (a, b) =>
           b.score -
           a.score
       )
@@ -4402,86 +4829,138 @@ async function tavilyStage(
   };
 }
 
-function parseModelJson(
+/* ---------------------------------------------------------
+   NVIDIA FINAL EVIDENCE RESOLVER
+--------------------------------------------------------- */
+
+function answerInstruction(relation) {
+  switch (relation) {
+    case REL.REBIRTH:
+      return "Return only Rebirth<number>.";
+
+    case REL.COST:
+      return "Return only the price.";
+
+    case REL.INCOME:
+      return "Return only the income per second.";
+
+    case REL.RARITY:
+      return "Return only the rarity.";
+
+    case REL.MULTIPLIER:
+      return "Return only the multiplier.";
+
+    case REL.REQUIREMENT:
+      return "Return only the requirement.";
+
+    case REL.SPAWN:
+      return "Return only what it spawns.";
+
+    case REL.GEAR:
+      return "Return only the gear name.";
+
+    case REL.BRAINROT:
+      return "Return only the Brainrot proper name.";
+
+    case REL.DATE:
+      return "Return only the date.";
+
+    default:
+      return "Return only the shortest exact answer.";
+  }
+}
+
+function evidenceContainsAnswer(
+  answer,
   text
 ) {
-  const raw =
-    String(
-      text ??
+  const a =
+    norm(answer);
+
+  const t =
+    norm(text);
+
+  if (
+    a &&
+    t.includes(a)
+  ) {
+    return true;
+  }
+
+  /*
+    10x and 10× should verify as equivalent.
+  */
+
+  const normalizedAnswer =
+    String(answer)
+      .replace(
+        /×/g,
+        "x"
+      )
+      .replace(
+        /\s+/g,
         ""
+      )
+      .toLowerCase();
+
+  const normalizedText =
+    String(text)
+      .replace(
+        /×/g,
+        "x"
+      )
+      .replace(
+        /\s+/g,
+        ""
+      )
+      .toLowerCase();
+
+  return (
+    normalizedAnswer &&
+    normalizedText.includes(
+      normalizedAnswer
     )
-      .replace(
-        /^```(?:json)?\s*/i,
-        ""
-      )
-      .replace(
-        /\s*```$/,
-        ""
-      )
-      .trim();
-
-  if (
-    !raw
-  ) {
-    throw new Error(
-      "NVIDIA_EMPTY_CONTENT"
-    );
-  }
-
-  try {
-    return JSON.parse(
-      raw
-    );
-  } catch {}
-
-  const first =
-    raw.indexOf(
-      "{"
-    );
-
-  const last =
-    raw.lastIndexOf(
-      "}"
-    );
-
-  if (
-    first >=
-      0 &&
-    last >
-      first
-  ) {
-    try {
-      return JSON.parse(
-        raw.slice(
-          first,
-          last +
-            1
-        )
-      );
-    } catch {}
-  }
-
-  throw new Error(
-    "NVIDIA_INVALID_JSON"
   );
 }
 
-function evidenceFromCanonicalPages(
-  pages
+async function aiEvidenceResolve(
+  question,
+  analysis,
+  canonical,
+  tavily,
+  deadline
 ) {
-  return pages.map(
-    (
-      page,
-      index
-    ) => ({
+  if (
+    !env(
+      "NVIDIA_API_KEY"
+    )
+  ) {
+    return null;
+  }
+
+  if (
+    timeLeft(deadline) <
+    500
+  ) {
+    return null;
+  }
+
+  const evidence =
+    [];
+
+  let id =
+    1;
+
+  for (
+    const page
+    of canonical.pages
+  ) {
+    evidence.push({
       id:
-        `C${index + 1}`,
+        `C${id++}`,
 
-      kind:
+      type:
         "CANONICAL_FULL_PAGE",
-
-      host:
-        "stealabrainrot.fandom.com",
 
       title:
         page.title,
@@ -4492,29 +4971,22 @@ function evidenceFromCanonicalPages(
       text:
         clean(
           page.text,
-          16000
+          12000
         ),
-    })
-  );
-}
+    });
+  }
 
-function evidenceFromWebSources(
-  sources,
-  offset = 0
-) {
-  return sources.map(
-    (
-      source,
-      index
-    ) => ({
+  for (
+    const source
+    of tavily.sources ||
+    []
+  ) {
+    evidence.push({
       id:
-        `W${offset + index + 1}`,
+        `W${id++}`,
 
-      kind:
+      type:
         "WEB_SNIPPET",
-
-      host:
-        source.host,
 
       title:
         source.title,
@@ -4524,296 +4996,28 @@ function evidenceFromWebSources(
 
       text:
         clean(
-          source.snippet,
-          3000
+          source.content,
+          2600
         ),
-    })
-  );
-}
-
-function answerInstruction(
-  attr
-) {
-  switch (
-    attr
-  ) {
-    case ATTR.REBIRTH:
-      return "Return only Rebirth<number>.";
-
-    case ATTR.GEAR:
-      return "Return only the gear/item name.";
-
-    case ATTR.BRAINROT:
-      return "Return only the Brainrot proper name.";
-
-    case ATTR.COST:
-      return "Return only the cost such as $10M.";
-
-    case ATTR.INCOME:
-      return "Return only the income such as $50K/s.";
-
-    case ATTR.RARITY:
-      return "Return only the rarity.";
-
-    case ATTR.STATUS:
-      return "Return only the status.";
-
-    case ATTR.MULTIPLIER:
-      return "Return only the multiplier such as 10x.";
-
-    case ATTR.DATE:
-      return "Return only the date/year.";
-
-    case ATTR.DROP_RATE:
-      return "Return only the chance/percentage.";
-
-    case ATTR.REQUIREMENT:
-      return "Return only the requirement.";
-
-    case ATTR.SPAWN:
-      return "Return only what it spawns.";
-
-    case ATTR.FORMATION:
-      return "Return only the formation.";
-
-    case ATTR.WEATHER:
-      return "Return only the weather.";
-
-    case ATTR.REWARD:
-      return "Return only the reward.";
-
-    case ATTR.CONTENTS:
-      return "Return only the requested contents.";
-
-    case ATTR.SLOTS:
-      return "Return only the slot count.";
-
-    case ATTR.FLOORS:
-      return "Return only the floor count.";
-
-    default:
-      return "Return only the shortest exact answer.";
-  }
-}
-
-function evidenceSupportsAnswer(
-  question,
-  answer,
-  evidenceRow
-) {
-  const attr =
-    inferAttribute(
-      question
-    );
-
-  const text =
-    evidenceRow.text;
-
-  if (
-    norm(
-      answer
-    ) &&
-    norm(
-      text
-    ).includes(
-      norm(
-        answer
-      )
-    )
-  ) {
-    return true;
+    });
   }
 
-  if (
-    attr ===
-    ATTR.REBIRTH
-  ) {
-    const m =
-      answer.match(
-        /\brebirth\s*#?\s*(\d{1,3})\b/i
-      );
-
-    return Boolean(
-      m &&
-      new RegExp(
-        `rebirth\\s*#?\\s*${Number(
-          m[
-            1
-          ]
-        )}`,
-        "i"
-      ).test(
-        text
-      )
-    );
-  }
-
-  if (
-    attr ===
-    ATTR.COST
-  ) {
-    return text
-      .replace(
-        /\s+/g,
-        ""
-      )
-      .includes(
-        answer.replace(
-          /\s+/g,
-          ""
-        )
-      );
-  }
-
-  if (
-    attr ===
-    ATTR.MULTIPLIER
-  ) {
-    const m =
-      answer.match(
-        /\d+(?:\.\d+)?\s*[x×]/i
-      );
-
-    if (
-      !m
-    ) {
-      return false;
-    }
-
-    const num =
-      m[
-        0
-      ].replace(
-        /[x×\s]/gi,
-        ""
-      );
-
-    return new RegExp(
-      `\\b${num}\\s*[x×]`,
-      "i"
-    ).test(
-      text
-    );
-  }
-
-  return false;
-}
-
-async function nvidiaFallback(
-  question,
-  canonicalPages,
-  webSources,
-  lore,
-  deadline
-) {
-  if (
-    !env(
-      "NVIDIA_API_KEY"
-    )
-  ) {
-    return {
-      ok:
-        false,
-
-      error:
-        "NVIDIA_NOT_CONFIGURED",
-
-      answer:
-        "UNKNOWN",
-
-      confidence:
-        0,
-
-      citedIds:
-        [],
-    };
-  }
-
-  const timeout =
-    Math.max(
-      650,
-
-      Math.min(
-        CFG.NVIDIA_TIMEOUT_MS,
-
-        timeLeft(
-          deadline
-        ) -
-          100
-      )
+  const selected =
+    evidence.slice(
+      0,
+      CFG.MAX_AI_EVIDENCE
     );
 
   if (
-    timeout <
-    650
+    !selected.length
   ) {
-    return {
-      ok:
-        false,
-
-      error:
-        "NVIDIA_SKIPPED_BUDGET",
-
-      answer:
-        "UNKNOWN",
-
-      confidence:
-        0,
-
-      citedIds:
-        [],
-    };
+    return null;
   }
-
-  const evidence = [
-    ...evidenceFromCanonicalPages(
-      canonicalPages
-    ),
-
-    ...evidenceFromWebSources(
-      webSources,
-      canonicalPages.length
-    ),
-  ].slice(
-    0,
-    CFG.MAX_AI_EVIDENCE
-  );
-
-  const attr =
-    inferAttribute(
-      question
-    );
-
-  const system = [
-    "You are a strict Steal a Brainrot evidence resolver.",
-
-    "Use ONLY supplied evidence. Never use outside knowledge.",
-
-    "CANONICAL_FULL_PAGE evidence is stronger than WEB_SNIPPET evidence.",
-
-    "Understand tables in both directions.",
-
-    "If an entity page contains a small information table, those fields belong to that entity even if its name is not repeated in the row.",
-
-    "Do not mistake a table's first column for the requested answer. Use the question's requested attribute.",
-
-    "A truncated web snippet is not proof of a current maximum.",
-
-    "If evidence does not directly support the answer, return UNKNOWN.",
-
-    answerInstruction(
-      attr
-    ),
-
-    '{"answer":"value or UNKNOWN","confidence":0.0,"citedIds":["C1"],"reason":"short_reason"}',
-  ].join(
-    "\n"
-  );
 
   try {
     const data =
       await fetchJson(
-        "NVIDIA",
+        "NVIDIA_RESOLVE",
 
         NVIDIA_URL,
 
@@ -4837,24 +5041,18 @@ async function nvidiaFallback(
           body:
             JSON.stringify({
               model:
-                clean(
-                  process.env
-                    .NVIDIA_MODEL ||
-                    DEFAULT_MODEL,
-                  220
-                ),
+                process.env
+                  .NVIDIA_MODEL ||
+                DEFAULT_MODEL,
 
               stream:
                 false,
 
-              max_tokens:
-                320,
-
               temperature:
-                1.0,
+                0.1,
 
-              top_p:
-                0.95,
+              max_tokens:
+                220,
 
               chat_template_kwargs: {
                 enable_thinking:
@@ -4866,8 +5064,18 @@ async function nvidiaFallback(
                   role:
                     "system",
 
-                  content:
-                    system,
+                  content: [
+                    "You resolve Steal a Brainrot facts.",
+                    "Use ONLY the supplied evidence.",
+                    "Canonical full pages are stronger than web snippets.",
+                    "Do not guess.",
+                    "Understand tables and page-context fields.",
+                    "Use the requested relation, not a random nearby field.",
+                    answerInstruction(
+                      analysis.relation
+                    ),
+                    'Return JSON only: {"answer":"UNKNOWN or value","confidence":0.0,"citedIds":["C1"],"reason":"short"}',
+                  ].join("\n"),
                 },
 
                 {
@@ -4878,282 +5086,174 @@ async function nvidiaFallback(
                     JSON.stringify({
                       question,
 
-                      attribute:
-                        attr,
+                      analysis,
 
-                      entities:
-                        candidateEntities(
-                          question
-                        ),
-
-                      aliases:
-                        aliasesFor(
-                          question
-                        ),
-
-                      lore:
-                        clean(
-                          lore,
-                          10000
-                        ),
-
-                      evidence,
+                      evidence:
+                        selected,
                     }),
                 },
               ],
             }),
         },
 
-        timeout
+        Math.max(
+          450,
+          Math.min(
+            CFG.NVIDIA_TIMEOUT_MS,
+            timeLeft(deadline) -
+            50
+          )
+        )
       );
 
     const raw =
       parseModelJson(
-        data?.choices?.[
-          0
-        ]?.message
-          ?.content
+        data?.choices?.[0]
+          ?.message?.content
       );
 
     const answer =
       clean(
         raw?.answer ||
-          "UNKNOWN",
+        "UNKNOWN",
         400
       );
+
+    if (
+      !answer ||
+      norm(answer) ===
+      "unknown"
+    ) {
+      return null;
+    }
 
     const citedIds =
       Array.isArray(
         raw?.citedIds
       )
         ? raw.citedIds
-            .map(
-              String
-            )
+            .map(String)
             .slice(
               0,
-              8
+              6
             )
         : [];
 
-    if (
-      !answer ||
-      norm(
-        answer
-      ) ===
-        "unknown"
-    ) {
-      return {
-        ok:
-          true,
-
-        answer:
-          "UNKNOWN",
-
-        confidence:
-          0,
-
-        citedIds,
-
-        reason:
-          "ai_unknown",
-      };
-    }
-
     const cited =
-      evidence.filter(
-        (
-          row
-        ) =>
+      selected.filter(
+        (row) =>
           citedIds.includes(
             row.id
           )
       );
 
-    if (
-      !cited.length
-    ) {
-      return {
-        ok:
-          true,
-
-        answer:
-          "UNKNOWN",
-
-        candidateAnswer:
-          answer,
-
-        confidence:
-          clamp(
-            raw?.confidence
-          ),
-
-        citedIds,
-
-        reason:
-          "ai_no_citations",
-      };
-    }
-
-    const supporting =
+    const supported =
       cited.filter(
-        (
-          row
-        ) =>
-          evidenceSupportsAnswer(
-            question,
+        (row) =>
+          evidenceContainsAnswer(
             answer,
-            row
+            row.text
           )
       );
 
     if (
-      !supporting.length
+      !supported.length
     ) {
-      return {
-        ok:
-          true,
-
-        answer:
-          "UNKNOWN",
-
-        candidateAnswer:
-          answer,
-
-        confidence:
-          clamp(
-            raw?.confidence
-          ),
-
-        citedIds,
-
-        reason:
-          "ai_answer_not_in_cited_evidence",
-      };
+      return null;
     }
 
     const canonicalSupport =
-      supporting.some(
-        (
-          row
-        ) =>
-          row.kind ===
+      supported.some(
+        (row) =>
+          row.type ===
           "CANONICAL_FULL_PAGE"
       );
 
-    const independentHosts =
-      new Set(
-        supporting.map(
-          (
-            row
-          ) =>
-            row.host
-        )
-      ).size;
-
     const confidence =
-      clamp(
-        raw?.confidence,
-        0,
+      Math.min(
         canonicalSupport
-          ? 0.97
-          : 0.9
+          ? 0.96
+          : 0.90,
+        clamp(
+          raw?.confidence
+        )
       );
 
     if (
-      canonicalSupport &&
-      confidence >=
-        0.88
+      confidence <
+      0.85
     ) {
-      return {
-        ok:
-          true,
-
-        answer,
-
-        candidateAnswer:
-          answer,
-
-        confidence,
-
-        citedIds,
-
-        reason:
-          "ai_verified_by_canonical_full_page",
-      };
-    }
-
-    if (
-      independentHosts >=
-        2 &&
-      confidence >=
-        0.9
-    ) {
-      return {
-        ok:
-          true,
-
-        answer,
-
-        candidateAnswer:
-          answer,
-
-        confidence,
-
-        citedIds,
-
-        reason:
-          "ai_verified_by_two_sources",
-      };
+      return null;
     }
 
     return {
-      ok:
-        true,
-
-      answer:
-        "UNKNOWN",
+      answer,
 
       candidateAnswer:
         answer,
 
       confidence,
 
-      citedIds,
-
       reason:
-        "ai_review_only",
+        canonicalSupport
+          ? "ai_verified_canonical"
+          : "ai_verified_web",
+
+      route:
+        canonicalSupport
+          ? "AI_CANONICAL_VERIFIED"
+          : "AI_WEB_VERIFIED",
+
+      sourceCount:
+        supported.length,
+
+      sources:
+        supported
+          .slice(
+            0,
+            4
+          )
+          .map(
+            (row) => ({
+              host:
+                (() => {
+                  try {
+                    return new URL(
+                      row.url
+                    ).hostname;
+                  } catch {
+                    return "";
+                  }
+                })(),
+
+              title:
+                row.title,
+
+              url:
+                row.url,
+
+              claimType:
+                row.type,
+            })
+          ),
     };
-  } catch (
-    error
-  ) {
-    return {
-      ok:
-        false,
-
-      error:
-        errorCode(
-          error
-        ),
-
-      answer:
-        "UNKNOWN",
-
-      confidence:
-        0,
-
-      citedIds:
-        [],
-    };
+  } catch {
+    return null;
   }
 }
 
-function getCachedAnswer(
-  question
-) {
+/* ---------------------------------------------------------
+   ANSWER CACHE
+--------------------------------------------------------- */
+
+function answerCacheKey(question) {
+  return norm(question);
+}
+
+function getCachedAnswer(question) {
   return cacheGet(
     ANSWER_CACHE,
-    norm(
+    answerCacheKey(
       question
     )
   );
@@ -5174,56 +5274,30 @@ function setCachedAnswer(
   cacheSet(
     ANSWER_CACHE,
 
-    norm(
+    answerCacheKey(
       question
     ),
 
     value,
 
-    isCurrent(
-      question
-    )
-      ? CFG.CURRENT_CACHE_TTL_MS
-      : CFG.STABLE_CACHE_TTL_MS
+    isCurrent(question)
+      ? CFG.CURRENT_ANSWER_TTL_MS
+      : CFG.STABLE_ANSWER_TTL_MS
   );
 }
 
-function advisoryFrom(
-  question
-) {
-  return {
-    answer:
-      clean(
-        question?.aiAnswer ||
-          "UNKNOWN",
-        400
-      ),
-
-    confidence:
-      clamp(
-        question?.aiConfidence,
-        0,
-        1
-      ),
-  };
-}
+/* ---------------------------------------------------------
+   FINAL RESPONSE SHAPE
+--------------------------------------------------------- */
 
 function finalize(
   base,
   question,
-  startedAt,
+  analysis,
   canonical,
-  tavily = null,
-  ai = null,
-  advisory = null
+  tavily,
+  startedAt
 ) {
-  const sources =
-    Array.isArray(
-      base?.sources
-    )
-      ? base.sources
-      : [];
-
   return {
     answer:
       base?.answer ||
@@ -5231,6 +5305,7 @@ function finalize(
 
     candidateAnswer:
       base?.candidateAnswer ||
+      base?.answer ||
       "UNKNOWN",
 
     candidateConfidence:
@@ -5243,7 +5318,7 @@ function finalize(
 
     reason:
       base?.reason ||
-      "unknown",
+      "no_verified_answer",
 
     route:
       base?.route ||
@@ -5254,65 +5329,38 @@ function finalize(
       0,
 
     highestTier:
-      sources.length
+      base?.sources?.length
         ? 1
         : 4,
 
     bestRelevance:
-      1,
-
-    sources,
-
-    advisoryAnswer:
-      advisory?.answer ||
-      "UNKNOWN",
-
-    advisoryConfidence:
-      advisory?.confidence ||
+      base?.confidence ||
       0,
 
-    agreement:
-      base?.answer !==
-        "UNKNOWN" &&
-      advisory?.answer &&
-      norm(
-        base.answer
-      ) ===
-        norm(
-          advisory.answer
-        ),
-
-    searchMode:
-      explicitDate(
-        question
-      ).has
-        ? "HISTORICAL_DATE"
-        : isCurrent(
-            question
-          )
-          ? "CURRENT"
-          : "FALLBACK",
-
-    searchLatencyMs:
-      nowMs() -
-      startedAt,
+    sources:
+      base?.sources ||
+      [],
 
     intent:
-      canonical?.intent ||
-      inferIntent(
-        question
-      ),
+      analysis.current
+        ? "CURRENT"
+        : analysis.update
+          ? "UPDATE"
+          : "FACT",
 
     answerType:
-      inferAttribute(
-        question
-      ),
+      analysis.relation,
+
+    entity:
+      analysis.entity ||
+      "UNKNOWN",
+
+    analysisSource:
+      analysis.source,
 
     canonicalPages:
-      canonical?.pages?.map(
-        (
-          page
-        ) => ({
+      canonical.pages.map(
+        (page) => ({
           title:
             page.title,
 
@@ -5325,41 +5373,46 @@ function finalize(
           cache:
             page.cache,
         })
-      ) ||
-      [],
+      ),
 
     canonicalErrors:
-      canonical?.errors ||
-      [],
+      canonical.errors,
 
     searchErrors:
       tavily?.errors ||
       [],
 
-    extractorError:
-      ai?.ok ===
-      false
-        ? ai?.error ||
-          null
-        : null,
+    searchLatencyMs:
+      nowMs() -
+      startedAt,
 
     extractionMode:
-      base?.route?.startsWith(
-        "CANONICAL"
+      base?.route?.includes(
+        "FACT"
       )
-        ? "FULL_CANONICAL_PAGE"
-        : ai?.ok
-          ? "CANONICAL_PLUS_TAVILY_PLUS_NVIDIA"
-          : "CANONICAL_PLUS_TAVILY",
+        ? "FACT_GRAPH"
+        : base?.route?.includes(
+            "CANONICAL"
+          )
+          ? "FULL_CANONICAL"
+          : base?.route?.startsWith(
+              "AI"
+            )
+            ? "AI_VERIFIED"
+            : "REVIEW",
 
     cache:
       "MISS",
   };
 }
 
+/* ---------------------------------------------------------
+   MAIN R20 RESOLVER
+--------------------------------------------------------- */
+
 async function resolveQuestion(
   question,
-  lore
+  lore = ""
 ) {
   const startedAt =
     nowMs();
@@ -5368,19 +5421,12 @@ async function resolveQuestion(
     startedAt +
     CFG.GLOBAL_BUDGET_MS;
 
-  const advisory =
-    advisoryFrom(
-      question
-    );
-
   const cached =
     getCachedAnswer(
       question.question
     );
 
-  if (
-    cached
-  ) {
+  if (cached) {
     return {
       ...cached,
 
@@ -5393,15 +5439,139 @@ async function resolveQuestion(
     };
   }
 
-  const canonical =
-    await canonicalPagesForQuestion(
+  /*
+    Step 1:
+    deterministic understanding is instant.
+  */
+
+  const deterministic =
+    analyzeQuestionDeterministic(
+      question.question
+    );
+
+  /*
+    Step 2:
+    Start canonical lookup immediately.
+  */
+
+  let analysis =
+    deterministic;
+
+  let canonicalPromise =
+    canonicalStage(
       question.question,
+      analysis,
       deadline
     );
 
-  const direct =
-    canonicalDirectResolve(
+  let tavilyPromise =
+    null;
+
+  /*
+    Start NVIDIA analysis in parallel only when
+    deterministic understanding is weak.
+  */
+
+  const aiAnalysisPromise =
+    deterministic.confidence <
+      0.80 ||
+    deterministic.relation ===
+      REL.TEXT
+      ? analyzeQuestionAI(
+          question.question,
+          deadline
+        )
+      : Promise.resolve(
+          null
+        );
+
+  /*
+    Wait briefly for canonical.
+
+    If Fandom is slow, begin Tavily BEFORE
+    waiting for Fandom to completely fail.
+  */
+
+  const early =
+    await Promise.race([
+      canonicalPromise
+        .then(
+          (value) => ({
+            done:
+              true,
+
+            value,
+          })
+        )
+        .catch(
+          (error) => ({
+            done:
+              true,
+
+            value: {
+              pages:
+                [],
+
+              errors: [
+                errorCode(
+                  error
+                ),
+              ],
+            },
+          })
+        ),
+
+      sleep(
+        CFG.FALLBACK_START_MS
+      ).then(
+        () => ({
+          done:
+            false,
+        })
+      ),
+    ]);
+
+  if (
+    !early.done &&
+    env(
+      "TAVILY_API_KEY"
+    )
+  ) {
+    tavilyPromise =
+      tavilyStage(
+        question.question,
+        analysis,
+        deadline
+      );
+  }
+
+  const canonical =
+    early.done
+      ? early.value
+      : await canonicalPromise
+          .catch(
+            (error) => ({
+              pages:
+                [],
+
+              errors: [
+                errorCode(
+                  error
+                ),
+              ],
+            })
+          );
+
+  /*
+    Step 3:
+    Try deterministic canonical fact graph FIRST.
+    If this works, return immediately.
+  */
+
+  let direct =
+    resolveCanonical(
       question.question,
+      analysis,
       canonical
     );
 
@@ -5413,18 +5583,14 @@ async function resolveQuestion(
     const result =
       finalize(
         direct,
-
         question.question,
-
-        startedAt,
-
+        analysis,
         canonical,
-
-        null,
-
-        null,
-
-        advisory
+        {
+          errors:
+            [],
+        },
+        startedAt
       );
 
     setCachedAnswer(
@@ -5435,111 +5601,216 @@ async function resolveQuestion(
     return result;
   }
 
-  const tavily =
-    await tavilyStage(
-      question.question,
-      deadline
-    );
+  /*
+    Step 4:
+    AI may have understood the entity better.
+    Merge it and query the SAME fact graph again.
+  */
 
-  const ai =
-    await nvidiaFallback(
+  const aiAnalysis =
+    await aiAnalysisPromise;
+
+  if (aiAnalysis) {
+    const merged =
+      mergeAnalysis(
+        deterministic,
+        aiAnalysis
+      );
+
+    const changedEntity =
+      norm(
+        merged.entity
+      ) !==
+      norm(
+        analysis.entity
+      );
+
+    analysis =
+      merged;
+
+    direct =
+      resolveCanonical(
+        question.question,
+        analysis,
+        canonical
+      );
+
+    if (
+      direct?.answer &&
+      direct.answer !==
+        "UNKNOWN"
+    ) {
+      const result =
+        finalize(
+          direct,
+          question.question,
+          analysis,
+          canonical,
+          {
+            errors:
+              [],
+          },
+          startedAt
+        );
+
+      setCachedAnswer(
+        question.question,
+        result
+      );
+
+      return result;
+    }
+
+    /*
+      If AI discovered a different entity
+      and enough time remains, fetch that page once.
+    */
+
+    if (
+      changedEntity &&
+      analysis.entity &&
+      timeLeft(
+        deadline
+      ) >
+      450
+    ) {
+      try {
+        const page =
+          await fetchCanonicalPage(
+            analysis.entity,
+            deadline
+          );
+
+        if (
+          !canonical.pages.some(
+            (existing) =>
+              norm(
+                existing.title
+              ) ===
+              norm(
+                page.title
+              )
+          )
+        ) {
+          canonical.pages.unshift(
+            page
+          );
+        }
+
+        direct =
+          resolveCanonical(
+            question.question,
+            analysis,
+            canonical
+          );
+
+        if (
+          direct?.answer &&
+          direct.answer !==
+            "UNKNOWN"
+        ) {
+          const result =
+            finalize(
+              direct,
+              question.question,
+              analysis,
+              canonical,
+              {
+                errors:
+                  [],
+              },
+              startedAt
+            );
+
+          setCachedAnswer(
+            question.question,
+            result
+          );
+
+          return result;
+        }
+      } catch {}
+    }
+  }
+
+  /*
+    Step 5:
+    Tavily fallback.
+
+    If it wasn't already running, start now.
+    Tavily failure DOES NOT fail the whole lookup.
+  */
+
+  if (
+    !tavilyPromise
+  ) {
+    tavilyPromise =
+      tavilyStage(
+        question.question,
+        analysis,
+        deadline
+      ).catch(
+        (error) => ({
+          answers:
+            [],
+
+          sources:
+            [],
+
+          errors: [
+            errorCode(
+              error
+            ),
+          ],
+        })
+      );
+  }
+
+  const tavily =
+    await tavilyPromise
+      .catch(
+        (error) => ({
+          answers:
+            [],
+
+          sources:
+            [],
+
+          errors: [
+            errorCode(
+              error
+            ),
+          ],
+        })
+      );
+
+  /*
+    Step 6:
+    NVIDIA evidence extraction is LAST.
+  */
+
+  const aiResult =
+    await aiEvidenceResolve(
       question.question,
-      canonical.pages,
-      tavily.sources,
-      lore,
+      analysis,
+      canonical,
+      tavily,
       deadline
     );
 
   if (
-    ai.ok &&
-    ai.answer &&
-    ai.answer !==
+    aiResult?.answer &&
+    aiResult.answer !==
       "UNKNOWN"
   ) {
-    const evidence = [
-      ...evidenceFromCanonicalPages(
-        canonical.pages
-      ),
-
-      ...evidenceFromWebSources(
-        tavily.sources,
-        canonical.pages.length
-      ),
-    ];
-
-    const cited =
-      evidence.filter(
-        (
-          row
-        ) =>
-          ai.citedIds.includes(
-            row.id
-          )
-      );
-
-    const base = {
-      answer:
-        ai.answer,
-
-      candidateAnswer:
-        ai.answer,
-
-      confidence:
-        ai.confidence,
-
-      reason:
-        ai.reason,
-
-      route:
-        ai.reason ===
-        "ai_verified_by_canonical_full_page"
-          ? "AI_CANONICAL_VERIFIED"
-          : "AI_TWO_SOURCE_VERIFIED",
-
-      sourceCount:
-        new Set(
-          cited.map(
-            (
-              row
-            ) =>
-              row.host
-          )
-        ).size,
-
-      sources:
-        cited
-          .slice(
-            0,
-            4
-          )
-          .map(
-            (
-              row
-            ) => ({
-              host:
-                row.host,
-
-              title:
-                row.title,
-
-              url:
-                row.url,
-
-              claimType:
-                row.kind,
-            })
-          ),
-    };
-
     const result =
       finalize(
-        base,
+        aiResult,
         question.question,
-        startedAt,
+        analysis,
         canonical,
         tavily,
-        ai,
-        advisory
+        startedAt
       );
 
     setCachedAnswer(
@@ -5550,11 +5821,10 @@ async function resolveQuestion(
     return result;
   }
 
-  const candidateAnswer =
-    direct?.candidateAnswer ||
-    ai?.candidateAnswer ||
-    advisory.answer ||
-    "UNKNOWN";
+  /*
+    Never finish with provider-specific fatal errors.
+    A provider failure is diagnostic only.
+  */
 
   return finalize(
     {
@@ -5562,28 +5832,20 @@ async function resolveQuestion(
         "UNKNOWN",
 
       candidateAnswer:
-        clean(
-          candidateAnswer,
-          400
-        ) ||
+        direct?.candidateAnswer ||
         "UNKNOWN",
 
       confidence:
-        Math.max(
-          direct?.confidence ||
-            0,
-
-          ai?.confidence ||
-            0,
-
-          advisory.confidence ||
-            0
-        ),
+        direct?.confidence ||
+        0,
 
       reason:
         direct?.reason ||
-        ai?.reason ||
-        "no_verified_answer",
+        (
+          canonical.pages.length
+            ? "no_matching_verified_fact"
+            : "no_canonical_pages"
+        ),
 
       route:
         "REVIEW",
@@ -5598,30 +5860,22 @@ async function resolveQuestion(
     },
 
     question.question,
-
-    startedAt,
-
+    analysis,
     canonical,
-
     tavily,
-
-    ai,
-
-    advisory
+    startedAt
   );
 }
 
-function validateQuestions(
-  value
-) {
+/* ---------------------------------------------------------
+   INPUT
+--------------------------------------------------------- */
+
+function validateQuestions(value) {
   if (
-    !Array.isArray(
-      value
-    ) ||
-    value.length <
-      1 ||
-    value.length >
-      8
+    !Array.isArray(value) ||
+    value.length < 1 ||
+    value.length > 8
   ) {
     throw new Error(
       "QUESTIONS_MUST_CONTAIN_1_TO_8_ITEMS"
@@ -5629,19 +5883,14 @@ function validateQuestions(
   }
 
   return value.map(
-    (
-      row,
-      index
-    ) => {
+    (row, index) => {
       const question =
         clean(
           row?.question,
           700
         );
 
-      if (
-        !question
-      ) {
+      if (!question) {
         throw new Error(
           `QUESTION_${index + 1}_EMPTY`
         );
@@ -5649,98 +5898,79 @@ function validateQuestions(
 
       return {
         index:
-          index +
-          1,
+          index + 1,
 
         question,
 
         expectedEntity:
           clean(
             row?.expectedEntity ||
-              "NONE",
+            "NONE",
             120
-          ) ||
-          "NONE",
+          ),
 
         expectedAttribute:
           clean(
             row?.expectedAttribute ||
-              "NONE",
+            "NONE",
             120
-          ) ||
-          "NONE",
+          ),
 
         aiAnswer:
           clean(
             row?.aiAnswer ||
-              "UNKNOWN",
+            "UNKNOWN",
             400
-          ) ||
-          "UNKNOWN",
+          ),
 
         aiConfidence:
           clamp(
-            row?.aiConfidence,
-            0,
-            1
+            row?.aiConfidence
           ),
       };
     }
   );
 }
 
-function makeTrace(
-  items
-) {
+function makeTrace(items) {
   const failed =
     items.find(
-      (
-        item
-      ) =>
+      (item) =>
         item.answer ===
         "UNKNOWN"
     );
 
-  if (
-    failed
-  ) {
+  if (failed) {
     return (
-      `REVIEW • ${failed.intent || "GENERIC"}` +
+      `REVIEW` +
       ` • ${failed.answerType || "TEXT"}` +
-      ` • reason=${clean(
-        failed.reason,
-        90
-      )}` +
-      ` • candidate=${clean(
-        failed.candidateAnswer,
-        90
-      )}` +
-      ` • ms=${failed.searchLatencyMs || 0}`
+      ` • ${failed.reason || "unknown"}` +
+      ` • ${failed.searchLatencyMs || 0}ms`
     );
   }
 
   return items
     .map(
-      (
-        item
-      ) =>
+      (item) =>
         `${item.route}:${item.answer}:${Math.round(
           (
             item.confidence ||
             0
           ) *
-            100
+          100
         )}%:${item.searchLatencyMs || 0}ms`
     )
-    .join(
-      " | "
-    );
+    .join(" | ");
 }
+
+/* ---------------------------------------------------------
+   SELF TESTS
+--------------------------------------------------------- */
 
 function syntheticPage(
   title,
   html,
-  text = ""
+  wikitext = ""
 ) {
   return {
     requestedTitle:
@@ -5756,13 +5986,11 @@ function syntheticPage(
         title
       ),
 
-    wikitext:
-      "",
-
     html,
 
+    wikitext,
+
     text:
-      text ||
       htmlToText(
         html
       ),
@@ -5778,35 +6006,22 @@ function syntheticPage(
   };
 }
 
-function directWithPages(
+function testResolve(
   question,
   pages
 ) {
-  return canonicalDirectResolve(
+  const analysis =
+    analyzeQuestionDeterministic(
+      question
+    );
+
+  return resolveCanonical(
     question,
+    analysis,
     {
-      intent:
-        inferIntent(
-          question
-        ),
-
       pages,
-
       errors:
         [],
-
-      titles:
-        pages.map(
-          (
-            p
-          ) =>
-            p.title
-        ),
-
-      entityCandidates:
-        candidateEntities(
-          question
-        ),
     }
   );
 }
@@ -5817,554 +6032,390 @@ function runSelfTests() {
 
   const check = (
     name,
-    condition,
-    detail = ""
+    condition
   ) => {
     if (condition) {
       passed++;
     } else {
-      failures.push({
-        name,
-
-        detail:
-          clean(
-            detail,
-            200
-          ),
-      });
+      failures.push(
+        name
+      );
     }
   };
 
   check(
-    "attr rainbow multiplier",
-    inferAttribute(
-      "What multiplier does the Rainbow mutation give?"
+    "analysis rarity",
+    inferRelation(
+      "What rarity is Tralalero Tralala?"
     ) ===
-      ATTR.MULTIPLIER
+    REL.RARITY
   );
 
   check(
-    "attr ritual requirement",
-    inferAttribute(
-      "What does the Bombardiro Crocodilo ritual require?"
+    "analysis income",
+    inferRelation(
+      "What is the income of Tralalero Tralala per second?"
     ) ===
-      ATTR.REQUIREMENT
+    REL.INCOME
   );
 
   check(
-    "attr tralalero cost",
-    inferAttribute(
-      "How much does Tralalero Tralala cost?"
+    "analysis ritual spawn",
+    inferRelation(
+      "What does the Bombardiro Crocodilo ritual spawn?"
     ) ===
-      ATTR.COST
+    REL.SPAWN
   );
 
   check(
-    "categoryless intent",
-    inferIntent(
-      "How much does Tralalero Tralala cost?"
+    "analysis giant potion rebirth",
+    inferRelation(
+      "Which rebirth unlocks Giant Potion?"
     ) ===
-      INTENT.ENTITY_PROPERTY
+    REL.REBIRTH
+  );
+
+  const tralalero =
+    syntheticPage(
+      "Tralalero Tralala",
+
+      `<table>
+        <tr>
+          <th>Income</th>
+          <th>Cost</th>
+        </tr>
+        <tr>
+          <td>$50K/s</td>
+          <td>$10M</td>
+        </tr>
+      </table>
+
+      <table>
+        <tr>
+          <th>Rarity</th>
+        </tr>
+        <tr>
+          <td>Brainrot God</td>
+        </tr>
+      </table>`
+    );
+
+  check(
+    "Tralalero cost",
+    testResolve(
+      "How much does Tralalero Tralala cost?",
+      [
+        tralalero,
+      ]
+    )?.answer ===
+    "$10M"
   );
 
   check(
-    "entity tralalero",
-    candidateEntities(
-      "How much does Tralalero Tralala cost?"
-    ).some(
-      (
-        x
-      ) =>
-        x
-          .toLowerCase()
-          .includes(
-            "tralalero tralala"
-          )
-    )
+    "Tralalero income",
+    testResolve(
+      "What is the income of Tralalero Tralala per second?",
+      [
+        tralalero,
+      ]
+    )?.answer ===
+    "$50K/s"
   );
 
   check(
-    "update decimal",
-    extractUpdateNumber(
-      "What limited brainrot was introduced in Update 52.75?"
-    ) ===
-      "52.75"
+    "Tralalero rarity",
+    testResolve(
+      "What rarity is Tralalero Tralala?",
+      [
+        tralalero,
+      ]
+    )?.answer ===
+    "Brainrot God"
   );
 
-  check(
-    "rebirth number",
-    extractRebirthNumber(
-      "What gear is unlocked at Rebirth 18?"
-    ) ===
-      18
-  );
-
-  const mutationPage =
+  const mutations =
     syntheticPage(
       "Mutations",
 
       `<table>
-         <tr>
-           <th>Multi</th>
-           <th>Name</th>
-           <th>Notes</th>
-         </tr>
-         <tr>
-           <td>1.25×</td>
-           <td>Gold</td>
-           <td>Gold.</td>
-         </tr>
-         <tr>
-           <td>10×</td>
-           <td>Rainbow</td>
-           <td>Rainbow mutation.</td>
-         </tr>
-       </table>`
+        <tr>
+          <th>Multi</th>
+          <th>Name</th>
+        </tr>
+        <tr>
+          <td>10×</td>
+          <td>Rainbow</td>
+        </tr>
+      </table>`
     );
 
   check(
-    "rainbow multiplier exact",
-
-    directWithPages(
-      "What multiplier does the Rainbow mutation give?",
+    "Rainbow multiplier",
+    testResolve(
+      "What multiplier does Rainbow mutation give?",
       [
-        mutationPage,
+        mutations,
       ]
     )?.answer ===
-      "10x"
+    "10x"
   );
 
-  const ritualPage =
+  const rituals =
     syntheticPage(
       "Rituals",
 
       `<table>
-         <tr>
-           <th>Name</th>
-           <th>Spawns</th>
-           <th>Requires</th>
-           <th>Formation</th>
-           <th>Weather</th>
-         </tr>
-         <tr>
-           <td>Bombardiro Crocodilo ritual</td>
-           <td>Los Crocodillitos</td>
-           <td>Bombardiro Crocodilo x3</td>
-           <td>Line formation</td>
-           <td>Explosive</td>
-         </tr>
-       </table>`
+        <tr>
+          <th>Name</th>
+          <th>Spawns</th>
+          <th>Requires</th>
+          <th>Formation</th>
+          <th>Weather</th>
+        </tr>
+
+        <tr>
+          <td>Bombardiro Crocodilo Ritual</td>
+          <td>Los Crocodillitos</td>
+          <td>Bombardiro Crocodilo x3</td>
+          <td>Line</td>
+          <td>Explosive</td>
+        </tr>
+      </table>`
     );
 
   check(
-    "bombardiro requirement exact",
-
-    directWithPages(
-      "What does the Bombardiro Crocodilo ritual require?",
-      [
-        ritualPage,
-      ]
-    )?.answer ===
-      "Bombardiro Crocodilo x3"
-  );
-
-  check(
-    "bombardiro spawn reverse",
-
-    directWithPages(
+    "Bombardiro spawn",
+    testResolve(
       "What does the Bombardiro Crocodilo ritual spawn?",
       [
-        ritualPage,
+        rituals,
       ]
     )?.answer ===
-      "Los Crocodillitos"
-  );
-
-  const tralaleroPage =
-    syntheticPage(
-      "Tralalero Tralala",
-
-      `<h2>Information</h2>
-       <table>
-         <tr>
-           <th>Income</th>
-           <th>Cost</th>
-         </tr>
-         <tr>
-           <td>$50K/s</td>
-           <td>$10M</td>
-         </tr>
-       </table>
-       <table>
-         <tr>
-           <th>Rarity</th>
-         </tr>
-         <tr>
-           <td>Brainrot God</td>
-         </tr>
-       </table>`
-    );
-
-  check(
-    "tralalero cost exact page context",
-
-    directWithPages(
-      "How much does Tralalero Tralala cost?",
-      [
-        tralaleroPage,
-      ]
-    )?.answer ===
-      "$10M"
+    "Los Crocodillitos"
   );
 
   check(
-    "tralalero income exact page context",
-
-    directWithPages(
-      "What income does Tralalero Tralala make per second?",
+    "Bombardiro requirement",
+    testResolve(
+      "What does the Bombardiro Crocodilo ritual require?",
       [
-        tralaleroPage,
+        rituals,
       ]
     )?.answer ===
-      "$50K/s"
+    "Bombardiro Crocodilo x3"
   );
 
-  const rebirthPage =
+  const rebirth =
     syntheticPage(
       "Rebirth",
 
       `<table>
-         <tr>
-           <th>Rebirth</th>
-           <th>Gear</th>
-         </tr>
-         <tr>
-           <td>Rebirth 17</td>
-           <td>Giant Potion</td>
-         </tr>
-         <tr>
-           <td>Rebirth 18</td>
-           <td>Flash Teleport</td>
-         </tr>
-       </table>`
+        <tr>
+          <th>Rebirth</th>
+          <th>Gear</th>
+        </tr>
+
+        <tr>
+          <td>Rebirth 17</td>
+          <td>Giant Potion</td>
+        </tr>
+
+        <tr>
+          <td>Rebirth 18</td>
+          <td>Flash Teleport</td>
+        </tr>
+
+        <tr>
+          <td>Rebirth 19</td>
+          <td>Ultra Coil</td>
+        </tr>
+      </table>`
     );
 
   check(
-    "giant potion rebirth",
-
-    directWithPages(
-      "Which rebirth unlocks the Giant Potion?",
-      [
-        rebirthPage,
-      ]
-    )?.answer ===
-      "Rebirth17"
-  );
-
-  check(
-    "rebirth 18 reverse gear",
-
-    directWithPages(
+    "Rebirth18 gear",
+    testResolve(
       "What gear is unlocked at Rebirth 18?",
       [
-        rebirthPage,
+        rebirth,
       ]
     )?.answer ===
-      "Flash Teleport"
+    "Flash Teleport"
   );
 
   check(
-    "current rebirth max",
-
-    directWithPages(
-      "What is the newest rebirth right now?",
+    "Flash Teleport rebirth",
+    testResolve(
+      "Which rebirth unlocks Flash Teleport?",
       [
-        rebirthPage,
+        rebirth,
       ]
     )?.answer ===
-      "Rebirth18"
+    "Rebirth18"
   );
 
+  check(
+    "Giant Potion rebirth",
+    testResolve(
+      "Which rebirth unlocks Giant Potion?",
+      [
+        rebirth,
+      ]
+    )?.answer ===
+    "Rebirth17"
+  );
+
+  check(
+    "current rebirth",
+    testResolve(
+      "What is the newest rebirth right now?",
+      [
+        rebirth,
+      ]
+    )?.answer ===
+    "Rebirth19"
+  );
+
+  /*
+    Generic structural tests.
+  */
+
   for (
-    let i =
-      1;
-    i <=
-    180;
+    let i = 1;
+    i <= 100;
     i++
   ) {
-    const page =
+    const entity =
+      syntheticPage(
+        `Test Brainrot ${i}`,
+
+        `<table>
+          <tr>
+            <th>Income</th>
+            <th>Cost</th>
+            <th>Rarity</th>
+          </tr>
+
+          <tr>
+            <td>$${i}K/s</td>
+            <td>$${i}M</td>
+            <td>Tier ${i}</td>
+          </tr>
+        </table>`
+      );
+
+    check(
+      `generic cost ${i}`,
+      testResolve(
+        `How much does Test Brainrot ${i} cost?`,
+        [
+          entity,
+        ]
+      )?.answer ===
+      `$${i}M`
+    );
+
+    check(
+      `generic income ${i}`,
+      testResolve(
+        `What income does Test Brainrot ${i} make per second?`,
+        [
+          entity,
+        ]
+      )?.answer ===
+      `$${i}K/s`
+    );
+
+    check(
+      `generic rarity ${i}`,
+      testResolve(
+        `What rarity is Test Brainrot ${i}?`,
+        [
+          entity,
+        ]
+      )?.answer ===
+      `Tier ${i}`
+    );
+  }
+
+  for (
+    let i = 1;
+    i <= 75;
+    i++
+  ) {
+    const mutation =
       syntheticPage(
         "Mutations",
 
         `<table>
-           <tr>
-             <th>Multi</th>
-             <th>Name</th>
-           </tr>
-           <tr>
-             <td>${i}x</td>
-             <td>AlphaMut ${i}</td>
-           </tr>
-         </table>`
+          <tr>
+            <th>Multi</th>
+            <th>Name</th>
+          </tr>
+
+          <tr>
+            <td>${i}x</td>
+            <td>MutationX ${i}</td>
+          </tr>
+        </table>`
       );
 
     check(
-      `mutation multiplier ${i}`,
-
-      directWithPages(
-        `What multiplier does AlphaMut ${i} give?`,
+      `generic mutation ${i}`,
+      testResolve(
+        `What multiplier does MutationX ${i} give?`,
         [
-          page,
+          mutation,
         ]
       )?.answer ===
-        `${i}x`
+      `${i}x`
     );
   }
 
   for (
-    let i =
-      1;
-    i <=
-    160;
+    let i = 1;
+    i <= 75;
     i++
   ) {
-    const page =
-      syntheticPage(
-        `Entity ${i}`,
-
-        `<table>
-           <tr>
-             <th>Income</th>
-             <th>Cost</th>
-           </tr>
-           <tr>
-             <td>$${i}K/s</td>
-             <td>$${i}M</td>
-           </tr>
-         </table>`
-      );
-
-    check(
-      `entity cost context ${i}`,
-
-      directWithPages(
-        `How much does Entity ${i} cost?`,
-        [
-          page,
-        ]
-      )?.answer ===
-        `$${i}M`
-    );
-
-    check(
-      `entity income context ${i}`,
-
-      directWithPages(
-        `What income does Entity ${i} make per second?`,
-        [
-          page,
-        ]
-      )?.answer ===
-        `$${i}K/s`
-    );
-  }
-
-  for (
-    let i =
-      1;
-    i <=
-    120;
-    i++
-  ) {
-    const page =
+    const ritual =
       syntheticPage(
         "Rituals",
 
         `<table>
-           <tr>
-             <th>Name</th>
-             <th>Spawns</th>
-             <th>Requires</th>
-           </tr>
-           <tr>
-             <td>AlphaRit ${i}</td>
-             <td>AlphaSpawn ${i}</td>
-             <td>AlphaThing ${i} x3</td>
-           </tr>
-         </table>`
+          <tr>
+            <th>Name</th>
+            <th>Spawns</th>
+            <th>Requires</th>
+          </tr>
+
+          <tr>
+            <td>RitualX ${i}</td>
+            <td>SpawnX ${i}</td>
+            <td>RequirementX ${i}</td>
+          </tr>
+        </table>`
       );
 
     check(
-      `ritual req ${i}`,
-
-      directWithPages(
-        `What does AlphaRit ${i} ritual require?`,
+      `generic ritual spawn ${i}`,
+      testResolve(
+        `What does RitualX ${i} ritual spawn?`,
         [
-          page,
+          ritual,
         ]
       )?.answer ===
-        `AlphaThing ${i} x3`
+      `SpawnX ${i}`
     );
 
     check(
-      `ritual spawn ${i}`,
-
-      directWithPages(
-        `What does AlphaRit ${i} ritual spawn?`,
+      `generic ritual requirement ${i}`,
+      testResolve(
+        `What does RitualX ${i} ritual require?`,
         [
-          page,
+          ritual,
         ]
       )?.answer ===
-        `AlphaSpawn ${i}`
-    );
-  }
-
-  for (
-    let i =
-      1;
-    i <=
-    100;
-    i++
-  ) {
-    const page =
-      syntheticPage(
-        "Rebirth",
-
-        `<table>
-           <tr>
-             <th>Rebirth</th>
-             <th>Gear</th>
-           </tr>
-           <tr>
-             <td>Rebirth ${i}</td>
-             <td>AlphaGear ${i}</td>
-           </tr>
-           <tr>
-             <td>Rebirth ${i + 1}</td>
-             <td>AlphaGear ${i + 1}</td>
-           </tr>
-         </table>`
-      );
-
-    check(
-      `rebirth forward ${i}`,
-
-      directWithPages(
-        `Which rebirth unlocks AlphaGear ${i}?`,
-        [
-          page,
-        ]
-      )?.answer ===
-        `Rebirth${i}`
-    );
-
-    check(
-      `rebirth reverse ${i}`,
-
-      directWithPages(
-        `What gear is unlocked at Rebirth ${i}?`,
-        [
-          page,
-        ]
-      )?.answer ===
-        `AlphaGear ${i}`
-    );
-  }
-
-  for (
-    let i =
-      1;
-    i <=
-    80;
-    i++
-  ) {
-    const page =
-      syntheticPage(
-        "Lucky Blocks",
-
-        `<table>
-           <tr>
-             <th>Name</th>
-             <th>Chance</th>
-           </tr>
-           <tr>
-             <td>AlphaDrop ${i}</td>
-             <td>${i}%</td>
-           </tr>
-         </table>`
-      );
-
-    check(
-      `drop rate ${i}`,
-
-      directWithPages(
-        `What is the drop rate of AlphaDrop ${i}?`,
-        [
-          page,
-        ]
-      )?.answer ===
-        `${i}%`
-    );
-  }
-
-  for (
-    let i =
-      1;
-    i <=
-    15;
-    i++
-  ) {
-    check(
-      `header cost ${i}`,
-      normalizeHeader(
-        i %
-        2
-          ? "Price"
-          : "Cost"
-      ) ===
-        ATTR.COST
-    );
-
-    check(
-      `header income ${i}`,
-      normalizeHeader(
-        i %
-        2
-          ? "Income"
-          : "Money per second"
-      ) ===
-        ATTR.INCOME
-    );
-
-    check(
-      `header req ${i}`,
-      normalizeHeader(
-        i %
-        2
-          ? "Requires"
-          : "Requirement"
-      ) ===
-        ATTR.REQUIREMENT
-    );
-
-    check(
-      `header chance ${i}`,
-      normalizeHeader(
-        i %
-        2
-          ? "Chance"
-          : "Drop Rate"
-      ) ===
-        ATTR.DROP_RATE
-    );
-
-    check(
-      `format rebirth ${i}`,
-      normalizeValue(
-        `Rebirth ${i}`,
-        ATTR.REBIRTH
-      ) ===
-        `Rebirth${i}`
+      `RequirementX ${i}`
     );
   }
 
@@ -6389,9 +6440,13 @@ function runSelfTests() {
       ),
 
     note:
-      "Deterministic parser/routing tests only. Live upstream checks use ?test=wiki, ?test=resolve, and ?test=search.",
+      "Synthetic deterministic tests only. Live Fandom/Tavily/NVIDIA are checked with the other test endpoints.",
   };
 }
+
+/* ---------------------------------------------------------
+   HTTP ROUTES
+--------------------------------------------------------- */
 
 export function OPTIONS() {
   return new Response(
@@ -6411,9 +6466,7 @@ export function OPTIONS() {
   );
 }
 
-export async function GET(
-  request
-) {
+export async function GET(request) {
   const url =
     new URL(
       request.url
@@ -6442,6 +6495,38 @@ export async function GET(
 
   if (
     test ===
+    "analyze"
+  ) {
+    const question =
+      clean(
+        url.searchParams.get(
+          "q"
+        ) ||
+        "What rarity is Tralalero Tralala?",
+        700
+      );
+
+    return json(
+      200,
+      {
+        ok:
+          true,
+
+        build:
+          BUILD_ID,
+
+        question,
+
+        deterministic:
+          analyzeQuestionDeterministic(
+            question
+          ),
+      }
+    );
+  }
+
+  if (
+    test ===
     "wiki"
   ) {
     const pageName =
@@ -6449,7 +6534,7 @@ export async function GET(
         url.searchParams.get(
           "page"
         ) ||
-          "Rebirth",
+        "Tralalero Tralala",
         300
       );
 
@@ -6461,7 +6546,12 @@ export async function GET(
         await fetchCanonicalPage(
           pageName,
           started +
-            4800
+          3000
+        );
+
+      const facts =
+        factsFromPage(
+          page
         );
 
       return json(
@@ -6473,47 +6563,40 @@ export async function GET(
           build:
             BUILD_ID,
 
-          test:
-            "wiki_full_page",
-
           page:
             page.title,
 
           source:
             page.source,
 
-          cache:
-            page.cache,
-
           textLength:
             page.text.length,
 
-          tableCount:
-            extractTables(
+          htmlTables:
+            parseHtmlTables(
               page
             ).length,
 
-          infoboxKeys:
-            Object.keys(
-              parseInfobox(
-                page
-              )
-            ).slice(
+          wikiTables:
+            parseWikitextTables(
+              page
+            ).length,
+
+          factCount:
+            facts.length,
+
+          sampleFacts:
+            facts.slice(
               0,
-              25
+              20
             ),
 
           ms:
             nowMs() -
             started,
-
-          errors:
-            page.errors,
         }
       );
-    } catch (
-      error
-    ) {
+    } catch (error) {
       return json(
         200,
         {
@@ -6522,12 +6605,6 @@ export async function GET(
 
           build:
             BUILD_ID,
-
-          test:
-            "wiki_full_page",
-
-          page:
-            pageName,
 
           error:
             errorCode(
@@ -6546,95 +6623,57 @@ export async function GET(
     test ===
     "resolve"
   ) {
-    const q =
+    const question =
       clean(
         url.searchParams.get(
           "q"
         ) ||
-          "What multiplier does the Rainbow mutation give?",
+        "What rarity is Tralalero Tralala?",
         700
       );
 
-    const started =
-      nowMs();
+    const fake = {
+      index:
+        1,
+
+      question,
+
+      expectedEntity:
+        "NONE",
+
+      expectedAttribute:
+        "NONE",
+
+      aiAnswer:
+        "UNKNOWN",
+
+      aiConfidence:
+        0,
+    };
 
     try {
-      const canonical =
-        await canonicalPagesForQuestion(
-          q,
-          started +
-            5200
-        );
-
-      const direct =
-        canonicalDirectResolve(
-          q,
-          canonical
+      const result =
+        await resolveQuestion(
+          fake,
+          ""
         );
 
       return json(
         200,
         {
           ok:
-            Boolean(
-              direct?.answer &&
-              direct.answer !==
-                "UNKNOWN"
-            ),
+            result.answer !==
+            "UNKNOWN",
 
           build:
             BUILD_ID,
 
-          question:
-            q,
+          question,
 
-          intent:
-            inferIntent(
-              q
-            ),
-
-          answerType:
-            inferAttribute(
-              q
-            ),
-
-          entities:
-            canonical.entityCandidates,
-
-          direct,
-
-          pages:
-            canonical.pages.map(
-              (
-                p
-              ) => ({
-                title:
-                  p.title,
-
-                source:
-                  p.source,
-
-                textLength:
-                  p.text.length,
-
-                tableCount:
-                  extractTables(
-                    p
-                  ).length,
-              })
-            ),
-
-          errors:
-            canonical.errors,
-
-          ms:
-            nowMs() -
-            started,
+          result,
         }
       );
-    } catch (
-      error
-    ) {
+    } catch (error) {
       return json(
         200,
         {
@@ -6644,17 +6683,12 @@ export async function GET(
           build:
             BUILD_ID,
 
-          test:
-            "resolve",
+          question,
 
           error:
             errorCode(
               error
             ),
-
-          ms:
-            nowMs() -
-            started,
         }
       );
     }
@@ -6664,16 +6698,30 @@ export async function GET(
     test ===
     "search"
   ) {
+    const question =
+      clean(
+        url.searchParams.get(
+          "q"
+        ) ||
+        "What rarity is Tralalero Tralala?",
+        700
+      );
+
     const started =
       nowMs();
+
+    const analysis =
+      analyzeQuestionDeterministic(
+        question
+      );
 
     try {
       const result =
         await tavilyStage(
-          "What multiplier does the Rainbow mutation give?",
-
+          question,
+          analysis,
           started +
-            4500
+          2500
         );
 
       return json(
@@ -6686,9 +6734,6 @@ export async function GET(
           build:
             BUILD_ID,
 
-          test:
-            "tavily_search",
-
           sourceCount:
             result.sources.length,
 
@@ -6700,9 +6745,7 @@ export async function GET(
             started,
         }
       );
-    } catch (
-      error
-    ) {
+    } catch (error) {
       return json(
         200,
         {
@@ -6711,9 +6754,6 @@ export async function GET(
 
           build:
             BUILD_ID,
-
-          test:
-            "tavily_search",
 
           error:
             errorCode(
@@ -6739,22 +6779,25 @@ export async function GET(
 
       configured: {
         tavily:
-          env(
-            "TAVILY_API_KEY"
-          ).length >
-          0,
+          Boolean(
+            env(
+              "TAVILY_API_KEY"
+            )
+          ),
 
         nvidia:
-          env(
-            "NVIDIA_API_KEY"
-          ).length >
-          0,
+          Boolean(
+            env(
+              "NVIDIA_API_KEY"
+            )
+          ),
 
         token:
-          env(
-            "LOOKUP_PROXY_TOKEN"
-          ).length >
-          0,
+          Boolean(
+            env(
+              "LOOKUP_PROXY_TOKEN"
+            )
+          ),
       },
 
       model:
@@ -6762,65 +6805,83 @@ export async function GET(
           .NVIDIA_MODEL ||
         DEFAULT_MODEL,
 
+      budgets: {
+        globalMs:
+          CFG.GLOBAL_BUDGET_MS,
+
+        wikiMs:
+          CFG.WIKI_TIMEOUT_MS,
+
+        tavilyMs:
+          CFG.TAVILY_TIMEOUT_MS,
+
+        nvidiaMs:
+          CFG.NVIDIA_TIMEOUT_MS,
+      },
+
       architecture: {
-        entityFirstResolution:
+        entityFirst:
           true,
 
-        categorylessEntityQuestions:
+        factGraph:
           true,
 
-        fullFandomPageFirst:
+        reverseRelations:
           true,
 
-        everyTableParsedIndependently:
+        exactEntityPageFirst:
           true,
 
-        normalizedColumnSemantics:
+        htmlTables:
           true,
 
-        exactEntityPageContextTables:
+        wikitextTables:
           true,
 
-        bidirectionalTableRelations:
+        infobox:
           true,
 
-        updateSectionRouting:
+        proseFallback:
           true,
 
-        fullPageCurrentRebirth:
+        pageContext:
           true,
 
-        infoboxAndInformationTables:
+        canonicalFirst:
           true,
 
-        tavilyFallback:
+        parallelFallback:
           true,
 
-        nvidiaEvidenceFallback:
+        providerFailureIsolation:
+          true,
+
+        aiQuestionAnalyzer:
+          true,
+
+        aiEvidenceFallback:
+          true,
+
+        currentRebirthFullPage:
+          true,
+
+        updateSections:
           true,
 
         pageCache:
           true,
 
-        answerCache:
+        factCache:
           true,
 
-        selfTestEndpoint:
-          "?test=self",
-
-        wikiHealthEndpoint:
-          "?test=wiki&page=Rebirth",
-
-        directResolveEndpoint:
-          "?test=resolve&q=...",
+        answerCache:
+          true,
       },
     }
   );
 }
 
-export async function POST(
-  request
-) {
+export async function POST(request) {
   const expectedToken =
     env(
       "LOOKUP_PROXY_TOKEN"
@@ -6839,9 +6900,7 @@ export async function POST(
       )
       .trim();
 
-  if (
-    !expectedToken
-  ) {
+  if (!expectedToken) {
     return json(
       503,
       {
@@ -6864,19 +6923,14 @@ export async function POST(
     );
   }
 
-  if (
-    !env(
-      "TAVILY_API_KEY"
-    )
-  ) {
-    return json(
-      503,
-      {
-        error:
-          "TAVILY_KEY_NOT_CONFIGURED",
-      }
-    );
-  }
+  /*
+    IMPORTANT R20 CHANGE:
+
+    Tavily and NVIDIA are NOT required
+    for the endpoint to function.
+
+    Canonical Fandom can answer by itself.
+  */
 
   let body;
 
@@ -6900,16 +6954,13 @@ export async function POST(
       validateQuestions(
         body?.questions
       );
-  } catch (
-    error
-  ) {
+  } catch (error) {
     return json(
       400,
       {
         error:
-          clean(
-            error?.message,
-            220
+          errorCode(
+            error
           ),
       }
     );
@@ -6929,7 +6980,7 @@ export async function POST(
     of questions
   ) {
     try {
-      const resolved =
+      const result =
         await resolveQuestion(
           question,
           lore
@@ -6939,28 +6990,15 @@ export async function POST(
         index:
           question.index,
 
-        entity:
-          question.expectedEntity !==
-          "NONE"
-            ? question.expectedEntity
-            : "UNKNOWN",
-
         attribute:
           question.expectedAttribute !==
           "NONE"
             ? question.expectedAttribute
-            : "UNKNOWN",
+            : result.answerType,
 
-        ...resolved,
+        ...result,
       });
-    } catch (
-      error
-    ) {
-      const reason =
-        errorCode(
-          error
-        );
-
+    } catch (error) {
       items.push({
         index:
           question.index,
@@ -6971,22 +7009,13 @@ export async function POST(
         candidateAnswer:
           "UNKNOWN",
 
-        entity:
-          question.expectedEntity !==
-          "NONE"
-            ? question.expectedEntity
-            : "UNKNOWN",
-
-        attribute:
-          question.expectedAttribute !==
-          "NONE"
-            ? question.expectedAttribute
-            : "UNKNOWN",
-
         confidence:
           0,
 
-        reason,
+        reason:
+          errorCode(
+            error
+          ),
 
         route:
           "LOOKUP_ERROR",
