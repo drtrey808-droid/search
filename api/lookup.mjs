@@ -1,4 +1,4 @@
-const BUILD_ID = "SAB_RELATION_SCHEMA_ENGINE_R30_2026_08_19";
+const BUILD_ID = "SAB_AGGRESSIVE_VERIFIED_ENGINE_R31_2026_08_19";
 
 const PRIMARY_ORIGIN = "https://steal-a-brainrot.org";
 const FANDOM_API = "https://stealabrainrot.fandom.com/api.php";
@@ -9,7 +9,7 @@ const NVIDIA_URL = "https://integrate.api.nvidia.com/v1/chat/completions";
 const DEFAULT_MODEL = "nvidia/nemotron-3-super-120b-a12b";
 
 const CFG = Object.freeze({
-  GLOBAL_BUDGET_MS: Number(process.env.LOOKUP_BUDGET_MS || 4800),
+  GLOBAL_BUDGET_MS: Number(process.env.LOOKUP_BUDGET_MS || 5400),
   PRIMARY_TIMEOUT_MS: Number(process.env.PRIMARY_TIMEOUT_MS || 1050),
   FANDOM_TIMEOUT_MS: Number(process.env.FANDOM_TIMEOUT_MS || 900),
   BACKUP_TIMEOUT_MS: Number(process.env.BACKUP_TIMEOUT_MS || 800),
@@ -469,7 +469,7 @@ function analyzeQuestion(question) {
     current,
     intent: inferIntent(q, relation, update, date),
     rawQuestion: q,
-    source: "DETERMINISTIC_R30",
+    source: "DETERMINISTIC_R31",
   };
 }
 
@@ -609,7 +609,7 @@ async function fetchPage(url, source, deadline) {
   const html = await fetchText(source.key, url, {
     headers: {
       Accept: "text/html,application/xhtml+xml",
-      "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R30",
+      "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R31",
     },
   }, timeout);
   const page = {
@@ -943,7 +943,7 @@ function withBridgedUpdate(analysis, update) {
     source:
       analysis.source === "NVIDIA_QUESTION_ROUTER"
         ? "NVIDIA_QUESTION_ROUTER+DATE_BRIDGE"
-        : "DETERMINISTIC_R30+DATE_BRIDGE",
+        : "DETERMINISTIC_R31+DATE_BRIDGE",
   };
 }
 
@@ -1987,7 +1987,7 @@ async function fandomSearchTitles(query, deadline) {
     format: "json",
   });
   try {
-    const data = await fetchJson("FANDOM_SEARCH", `${FANDOM_API}?${params.toString()}`, { headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R30" } }, Math.min(CFG.FANDOM_TIMEOUT_MS, left - 20));
+    const data = await fetchJson("FANDOM_SEARCH", `${FANDOM_API}?${params.toString()}`, { headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R31" } }, Math.min(CFG.FANDOM_TIMEOUT_MS, left - 20));
     return (Array.isArray(data?.query?.search) ? data.query.search : []).map((x) => oneLine(x?.title, 300)).filter(Boolean);
   } catch {
     return [];
@@ -2000,7 +2000,7 @@ async function fetchFandomPage(title, deadline) {
   if (cached) return { ...cached, cache: "HIT" };
   const left = timeLeft(deadline);
   if (left < 250) throw new Error("FANDOM_BUDGET_EXHAUSTED");
-  const data = await fetchJson("FANDOM_PARSE", fandomParseUrl(title), { headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R30" } }, Math.min(CFG.FANDOM_TIMEOUT_MS, left - 20));
+  const data = await fetchJson("FANDOM_PARSE", fandomParseUrl(title), { headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R31" } }, Math.min(CFG.FANDOM_TIMEOUT_MS, left - 20));
   if (data?.error) throw new Error(`FANDOM_PARSE_${data.error.code || "ERROR"}`);
   const p = data?.parse || {};
   const html = typeof p.text === "string" ? p.text : String(p.text?.["*"] || "");
@@ -3404,22 +3404,507 @@ function deterministicExactPageFallback(question, analysis, page, source) {
 }
 
 
-async function exactTierLookup(question, analysis, source, deadline) {
-  const query = exactSearchQuery(question, analysis, source);
 
-  const search = await tavilySearch(
-    query,
-    deadline,
-    [source.host],
-    analysis.current
+
+function aggressiveSearchQueries(question, analysis, source) {
+  const host = source.host;
+  const q = oneLine(question, 700);
+  const queries = [];
+
+  const add = (value) => {
+    value = oneLine(value, 900);
+    if (!value) return;
+    if (!value.toLowerCase().startsWith(`site:${host}`)) {
+      value = `site:${host} ${value}`;
+    }
+    if (!queries.includes(value)) queries.push(value);
+  };
+
+  // 1) Existing structured query.
+  add(exactSearchQuery(question, analysis, source));
+
+  const rel = relationSearchWord(analysis.relation);
+  const entity = analysis.entity ? `"${oneLine(analysis.entity, 180)}"` : "";
+  const update = analysis.update ? `"Update ${analysis.update}"` : "";
+  const date = analysis.date ? `"${humanDateFromIso(analysis.date)}"` : "";
+
+  // 2) Relaxed relation query. Avoid forcing every clue.
+  add([
+    entity,
+    update,
+    date,
+    rel,
+    analysis.relation === REL.FREQUENCY ? "event every hours returns" : "",
+    analysis.relation === REL.OUTCOME ? "ritual outcome reward spawn" : "",
+    analysis.relation === REL.MACHINE && analysis.replacedIn ? `"Update ${analysis.replacedIn}" replaced machine` : "",
+  ].filter(Boolean).join(" "));
+
+  // 3) Clue-led query. Keep the strongest concrete clue(s), not all of them.
+  const clues = importantQuestionClues(question, analysis)
+    .sort((a, b) => b.weight - a.weight)
+    .slice(0, 3)
+    .map((x) => /\s/.test(x.value) ? `"${x.value}"` : x.value);
+
+  let extra = "";
+  if (analysis.relation === REL.FREQUENCY) extra = "frequency every interval";
+  else if (analysis.relation === REL.OUTCOME) extra = "outcome result";
+  else if (analysis.relation === REL.MACHINE && (analysis.activeFrom || analysis.activeTo || analysis.replacedIn)) {
+    extra = "machine replaced active";
+  } else {
+    extra = rel;
+  }
+
+  add([...clues, extra].filter(Boolean).join(" "));
+
+  // If one query collapsed to something too generic, use original wording as a last variant.
+  if (queries.length < 3) {
+    add(q.replace(/[?!.]+$/g, ""));
+  }
+
+  return queries.slice(0, 3);
+}
+
+function mergeSearches(searches) {
+  const merged = {
+    answer: "",
+    results: [],
+    errors: [],
+    queries: [],
+  };
+
+  const byUrl = new Map();
+
+  for (const item of searches || []) {
+    if (!item) continue;
+    if (item.query) merged.queries.push(item.query);
+    if (item.search?.answer && !merged.answer) merged.answer = item.search.answer;
+    for (const error of item.search?.errors || []) merged.errors.push(error);
+
+    for (const row of item.search?.results || []) {
+      const key = row.url || `${row.host}|${row.title}`;
+      const existing = byUrl.get(key);
+
+      if (!existing) {
+        byUrl.set(key, {
+          ...row,
+          queryHits: 1,
+          queryIndexes: [item.index],
+        });
+      } else {
+        existing.queryHits += 1;
+        existing.queryIndexes.push(item.index);
+        if ((row.score || 0) > (existing.score || 0)) existing.score = row.score;
+        if ((row.content || "").length > (existing.content || "").length) existing.content = row.content;
+      }
+    }
+  }
+
+  merged.results = [...byUrl.values()];
+  return merged;
+}
+
+function obviousBadPage(row, source) {
+  let path = "";
+  try { path = new URL(row?.url || "").pathname.toLowerCase(); } catch {}
+
+  if (!path) return true;
+  if (source === SOURCE.PRIMARY) {
+    if (path === "/" || path === "") return true;
+    if (/\/(?:calculator|search)(?:\/|$)/.test(path)) return true;
+    if (/\/wiki\/(?:creator|developers?|owners?)(?:\/|$)/.test(path)) return true;
+  }
+
+  return false;
+}
+
+function softFamilyPreference(row, question, analysis, source) {
+  if (source !== SOURCE.PRIMARY) return 0;
+
+  const family = primaryFamilyScore(row, question, analysis);
+  if (family.allowed) return Math.max(1, family.score);
+
+  // Wrong family is now a penalty, NOT an automatic rejection.
+  // This lets /events/ or /brainrots/ still answer a ritual/update question
+  // when the evidence is strong.
+  return -2.5;
+}
+
+function aggressiveResultScore(row, question, analysis, source) {
+  if (!row || row.host !== source.host) return -999;
+  if (obviousBadPage(row, source)) return -999;
+
+  const combined = `${row.title}\n${row.url}\n${row.content}`;
+  let score = clamp(row.score) * 4;
+
+  score += softFamilyPreference(row, question, analysis, source);
+
+  if (analysis.entity) score += bestEntityScore(analysis, combined) * 4.5;
+
+  if (
+    analysis.update &&
+    new RegExp(`\\bUpdate\\s*${analysis.update}\\b`, "i").test(combined)
+  ) score += 4;
+
+  if (analysis.date) {
+    const date = humanDateFromIso(analysis.date);
+    if (date && combined.toLowerCase().includes(date.toLowerCase())) score += 4;
+  }
+
+  score += relationEvidenceScore(combined, analysis.relation) * 2;
+
+  const coverage = weightedClueCoverage(question, analysis, combined);
+  score += coverage.ratio * 4;
+
+  // Repeated discovery across independent search variants is strong.
+  score += Math.min(3, Number(row.queryHits || 1) - 1) * 2;
+
+  // Concrete clue matches help, but we do NOT require every clue.
+  const hard = importantQuestionClues(question, analysis)
+    .filter((x) => ["money", "percent", "multiplier", "update", "date", "lifecycle"].includes(x.kind));
+  const hardMatched = hard.filter((x) => pageHasClue(combined, x.value));
+  score += hardMatched.length * 1.2;
+
+  return score;
+}
+
+function rankAggressiveResults(search, question, analysis, source, limit = 3) {
+  return (search?.results || [])
+    .filter((row) => row.host === source.host)
+    .map((row) => ({
+      ...row,
+      aggressiveScore: aggressiveResultScore(row, question, analysis, source),
+    }))
+    .filter((row) => row.aggressiveScore > -50)
+    .sort((a, b) => b.aggressiveScore - a.aggressiveScore)
+    .slice(0, Math.max(1, limit));
+}
+
+function aggressivePageUsable(question, analysis, page, source) {
+  if (!page?.text || oneLine(page.text, 100).length < 20) {
+    return { usable: false, reason: "EMPTY_PAGE" };
+  }
+
+  if (obviousBadPage({ url: page.url }, source)) {
+    return { usable: false, reason: "OBVIOUS_BAD_PAGE" };
+  }
+
+  const text = page.text;
+  const relationHit = relationEvidenceScore(text, analysis.relation) > 0;
+  const entityHit = analysis.entity ? bestEntityScore(analysis, `${page.title}\n${text}`) >= 0.25 : false;
+  const coverage = weightedClueCoverage(question, analysis, text);
+
+  // Soft page-family preference: if the page is outside the expected family,
+  // strong entity/clue/relation evidence can still keep it.
+  const familyPenalty = softFamilyPreference(
+    { url: page.url, host: source.host, title: page.title, content: text, score: 0 },
+    question,
+    analysis,
+    source
   );
 
-  const candidates = rankEligibleResults(
+  if (
+    familyPenalty < 0 &&
+    !entityHit &&
+    !relationHit &&
+    coverage.ratio < 0.25
+  ) {
+    return { usable: false, reason: "WEAK_WRONG_FAMILY", coverage };
+  }
+
+  // Concrete clues no longer have to ALL appear. One hard clue + relation/entity
+  // is enough to keep a page in the evidence pool.
+  const hard = importantQuestionClues(question, analysis)
+    .filter((x) => ["money", "percent", "multiplier", "update", "date", "lifecycle"].includes(x.kind));
+  const hardMatched = hard.filter((x) => pageHasClue(text, x.value));
+
+  if (
+    hard.length &&
+    hardMatched.length === 0 &&
+    !entityHit &&
+    !relationHit
+  ) {
+    return { usable: false, reason: "NO_HARD_OR_RELATION_EVIDENCE", coverage };
+  }
+
+  return {
+    usable: true,
+    reason: "AGGRESSIVE_PAGE_USABLE",
+    coverage,
+    entityHit,
+    relationHit,
+    hardMatched: hardMatched.map((x) => x.value),
+  };
+}
+
+function evidenceChunksForPage(question, analysis, page, pageIndex) {
+  const windows = contextsAroundClues(question, analysis, page.text, 620);
+  const chunks = [];
+
+  for (const window of windows.slice(0, 4)) {
+    chunks.push({
+      pageIndex,
+      title: page.title,
+      url: page.url,
+      clue: window.clue,
+      text: oneLine(window.text, 1800),
+    });
+  }
+
+  if (!chunks.length) {
+    // No exact clue window? Keep a compact beginning + relation neighborhood.
+    const relationWords = relationSearchWord(analysis.relation)
+      .split(/\s+/)
+      .filter((x) => x.length >= 4);
+
+    let relationChunk = "";
+    for (const word of relationWords) {
+      const idx = String(page.text || "").toLowerCase().indexOf(word.toLowerCase());
+      if (idx >= 0) {
+        relationChunk = clean(
+          String(page.text || "").slice(Math.max(0, idx - 900), idx + 1400),
+          2400
+        );
+        break;
+      }
+    }
+
+    chunks.push({
+      pageIndex,
+      title: page.title,
+      url: page.url,
+      clue: relationChunk ? "relation" : "page",
+      text: oneLine(relationChunk || page.text, 2600),
+    });
+  }
+
+  return chunks;
+}
+
+function buildEvidenceBundle(question, analysis, pages) {
+  const chunks = [];
+  pages.forEach((page, index) => {
+    chunks.push(...evidenceChunksForPage(question, analysis, page, index + 1));
+  });
+  return chunks.slice(0, 10);
+}
+
+function supportingPageForAnswer(answer, pages, chunks) {
+  const a = oneLine(answer, 500);
+
+  for (const chunk of chunks || []) {
+    if (evidenceSupports(a, chunk.text)) {
+      const page = pages[(chunk.pageIndex || 1) - 1];
+      if (page) return { page, chunk };
+    }
+  }
+
+  for (const page of pages || []) {
+    if (evidenceSupports(a, page.text)) return { page, chunk: null };
+  }
+
+  return null;
+}
+
+function validateBundleAnswer(question, analysis, answer, pages, chunks) {
+  const support = supportingPageForAnswer(answer, pages, chunks);
+  if (!support) {
+    return { valid: false, reason: "ANSWER_NOT_IN_TRUSTED_EVIDENCE" };
+  }
+
+  const type = answerTypeValid(question, analysis, answer, support.page);
+  if (!type.valid) return type;
+
+  // Because chunks are built around the question's clues, an answer appearing
+  // in one of them is enough. If no chunk hit, require same-page relation evidence.
+  if (support.chunk) {
+    return {
+      valid: true,
+      reason: "ANSWER_IN_CLUE_EVIDENCE",
+      page: support.page,
+      chunk: support.chunk,
+    };
+  }
+
+  if (relationEvidenceScore(support.page.text, analysis.relation) > 0) {
+    return {
+      valid: true,
+      reason: "ANSWER_IN_RELATION_PAGE",
+      page: support.page,
+      chunk: null,
+    };
+  }
+
+  return { valid: false, reason: "ANSWER_NOT_CONNECTED_TO_QUESTION" };
+}
+
+async function aiExtractEvidenceBundle(question, analysis, pages, source, deadline) {
+  if (!env("NVIDIA_API_KEY") || timeLeft(deadline) < 300 || !pages.length) {
+    return { result: null, error: "NVIDIA_BUNDLE_UNAVAILABLE" };
+  }
+
+  const chunks = buildEvidenceBundle(question, analysis, pages);
+  if (!chunks.length) return { result: null, error: "NO_EVIDENCE_CHUNKS" };
+
+  try {
+    const data = await fetchJson(
+      `${source.key}_AI_BUNDLE_EXTRACT`,
+      NVIDIA_URL,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${env("NVIDIA_API_KEY")}`,
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          model: process.env.NVIDIA_MODEL || DEFAULT_MODEL,
+          stream: false,
+          temperature: 0,
+          max_tokens: 190,
+          chat_template_kwargs: { enable_thinking: false },
+          messages: [
+            {
+              role: "system",
+              content: [
+                "You extract ONE Steal a Brainrot answer from trusted evidence chunks.",
+                "Use ONLY the supplied chunks. Never use memory or outside knowledge.",
+                "The chunks all come from the SAME source tier and may come from up to 3 pages.",
+                "You do NOT need every clue to repeat in one snippet. Connect facts only when the supplied evidence clearly supports the requested relationship.",
+                "If unsupported, answer UNKNOWN.",
+                `Requested relation: ${analysis.relation}.`,
+                analysis.entity ? `Requested entity: ${analysis.entity}.` : "",
+                analysis.update ? `Requested update: ${analysis.update}.` : "",
+                analysis.activeFrom ? `Active from Update ${analysis.activeFrom}.` : "",
+                analysis.activeTo ? `Active through Update ${analysis.activeTo}.` : "",
+                analysis.replacedIn ? `Replaced in Update ${analysis.replacedIn}.` : "",
+                analysis.date ? `Requested date: ${analysis.date}.` : "",
+                "For FREQUENCY return only the recurrence phrase, e.g. Every two hours.",
+                "For OUTCOME/SPAWN/REWARD return only the resulting entity name.",
+                "For MACHINE questions return only the machine name.",
+                "For REBIRTH return Rebirth<number>.",
+                "For GEAR return only the item name.",
+                "For MULTIPLIER return only the multiplier.",
+                "Return a short exact evidence quote copied from one supplied chunk.",
+                'Return JSON only: {"answer":"UNKNOWN or value","evidence":"short exact quote","reason":"short"}',
+              ].filter(Boolean).join("\n"),
+            },
+            {
+              role: "user",
+              content: JSON.stringify({
+                question,
+                analysis: {
+                  relation: analysis.relation,
+                  entity: analysis.entity,
+                  update: analysis.update,
+                  updateNumbers: analysis.updateNumbers,
+                  activeFrom: analysis.activeFrom,
+                  activeTo: analysis.activeTo,
+                  replacedIn: analysis.replacedIn,
+                  date: analysis.date,
+                },
+                evidence: chunks.map((chunk, i) => ({
+                  id: i + 1,
+                  pageIndex: chunk.pageIndex,
+                  title: chunk.title,
+                  url: chunk.url,
+                  clue: chunk.clue,
+                  text: chunk.text,
+                })),
+              }),
+            },
+          ],
+        }),
+      },
+      Math.max(
+        300,
+        Math.min(
+          CFG.NVIDIA_TIMEOUT_MS,
+          timeLeft(deadline) - 30
+        )
+      )
+    );
+
+    const raw = parseLooseAiExtraction(data?.choices?.[0]?.message?.content);
+    const answer = oneLine(raw?.answer, 500);
+
+    if (!answer || norm(answer) === "unknown") {
+      return { result: null, error: "AI_BUNDLE_UNKNOWN" };
+    }
+
+    const check = validateBundleAnswer(
+      question,
+      analysis,
+      answer,
+      pages,
+      chunks
+    );
+
+    if (!check.valid) {
+      return {
+        result: null,
+        error: `AI_BUNDLE_REJECTED_${check.reason}`,
+      };
+    }
+
+    // If model supplied an evidence quote, make sure the quote itself exists
+    // somewhere in the trusted bundle. Do not fail solely because the model
+    // omitted the quote if the answer itself is already verified.
+    const evidence = oneLine(raw?.evidence, 300);
+    if (
+      evidence &&
+      !chunks.some((chunk) => norm(chunk.text).includes(norm(evidence)))
+    ) {
+      return {
+        result: null,
+        error: "AI_BUNDLE_EVIDENCE_QUOTE_NOT_FOUND",
+      };
+    }
+
+    return {
+      result: makeResult(
+        answer,
+        analysis.relation,
+        source,
+        check.page,
+        `${source.key}_AGGRESSIVE_BUNDLE_AI`,
+        source.confidence
+      ),
+      error: null,
+      chunks,
+      supportingPage: check.page,
+    };
+  } catch (error) {
+    return {
+      result: null,
+      error: errorCode(error),
+    };
+  }
+}
+
+async function exactTierLookup(question, analysis, source, deadline) {
+  const queries = aggressiveSearchQueries(question, analysis, source);
+
+  // Search variants run in parallel so aggression does not add 3x latency.
+  const settledSearches = await Promise.all(
+    queries.map(async (query, index) => ({
+      index,
+      query,
+      search: await tavilySearch(
+        query,
+        deadline,
+        [source.host],
+        analysis.current
+      ),
+    }))
+  );
+
+  const search = mergeSearches(settledSearches);
+  const candidates = rankAggressiveResults(
     search,
     question,
     analysis,
     source,
-    2
+    3
   );
 
   if (!candidates.length) {
@@ -3427,49 +3912,74 @@ async function exactTierLookup(question, analysis, source, deadline) {
       result: null,
       search,
       page: null,
+      pages: [],
       pagesTried: [],
-      query,
-      error: "NO_ELIGIBLE_SEARCH_RESULT",
+      query: queries.join(" || "),
+      queries,
+      error: "NO_AGGRESSIVE_SEARCH_RESULT",
     };
   }
 
+  // Open top 3 in parallel. Page checks happen after fetch.
+  const pageSettled = await Promise.allSettled(
+    candidates.map((row) => openExactResult(row, source, deadline))
+  );
+
+  const pages = [];
   const pagesTried = [];
   const errors = [];
 
-  for (const row of candidates) {
-    if (timeLeft(deadline) < 260) {
-      errors.push("TIER_PAGE_BUDGET_EXHAUSTED");
-      break;
-    }
+  for (let i = 0; i < pageSettled.length; i++) {
+    const settled = pageSettled[i];
+    const row = candidates[i];
 
-    let page;
-
-    try {
-      page = await openExactResult(row, source, deadline);
-    } catch (error) {
-      errors.push(`${row.url}:${errorCode(error)}`);
+    if (settled.status !== "fulfilled") {
+      errors.push(`${row.url}:${errorCode(settled.reason)}`);
       continue;
     }
 
-    pagesTried.push({
-      title: page.title,
-      url: page.url,
-      searchScore: row.eligibility?.score || 0,
-    });
-
-    const eligibility = pageEligibility(
+    const page = settled.value;
+    const usable = aggressivePageUsable(
       question,
       analysis,
       page,
       source
     );
 
-    if (!eligibility.eligible) {
-      errors.push(`${page.url}:PAGE_REJECTED_${eligibility.reason}`);
+    pagesTried.push({
+      title: page.title,
+      url: page.url,
+      searchScore: row.aggressiveScore,
+      usable: usable.usable,
+      reason: usable.reason,
+    });
+
+    if (!usable.usable) {
+      errors.push(`${page.url}:PAGE_SKIPPED_${usable.reason}`);
       continue;
     }
 
-    // High-value deterministic extraction runs first.
+    pages.push(page);
+  }
+
+  if (!pages.length) {
+    return {
+      result: null,
+      search,
+      page: null,
+      pages,
+      pagesTried,
+      query: queries.join(" || "),
+      queries,
+      selected: candidates[0] || null,
+      error: errors.join("|") || "NO_USABLE_PAGES",
+    };
+  }
+
+  // -----------------------------------------------------
+  // 1) Deterministic extraction FIRST across all S+ pages.
+  // -----------------------------------------------------
+  for (const page of pages) {
     const direct = deterministicHighValueExactPage(
       question,
       analysis,
@@ -3478,52 +3988,33 @@ async function exactTierLookup(question, analysis, source, deadline) {
     );
 
     if (direct) {
-      const check = validateFinalPageAnswer(
+      const check = validateBundleAnswer(
         question,
         analysis,
         direct.answer,
-        page
+        pages,
+        buildEvidenceBundle(question, analysis, pages)
       );
 
       if (check.valid) {
         return {
           result: direct,
           search,
-          page,
+          page: check.page || page,
+          pages,
           pagesTried,
-          query,
-          selected: row,
+          query: queries.join(" || "),
+          queries,
+          selected: candidates.find((x) => x.url === page.url) || candidates[0],
           error: null,
         };
       }
 
       errors.push(`${page.url}:DIRECT_REJECTED_${check.reason}`);
     }
+  }
 
-    // Then AI extracts only from clue-rich regions of THIS exact page.
-    const ai = await aiExtractSinglePage(
-      question,
-      analysis,
-      page,
-      source,
-      deadline
-    );
-
-    if (ai.result) {
-      return {
-        result: ai.result,
-        search,
-        page,
-        pagesTried,
-        query,
-        selected: row,
-        error: null,
-      };
-    }
-
-    if (ai.error) errors.push(`${page.url}:${ai.error}`);
-
-    // Last same-page deterministic parser fallback.
+  for (const page of pages) {
     const deterministic = deterministicExactPageFallback(
       question,
       analysis,
@@ -3531,41 +4022,73 @@ async function exactTierLookup(question, analysis, source, deadline) {
       source
     );
 
-    if (deterministic) {
-      const check = validateFinalPageAnswer(
-        question,
-        analysis,
-        deterministic.answer,
-        page
-      );
+    if (!deterministic) continue;
 
-      if (check.valid) {
-        deterministic.reason = `${source.key}_EXACT_PAGE_DETERMINISTIC`;
-        deterministic.confidence = source.confidence;
+    const check = validateBundleAnswer(
+      question,
+      analysis,
+      deterministic.answer,
+      pages,
+      buildEvidenceBundle(question, analysis, pages)
+    );
 
-        return {
-          result: deterministic,
-          search,
-          page,
-          pagesTried,
-          query,
-          selected: row,
-          error: ai.error,
-        };
-      }
+    if (check.valid) {
+      deterministic.reason = `${source.key}_AGGRESSIVE_DETERMINISTIC`;
+      deterministic.confidence = source.confidence;
 
-      errors.push(`${page.url}:DETERMINISTIC_REJECTED_${check.reason}`);
+      return {
+        result: deterministic,
+        search,
+        page: check.page || page,
+        pages,
+        pagesTried,
+        query: queries.join(" || "),
+        queries,
+        selected: candidates.find((x) => x.url === page.url) || candidates[0],
+        error: null,
+      };
     }
+
+    errors.push(`${page.url}:DETERMINISTIC_REJECTED_${check.reason}`);
   }
+
+  // -----------------------------------------------------
+  // 2) AI reads several SMALL trusted S+ evidence chunks.
+  // -----------------------------------------------------
+  const ai = await aiExtractEvidenceBundle(
+    question,
+    analysis,
+    pages,
+    source,
+    deadline
+  );
+
+  if (ai.result) {
+    return {
+      result: ai.result,
+      search,
+      page: ai.supportingPage || pages[0],
+      pages,
+      pagesTried,
+      query: queries.join(" || "),
+      queries,
+      selected: candidates.find((x) => x.url === (ai.supportingPage?.url || "")) || candidates[0],
+      error: null,
+    };
+  }
+
+  if (ai.error) errors.push(ai.error);
 
   return {
     result: null,
     search,
     page: null,
+    pages,
     pagesTried,
-    query,
+    query: queries.join(" || "),
+    queries,
     selected: candidates[0] || null,
-    error: errors.join("|") || "NO_SUPPORTED_ANSWER_ON_ELIGIBLE_PAGES",
+    error: errors.join("|") || "NO_VERIFIED_ANSWER_AFTER_AGGRESSIVE_SEARCH",
   };
 }
 
@@ -3671,16 +4194,19 @@ async function resolveQuestion(questionObj, lore = "") {
     aiQuestionRouterError: routed.aiError,
 
     primaryQuery: "",
+    primaryQueries: [],
     primarySelectedPage: "",
     primaryPagesTried: [],
     primaryError: "",
 
     fandomQuery: "",
+    fandomQueries: [],
     fandomSelectedPage: "",
     fandomPagesTried: [],
     fandomError: "",
 
     wikiQuery: "",
+    wikiQueries: [],
     wikiSelectedPage: "",
     wikiPagesTried: [],
     wikiError: "",
@@ -3690,8 +4216,9 @@ async function resolveQuestion(questionObj, lore = "") {
 
   // =====================================================
   // 1) S+ ONLY.
-  // Search steal-a-brainrot.org -> open ONE best page -> AI extracts
-  // ONLY from that page. If supported, 0.995 and STOP.
+  // Run 3 S+ searches in parallel -> open top 3 useful S+ pages ->
+  // deterministic extraction first -> AI over small verified S+ evidence chunks.
+  // If any S+ evidence supports the answer, 0.995 and STOP.
   // =====================================================
   const primary = await exactTierLookup(
     question,
@@ -3701,6 +4228,7 @@ async function resolveQuestion(questionObj, lore = "") {
   );
 
   diagnostic.primaryQuery = primary.query;
+  diagnostic.primaryQueries = primary.queries || [];
   diagnostic.primarySelectedPage = primary.page?.url || primary.selected?.url || "";
   diagnostic.primaryPagesTried = primary.pagesTried || [];
   diagnostic.primaryError = primary.error || "";
@@ -3735,6 +4263,7 @@ async function resolveQuestion(questionObj, lore = "") {
     );
 
     diagnostic.fandomQuery = fandom.query;
+    diagnostic.fandomQueries = fandom.queries || [];
     diagnostic.fandomSelectedPage = fandom.page?.url || fandom.selected?.url || "";
     diagnostic.fandomPagesTried = fandom.pagesTried || [];
     diagnostic.fandomError = fandom.error || "";
@@ -3771,6 +4300,7 @@ async function resolveQuestion(questionObj, lore = "") {
     );
 
     diagnostic.wikiQuery = wiki.query;
+    diagnostic.wikiQueries = wiki.queries || [];
     diagnostic.wikiSelectedPage = wiki.page?.url || wiki.selected?.url || "";
     diagnostic.wikiPagesTried = wiki.pagesTried || [];
     diagnostic.wikiError = wiki.error || "";
@@ -3802,7 +4332,7 @@ async function resolveQuestion(questionObj, lore = "") {
     const emergency = await emergencyStage(
       question,
       analysis,
-      primary.page ? [primary.page] : [],
+      (primary.pages && primary.pages.length) ? primary.pages : (primary.page ? [primary.page] : []),
       deadline
     );
 
@@ -4435,6 +4965,80 @@ function runSelfTests() {
   );
   check("R30 outcome deterministic", deterministicHighValueExactPage(r30OutcomeQ, r30Outcome, r30OutcomePage, SOURCE.PRIMARY)?.answer === "Yess my Resume");
 
+
+  const r31FreqQ = "How often does the Queen Bee event happen during Update 61?";
+  const r31Freq = enforceQuestionSemantics(r31FreqQ, analyzeQuestion(r31FreqQ));
+  const r31FreqQueries = aggressiveSearchQueries(r31FreqQ, r31Freq, SOURCE.PRIMARY);
+
+  check("R31 three search variants", r31FreqQueries.length === 3);
+  check("R31 frequency query entity", r31FreqQueries.some((q) => q.includes("Queen Bee")));
+  check("R31 frequency query relation", r31FreqQueries.some((q) => /frequency|every|interval/i.test(q)));
+
+  const r31OutcomeQ = "What is the 99% outcome from the Job Job Job Sahur ritual?";
+  const r31Outcome = enforceQuestionSemantics(r31OutcomeQ, analyzeQuestion(r31OutcomeQ));
+  const r31OutcomeQueries = aggressiveSearchQueries(r31OutcomeQ, r31Outcome, SOURCE.PRIMARY);
+  check("R31 outcome query percent", r31OutcomeQueries.some((q) => q.includes("99%")));
+  check("R31 outcome query ritual", r31OutcomeQueries.some((q) => q.includes("Job Job Job Sahur")));
+
+  const r31LifeQ = "Which machine was active from Update 57 through Update 60 and got replaced in Update 61?";
+  const r31Life = enforceQuestionSemantics(r31LifeQ, analyzeQuestion(r31LifeQ));
+  const r31LifeQueries = aggressiveSearchQueries(r31LifeQ, r31Life, SOURCE.PRIMARY);
+  check("R31 lifecycle three variants", r31LifeQueries.length === 3);
+  check("R31 lifecycle replacement variant", r31LifeQueries.some((q) => /replaced/i.test(q)));
+
+  const r31SoftFamilyRow = {
+    title: "Queen Bee Event",
+    url: `${PRIMARY_ORIGIN}/brainrots/queen-bee-event-info`,
+    content: "Queen Bee event Update 61 returns every two hours.",
+    score: 0.7,
+    host: SOURCE.PRIMARY.host,
+    queryHits: 2,
+  };
+  check(
+    "R31 wrong family can still score",
+    aggressiveResultScore(r31SoftFamilyRow, r31FreqQ, r31Freq, SOURCE.PRIMARY) > 0
+  );
+
+  const r31BadCreatorRow = {
+    title: "Creator",
+    url: `${PRIMARY_ORIGIN}/wiki/creator`,
+    content: "Roblox developer and game producer",
+    score: 0.99,
+    host: SOURCE.PRIMARY.host,
+    queryHits: 3,
+  };
+  check(
+    "R31 creator still blocked",
+    aggressiveResultScore(r31BadCreatorRow, r31FreqQ, r31Freq, SOURCE.PRIMARY) < -50
+  );
+
+  const r31PageA = syntheticPrimaryPage(
+    "Queen Bee Event",
+    `${PRIMARY_ORIGIN}/events/queen-bee`,
+    ["Queen Bee event", "Update 61", "The Queen Bee event returns every two hours."]
+  );
+  const r31Chunks = buildEvidenceBundle(r31FreqQ, r31Freq, [r31PageA]);
+  check("R31 evidence bundle created", r31Chunks.length >= 1);
+  check(
+    "R31 bundle validates frequency",
+    validateBundleAnswer(r31FreqQ, r31Freq, "Every two hours", [r31PageA], r31Chunks).valid === true
+  );
+
+  const r31RitualPage = syntheticPrimaryPage(
+    "Job Job Job Sahur Ritual",
+    `${PRIMARY_ORIGIN}/rituals/job-job-job-sahur-ritual`,
+    [
+      "Job Job Job Sahur Ritual",
+      "Yess my Resume with a 99% outcome chance",
+      "Noo my Resume with a 1% outcome chance",
+    ]
+  );
+  const r31RitualChunks = buildEvidenceBundle(r31OutcomeQ, r31Outcome, [r31RitualPage]);
+  check(
+    "R31 bundle validates outcome",
+    validateBundleAnswer(r31OutcomeQ, r31Outcome, "Yess my Resume", [r31RitualPage], r31RitualChunks).valid === true
+  );
+
   // Priority behavior: once S+ has a direct value, lower tier disagreement does not participate.
   const primary = makeResult("10x", REL.MULTIPLIER, SOURCE.PRIMARY, mutationPage, "PRIMARY_MUTATION_SECTION", 0.995);
   const fandom = makeResult("9x", REL.MULTIPLIER, SOURCE.FANDOM, { title: "Mutations", url: "fandom" }, "FANDOM_DIRECT", 0.93);
@@ -4538,56 +5142,51 @@ export async function GET(request) {
 
   if (test === "exact") {
     const question = oneLine(
-      url.searchParams.get("q") || "Which machine made its debut in Update 61?",
+      url.searchParams.get("q") || "How often does the Queen Bee event happen during Update 61?",
       700
     );
 
     const started = nowMs();
-    const deadline = started + 3000;
+    const deadline = started + 3600;
     const routed = await analyzeQuestionAI(question, deadline);
     const analysis = routed.analysis;
 
-    const query = exactSearchQuery(question, analysis, SOURCE.PRIMARY);
-    const search = await tavilySearch(
-      query,
-      deadline,
-      [SOURCE.PRIMARY.host],
-      analysis.current
+    const queries = aggressiveSearchQueries(question, analysis, SOURCE.PRIMARY);
+    const searches = await Promise.all(
+      queries.map(async (query, index) => ({
+        index,
+        query,
+        search: await tavilySearch(
+          query,
+          deadline,
+          [SOURCE.PRIMARY.host],
+          analysis.current
+        ),
+      }))
     );
 
-    const selected = pickExactSearchResult(
-      search,
+    const merged = mergeSearches(searches);
+    const candidates = rankAggressiveResults(
+      merged,
+      question,
       analysis,
       SOURCE.PRIMARY,
-      question
+      6
     );
 
     return json(200, {
-      ok: Boolean(selected),
+      ok: candidates.length > 0,
       build: BUILD_ID,
       question,
       analysis,
-      query,
-      selected,
-      candidates: search.results
-        .filter((row) => row.host === SOURCE.PRIMARY.host)
-        .map((row) => {
-          const eligibility = snippetEligibility(
-            row,
-            question,
-            analysis,
-            SOURCE.PRIMARY
-          );
-          return {
-            title: row.title,
-            url: row.url,
-            score: eligibility.score,
-            eligible: eligibility.eligible,
-            reason: eligibility.reason,
-          };
-        })
-        .sort((a, b) => b.score - a.score),
-      errors: search.errors,
+      queries,
+      candidates: candidates.map((row) => ({
+        title: row.title,
+        url: row.url,
+        score: row.aggressiveScore,
+        queryHits: row.queryHits,
+      })),
+      errors: merged.errors,
       ms: nowMs() - started,
     });
   }
@@ -4651,15 +5250,22 @@ export async function GET(request) {
       aiQuestionRouterFirst: true,
       exactPageSearchFirst: true,
       cluePreservingSearch: true,
+      threeParallelSearchVariants: true,
+      softPageFamilyPreference: true,
+      topThreePagePool: true,
+      parallelPageFetch: true,
+      deterministicBeforeAI: true,
+      multiPageEvidenceBundle: true,
+      trustedEvidenceAnswerVerification: true,
       urlFamilyRouting: true,
       richRelationSchema: true,
       frequencyRelation: true,
       outcomeRelation: true,
       lifecycleRelations: true,
       multiUpdateDeconstraint: true,
-      snippetEligibilityGuard: true,
-      openedPageEligibilityGuard: true,
-      maxTwoPagesPerTier: true,
+      snippetEligibilityGuard: false,
+      openedPageEligibilityGuard: false,
+      maxTwoPagesPerTier: false,
       clueLocalAiEvidence: true,
       answerTypeValidation: true,
       genericRoleAnswerBlock: true,
