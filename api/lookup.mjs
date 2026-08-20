@@ -1,4 +1,4 @@
-const BUILD_ID = "SAB_AI_ROUTER_PRIORITY_ENGINE_R25_2026_08_19";
+const BUILD_ID = "SAB_AI_DATE_BRIDGE_ENGINE_R26_2026_08_19";
 
 const PRIMARY_ORIGIN = "https://steal-a-brainrot.org";
 const FANDOM_API = "https://stealabrainrot.fandom.com/api.php";
@@ -396,15 +396,24 @@ function inferIntent(question, relation, update, date) {
   return "ENTITY_FACT";
 }
 
+
 function analyzeQuestion(question) {
   const q = oneLine(question, 700);
-  const relation = inferRelation(q);
+  let relation = inferRelation(q);
   const entities = candidateEntities(q);
   const rebirth = extractRebirthNumber(q);
   const updateRaw = extractUpdateNumber(q);
   const update = updateRaw ? Number(updateRaw) : null;
   const date = extractExplicitDate(q);
   const current = isCurrent(q);
+
+  if (
+    date &&
+    /\b(?:what|which)\s+update\b|\bupdate\s+(?:happened|occurred|released|came out)\b/i.test(q)
+  ) {
+    relation = REL.UPDATE;
+  }
+
   let entity = entities[0] || null;
 
   if (rebirth && relation === REL.GEAR) entity = `Rebirth${rebirth}`;
@@ -419,7 +428,7 @@ function analyzeQuestion(question) {
     date,
     current,
     intent: inferIntent(q, relation, update, date),
-    source: "DETERMINISTIC_R25",
+    source: "DETERMINISTIC_R26",
   };
 }
 
@@ -559,7 +568,7 @@ async function fetchPage(url, source, deadline) {
   const html = await fetchText(source.key, url, {
     headers: {
       Accept: "text/html,application/xhtml+xml",
-      "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R25",
+      "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R26",
     },
   }, timeout);
   const page = {
@@ -793,18 +802,132 @@ function primaryEventContextLinks(page) {
   return out;
 }
 
+
+function extractUpdateNumberFromText(value) {
+  const text = oneLine(value, 6000);
+  if (!text) return null;
+
+  const matches = [
+    ...text.matchAll(/\bUpdate\s*#?\s*(\d{1,3}(?:\.\d+)?)\b/gi),
+  ];
+
+  if (!matches.length) return null;
+
+  for (const match of matches) {
+    const n = Number(match[1]);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+
+  return null;
+}
+
+function dateTextVariants(date) {
+  if (!date) return [];
+
+  const [y, m, d] = String(date).split("-").map(Number);
+  if (!y || !m || !d) return [];
+
+  const names = [
+    "", "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December",
+  ];
+
+  return [
+    `${names[m]} ${d}, ${y}`,
+    `${names[m]} ${d} ${y}`,
+    `${names[m]} ${String(d).padStart(2, "0")}, ${y}`,
+  ];
+}
+
+function resolveUpdateNumberFromEventHub(eventsPage, analysis) {
+  if (!eventsPage || !analysis?.date) {
+    return { update: null, link: null, evidence: "" };
+  }
+
+  // First try exact date context from the visible events page.
+  const dateContext = contextAroundUpdate(eventsPage.text, { date: analysis.date }, 2600);
+  const direct = extractUpdateNumberFromText(dateContext);
+
+  if (direct) {
+    return {
+      update: direct,
+      link: null,
+      evidence: dateContext,
+    };
+  }
+
+  // Stronger fallback: identify the exact event card/link containing the date,
+  // then read the Update number from that same card.
+  const links = primaryEventContextLinks(eventsPage)
+    .map((link) => ({
+      ...link,
+      score: updateNeedleScore(
+        `${link.label} ${link.context} ${link.pathname}`,
+        { ...analysis, update: null }
+      ),
+    }))
+    .sort((a, b) => b.score - a.score);
+
+  const best = links[0];
+
+  if (best && best.score >= 6) {
+    const update = extractUpdateNumberFromText(
+      `${best.label} ${best.context} ${best.pathname}`
+    );
+
+    return {
+      update,
+      link: best,
+      evidence: `${best.label} ${best.context}`,
+    };
+  }
+
+  return {
+    update: null,
+    link: best || null,
+    evidence: "",
+  };
+}
+
+function withBridgedUpdate(analysis, update) {
+  if (!update) return analysis;
+
+  return {
+    ...analysis,
+    update: Number(update),
+    intent:
+      analysis.intent === "UPDATE_SUMMARY"
+        ? "UPDATE_SUMMARY"
+        : "UPDATE_FACT",
+    source:
+      analysis.source === "NVIDIA_QUESTION_ROUTER"
+        ? "NVIDIA_QUESTION_ROUTER+DATE_BRIDGE"
+        : "DETERMINISTIC_R26+DATE_BRIDGE",
+  };
+}
+
+
 async function primaryUpdateHistoryPath(question, analysis, deadline) {
   if (!(analysis.update || analysis.date || /^UPDATE_/.test(analysis.intent || ""))) {
-    return { result: null, pages: [], errors: [], route: "NOT_UPDATE_MODE" };
+    return {
+      result: null,
+      pages: [],
+      errors: [],
+      route: "NOT_UPDATE_MODE",
+      analysis,
+    };
   }
 
   const pages = [];
   const errors = [];
   const tried = new Set();
+  let working = { ...analysis };
+  let bridgedUpdate = null;
 
   async function get(url) {
     if (!url || tried.has(url) || timeLeft(deadline) < 220) return null;
     tried.add(url);
+
     try {
       const page = await fetchPage(url, SOURCE.PRIMARY, deadline);
       pages.push(page);
@@ -815,64 +938,260 @@ async function primaryUpdateHistoryPath(question, analysis, deadline) {
     }
   }
 
-  // For machine questions, /machines is often the cleanest S+ source.
-  if (analysis.relation === REL.MACHINE) {
+  // If we already know the update number, machine lookup can be solved immediately.
+  if (working.relation === REL.MACHINE && working.update) {
     const machines = await get(`${PRIMARY_ORIGIN}/machines`);
+
     if (machines) {
-      const context = contextAroundUpdate(machines.text, analysis, 1800);
-      const answer = extractUpdateTypedAnswer(context, analysis);
+      const context = contextAroundUpdate(machines.text, working, 2200);
+      const answer = extractUpdateTypedAnswer(context, working);
+
       if (answer) {
         return {
-          result: makeResult(answer, analysis.relation, SOURCE.PRIMARY, machines, "SPLUS_UPDATE_MACHINE_CONTEXT", 0.995),
+          result: makeResult(
+            answer,
+            working.relation,
+            SOURCE.PRIMARY,
+            machines,
+            "SPLUS_UPDATE_MACHINE_CONTEXT",
+            0.995
+          ),
           pages,
           errors,
           route: "UPDATE_MACHINE_SPLUS",
+          analysis: working,
+          bridgedUpdate,
         };
       }
     }
   }
 
   const events = await get(`${PRIMARY_ORIGIN}/events`);
-  if (!events) return { result: null, pages, errors, route: "UPDATE_EVENTS_FETCH_FAILED" };
 
-  // First try the hub context itself.
-  const hubContext = contextAroundUpdate(events.text, analysis, 2000);
-  const hubAnswer = extractUpdateTypedAnswer(hubContext, analysis);
-  if (hubAnswer) {
+  if (!events) {
     return {
-      result: makeResult(hubAnswer, analysis.relation, SOURCE.PRIMARY, events, "SPLUS_UPDATE_HUB_CONTEXT", 0.995),
+      result: null,
       pages,
       errors,
-      route: "UPDATE_HUB_SPLUS",
+      route: "UPDATE_EVENTS_FETCH_FAILED",
+      analysis: working,
+      bridgedUpdate,
     };
   }
 
-  // Then follow the exact event card/link associated with the requested update/date.
-  const links = primaryEventContextLinks(events)
-    .map((link) => ({
-      ...link,
-      score: updateNeedleScore(`${link.label} ${link.context} ${link.pathname}`, analysis),
-    }))
-    .sort((a, b) => b.score - a.score);
+  // =====================================================
+  // NEW R26 BRIDGE:
+  // Date -> exact S+ event card/detail -> Update N -> typed fact.
+  // =====================================================
+  let bridgedLink = null;
 
-  const best = links[0];
-  if (best && best.score >= 6) {
-    const detail = await get(best.url);
-    if (detail) {
-      const context = contextAroundUpdate(detail.text, analysis, 3500) || detail.text;
-      const answer = extractUpdateTypedAnswer(context, analysis);
+  if (working.date && !working.update) {
+    const bridge = resolveUpdateNumberFromEventHub(events, working);
+    bridgedLink = bridge.link;
+
+    if (bridge.update) {
+      bridgedUpdate = bridge.update;
+      working = withBridgedUpdate(working, bridge.update);
+    } else if (bridge.link && timeLeft(deadline) > 260) {
+      // Sometimes the hub card has the date but the Update number is only
+      // on the event detail page.
+      const detail = await get(bridge.link.url);
+
+      if (detail) {
+        const updateFromDetail =
+          extractUpdateNumberFromText(detail.text) ||
+          extractUpdateNumberFromText(detail.title);
+
+        if (updateFromDetail) {
+          bridgedUpdate = updateFromDetail;
+          working = withBridgedUpdate(working, updateFromDetail);
+        }
+
+        // Even without an explicit update number, the exact dated event detail
+        // can directly contain the requested typed answer.
+        const detailAnswer = extractUpdateTypedAnswer(detail.text, working);
+
+        if (detailAnswer) {
+          return {
+            result: makeResult(
+              detailAnswer,
+              working.relation,
+              SOURCE.PRIMARY,
+              detail,
+              "SPLUS_DATE_EVENT_DETAIL",
+              0.995
+            ),
+            pages,
+            errors,
+            route: "DATE_EVENT_DETAIL_SPLUS",
+            analysis: working,
+            bridgedUpdate,
+          };
+        }
+      }
+    }
+  }
+
+  // If the user directly asks "What update happened on DATE?",
+  // the bridge itself is the final fact.
+  if (working.relation === REL.UPDATE && working.update) {
+    return {
+      result: makeResult(
+        `Update${working.update}`,
+        REL.UPDATE,
+        SOURCE.PRIMARY,
+        events,
+        "SPLUS_DATE_TO_UPDATE",
+        0.995
+      ),
+      pages,
+      errors,
+      route: "DATE_TO_UPDATE_SPLUS",
+      analysis: working,
+      bridgedUpdate,
+    };
+  }
+
+  // After date -> update resolution, retry a typed machine lookup using
+  // the canonical /machines page. This fixes e.g. Aug 8 2026 -> Update61 -> RNG Machine.
+  if (working.relation === REL.MACHINE && working.update && timeLeft(deadline) > 240) {
+    const machines = await get(`${PRIMARY_ORIGIN}/machines`);
+
+    if (machines) {
+      const context = contextAroundUpdate(machines.text, working, 2200);
+      const answer = extractUpdateTypedAnswer(context, working);
 
       if (answer) {
         return {
-          result: makeResult(answer, analysis.relation, SOURCE.PRIMARY, detail, "SPLUS_UPDATE_DETAIL_CONTEXT", 0.995),
+          result: makeResult(
+            answer,
+            working.relation,
+            SOURCE.PRIMARY,
+            machines,
+            "SPLUS_DATE_BRIDGED_MACHINE",
+            0.995
+          ),
           pages,
           errors,
-          route: "UPDATE_DETAIL_SPLUS",
+          route: "DATE_UPDATE_MACHINE_SPLUS",
+          analysis: working,
+          bridgedUpdate,
+        };
+      }
+    }
+  }
+
+  // Try the exact hub context around Update N or the date.
+  const hubContext = contextAroundUpdate(events.text, working, 2400);
+  const hubAnswer = extractUpdateTypedAnswer(hubContext, working);
+
+  if (hubAnswer) {
+    return {
+      result: makeResult(
+        hubAnswer,
+        working.relation,
+        SOURCE.PRIMARY,
+        events,
+        working.date && bridgedUpdate
+          ? "SPLUS_DATE_BRIDGED_HUB_CONTEXT"
+          : "SPLUS_UPDATE_HUB_CONTEXT",
+        0.995
+      ),
+      pages,
+      errors,
+      route:
+        working.date && bridgedUpdate
+          ? "DATE_UPDATE_HUB_SPLUS"
+          : "UPDATE_HUB_SPLUS",
+      analysis: working,
+      bridgedUpdate,
+    };
+  }
+
+  // Find/follow the exact event card after bridging.
+  const links = primaryEventContextLinks(events)
+    .map((link) => ({
+      ...link,
+      score: updateNeedleScore(
+        `${link.label} ${link.context} ${link.pathname}`,
+        working
+      ),
+    }))
+    .sort((a, b) => b.score - a.score);
+
+  const best =
+    (bridgedLink && links.find((x) => x.url === bridgedLink.url)) ||
+    links[0];
+
+  if (best && best.score >= 6 && timeLeft(deadline) > 220) {
+    const detail = await get(best.url);
+
+    if (detail) {
+      const context =
+        contextAroundUpdate(detail.text, working, 4200) ||
+        detail.text;
+
+      // If bridge was still missing, detail page gets one final chance.
+      if (working.date && !working.update) {
+        const updateFromDetail =
+          extractUpdateNumberFromText(detail.text) ||
+          extractUpdateNumberFromText(detail.title);
+
+        if (updateFromDetail) {
+          bridgedUpdate = updateFromDetail;
+          working = withBridgedUpdate(working, updateFromDetail);
+
+          if (working.relation === REL.UPDATE) {
+            return {
+              result: makeResult(
+                `Update${working.update}`,
+                REL.UPDATE,
+                SOURCE.PRIMARY,
+                detail,
+                "SPLUS_DATE_TO_UPDATE_DETAIL",
+                0.995
+              ),
+              pages,
+              errors,
+              route: "DATE_TO_UPDATE_DETAIL_SPLUS",
+              analysis: working,
+              bridgedUpdate,
+            };
+          }
+        }
+      }
+
+      const answer = extractUpdateTypedAnswer(context, working);
+
+      if (answer) {
+        return {
+          result: makeResult(
+            answer,
+            working.relation,
+            SOURCE.PRIMARY,
+            detail,
+            working.date && bridgedUpdate
+              ? "SPLUS_DATE_BRIDGED_DETAIL_CONTEXT"
+              : "SPLUS_UPDATE_DETAIL_CONTEXT",
+            0.995
+          ),
+          pages,
+          errors,
+          route:
+            working.date && bridgedUpdate
+              ? "DATE_UPDATE_DETAIL_SPLUS"
+              : "UPDATE_DETAIL_SPLUS",
+          analysis: working,
+          bridgedUpdate,
         };
       }
 
-      // Broad "What did Update N add?" can use AI ONLY as an extractor from S+ evidence.
-      if (analysis.relation === REL.UPDATE && env("NVIDIA_API_KEY") && timeLeft(deadline) > 320) {
+      // Broad "What did Update N add?" uses AI ONLY to extract from S+ evidence.
+      if (
+        working.relation === REL.UPDATE &&
+        env("NVIDIA_API_KEY") &&
+        timeLeft(deadline) > 320
+      ) {
         try {
           const data = await fetchJson(
             "NVIDIA_UPDATE_EXTRACT",
@@ -903,22 +1222,46 @@ async function primaryUpdateHistoryPath(question, analysis, deadline) {
                   },
                   {
                     role: "user",
-                    content: JSON.stringify({ question, evidence: oneLine(detail.text, 10000) }),
+                    content: JSON.stringify({
+                      question,
+                      update: working.update,
+                      date: working.date,
+                      evidence: oneLine(detail.text, 10000),
+                    }),
                   },
                 ],
               }),
             },
-            Math.max(250, Math.min(CFG.NVIDIA_TIMEOUT_MS, timeLeft(deadline) - 30))
+            Math.max(
+              250,
+              Math.min(
+                CFG.NVIDIA_TIMEOUT_MS,
+                timeLeft(deadline) - 30
+              )
+            )
           );
 
-          const raw = parseModelJson(data?.choices?.[0]?.message?.content);
-          const answer = oneLine(raw?.answer, 300);
-          if (answer && norm(answer) !== "unknown") {
+          const raw = parseModelJson(
+            data?.choices?.[0]?.message?.content
+          );
+
+          const summary = oneLine(raw?.answer, 300);
+
+          if (summary && norm(summary) !== "unknown") {
             return {
-              result: makeResult(answer, REL.UPDATE, SOURCE.PRIMARY, detail, "SPLUS_UPDATE_AI_EXTRACTED_FROM_PRIMARY", 0.995),
+              result: makeResult(
+                summary,
+                REL.UPDATE,
+                SOURCE.PRIMARY,
+                detail,
+                "SPLUS_UPDATE_AI_EXTRACTED_FROM_PRIMARY",
+                0.995
+              ),
               pages,
               errors,
               route: "UPDATE_SUMMARY_SPLUS",
+              analysis: working,
+              bridgedUpdate,
             };
           }
         } catch (error) {
@@ -928,7 +1271,17 @@ async function primaryUpdateHistoryPath(question, analysis, deadline) {
     }
   }
 
-  return { result: null, pages, errors, route: "UPDATE_SPLUS_MISS" };
+  return {
+    result: null,
+    pages,
+    errors,
+    route:
+      working.date && !working.update
+        ? "DATE_BRIDGE_MISS"
+        : "UPDATE_SPLUS_MISS",
+    analysis: working,
+    bridgedUpdate,
+  };
 }
 
 async function primaryFastPath(question, analysis, deadline) {
@@ -1593,7 +1946,7 @@ async function fandomSearchTitles(query, deadline) {
     format: "json",
   });
   try {
-    const data = await fetchJson("FANDOM_SEARCH", `${FANDOM_API}?${params.toString()}`, { headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R25" } }, Math.min(CFG.FANDOM_TIMEOUT_MS, left - 20));
+    const data = await fetchJson("FANDOM_SEARCH", `${FANDOM_API}?${params.toString()}`, { headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R26" } }, Math.min(CFG.FANDOM_TIMEOUT_MS, left - 20));
     return (Array.isArray(data?.query?.search) ? data.query.search : []).map((x) => oneLine(x?.title, 300)).filter(Boolean);
   } catch {
     return [];
@@ -1606,7 +1959,7 @@ async function fetchFandomPage(title, deadline) {
   if (cached) return { ...cached, cache: "HIT" };
   const left = timeLeft(deadline);
   if (left < 250) throw new Error("FANDOM_BUDGET_EXHAUSTED");
-  const data = await fetchJson("FANDOM_PARSE", fandomParseUrl(title), { headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R25" } }, Math.min(CFG.FANDOM_TIMEOUT_MS, left - 20));
+  const data = await fetchJson("FANDOM_PARSE", fandomParseUrl(title), { headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R26" } }, Math.min(CFG.FANDOM_TIMEOUT_MS, left - 20));
   if (data?.error) throw new Error(`FANDOM_PARSE_${data.error.code || "ERROR"}`);
   const p = data?.parse || {};
   const html = typeof p.text === "string" ? p.text : String(p.text?.["*"] || "");
@@ -1998,10 +2351,13 @@ async function resolveQuestion(questionObj, lore = "") {
   const updateStage = await primaryUpdateHistoryPath(question, analysis, deadline);
   diagnostic.updateRoute = updateStage.route;
   diagnostic.updateErrors = updateStage.errors || [];
+  diagnostic.dateBridgeUpdate = updateStage.bridgedUpdate || null;
+
+  const resolvedAnalysis = updateStage.analysis || analysis;
 
   let result = updateStage.result;
   if (result) {
-    const final = finalize(result, question, analysis, startedAt, diagnostic);
+    const final = finalize(result, question, resolvedAnalysis, startedAt, diagnostic);
     setCachedAnswer(question, final);
     return final;
   }
@@ -2010,26 +2366,26 @@ async function resolveQuestion(questionObj, lore = "") {
   // S+ NORMAL PRIMARY.
   // Direct S+ fact = 0.995 and immediate return.
   // =====================================================
-  const fast = await primaryFastPath(question, analysis, deadline);
+  const fast = await primaryFastPath(question, resolvedAnalysis, deadline);
   diagnostic.primaryFastErrors = fast.errors;
   diagnostic.primaryFastRoute = fast.route;
 
   result = fast.result;
   if (result) {
-    const final = finalize(result, question, analysis, startedAt, diagnostic);
+    const final = finalize(result, question, resolvedAnalysis, startedAt, diagnostic);
     setCachedAnswer(question, final);
     return final;
   }
 
   if (timeLeft(deadline) > 260) {
-    const primary = await fetchPrimaryCandidates(question, analysis, deadline);
+    const primary = await fetchPrimaryCandidates(question, resolvedAnalysis, deadline);
     primary.pages.unshift(...updateStage.pages, ...fast.pages);
     primary.pages = [...new Map(primary.pages.map((p) => [p.url, p])).values()];
     diagnostic.primaryErrors = primary.errors;
 
-    result = resolvePrimary(question, analysis, primary.pages);
+    result = resolvePrimary(question, resolvedAnalysis, primary.pages);
     if (result) {
-      const final = finalize(result, question, analysis, startedAt, diagnostic);
+      const final = finalize(result, question, resolvedAnalysis, startedAt, diagnostic);
       setCachedAnswer(question, final);
       return final;
     }
@@ -2041,7 +2397,7 @@ async function resolveQuestion(questionObj, lore = "") {
   // A+ FANDOM only on true S+ miss.
   // =====================================================
   if (timeLeft(deadline) > 240) {
-    const fandom = await fandomStage(question, analysis, deadline);
+    const fandom = await fandomStage(question, resolvedAnalysis, deadline);
     diagnostic.fandomErrors = fandom.errors || [];
     result = fandom.result;
 
@@ -2049,7 +2405,7 @@ async function resolveQuestion(questionObj, lore = "") {
       result.confidence = Math.max(result.confidence || 0, 0.97);
       result.candidateConfidence = result.confidence;
 
-      const final = finalize(result, question, analysis, startedAt, diagnostic);
+      const final = finalize(result, question, resolvedAnalysis, startedAt, diagnostic);
       setCachedAnswer(question, final);
       return final;
     }
@@ -2059,7 +2415,7 @@ async function resolveQuestion(questionObj, lore = "") {
   // B WIKI only on S+ + A+ miss.
   // =====================================================
   if (timeLeft(deadline) > 220) {
-    const wiki = await wikiStage(question, analysis, deadline);
+    const wiki = await wikiStage(question, resolvedAnalysis, deadline);
     diagnostic.wikiErrors = wiki.search?.errors || [];
     result = wiki.result;
 
@@ -2067,7 +2423,7 @@ async function resolveQuestion(questionObj, lore = "") {
       result.confidence = Math.max(result.confidence || 0, 0.94);
       result.candidateConfidence = result.confidence;
 
-      const final = finalize(result, question, analysis, startedAt, diagnostic);
+      const final = finalize(result, question, resolvedAnalysis, startedAt, diagnostic);
       setCachedAnswer(question, final);
       return final;
     }
@@ -2079,7 +2435,7 @@ async function resolveQuestion(questionObj, lore = "") {
   if (timeLeft(deadline) > 260) {
     const emergency = await emergencyStage(
       question,
-      analysis,
+      resolvedAnalysis,
       [...updateStage.pages, ...fast.pages],
       deadline
     );
@@ -2088,7 +2444,7 @@ async function resolveQuestion(questionObj, lore = "") {
     result = emergency.result;
 
     if (result) {
-      const final = finalize(result, question, analysis, startedAt, diagnostic);
+      const final = finalize(result, question, resolvedAnalysis, startedAt, diagnostic);
       setCachedAnswer(question, final);
       return final;
     }
@@ -2105,7 +2461,7 @@ async function resolveQuestion(questionObj, lore = "") {
       sources: [],
     },
     question,
-    analysis,
+    resolvedAnalysis,
     startedAt,
     diagnostic
   );
@@ -2307,6 +2663,55 @@ function runSelfTests() {
   const rebirthContext = "August 15, 2026 Update 62 introduced Rebirth 19 and new items.";
   check("R25 rebirth context extraction", extractUpdateTypedAnswer(rebirthContext, { relation: REL.REBIRTH }) === "Rebirth19");
 
+
+  check(
+    "R26 date query relation update",
+    analyzeQuestion("What update happened on August 15, 2026?").relation === REL.UPDATE
+  );
+
+  check(
+    "R26 extract update62 from dated card",
+    extractUpdateNumberFromText("The Return - August 15, 2026 - Update 62 - Rebirth 19") === 62
+  );
+
+  check(
+    "R26 bridge analysis update62",
+    withBridgedUpdate(
+      analyzeQuestion("What rebirth was added in the August 15, 2026 update?"),
+      62
+    ).update === 62
+  );
+
+  check(
+    "R26 bridged rebirth extraction",
+    extractUpdateTypedAnswer(
+      "Update 62 introduced Rebirth 19 and Grief Shield.",
+      withBridgedUpdate(
+        analyzeQuestion("What rebirth was added in the August 15, 2026 update?"),
+        62
+      )
+    ) === "Rebirth19"
+  );
+
+  check(
+    "R26 bridged machine extraction",
+    extractUpdateTypedAnswer(
+      "Update 61 introduced the RNG Machine and Queen Bee event.",
+      withBridgedUpdate(
+        analyzeQuestion("What machine was added on August 8, 2026?"),
+        61
+      )
+    ) === "RNG Machine"
+  );
+
+  check(
+    "R26 date to update answer formatting",
+    `Update${withBridgedUpdate(
+      analyzeQuestion("What update happened on August 15, 2026?"),
+      62
+    ).update}` === "Update62"
+  );
+
   // Priority behavior: once S+ has a direct value, lower tier disagreement does not participate.
   const primary = makeResult("10x", REL.MULTIPLIER, SOURCE.PRIMARY, mutationPage, "PRIMARY_MUTATION_SECTION", 0.995);
   const fandom = makeResult("9x", REL.MULTIPLIER, SOURCE.FANDOM, { title: "Mutations", url: "fandom" }, "FANDOM_DIRECT", 0.93);
@@ -2426,16 +2831,18 @@ export async function GET(request) {
     const routed = await analyzeQuestionAI(question, deadline);
     const analysis = routed.analysis;
     const updateStage = await primaryUpdateHistoryPath(question, analysis, deadline);
-    const fast = await primaryFastPath(question, analysis, deadline);
-    const stage = await fetchPrimaryCandidates(question, analysis, deadline);
+    const resolvedAnalysis = updateStage.analysis || analysis;
+    const fast = await primaryFastPath(question, resolvedAnalysis, deadline);
+    const stage = await fetchPrimaryCandidates(question, resolvedAnalysis, deadline);
     const pages = [...new Map([...updateStage.pages, ...fast.pages, ...stage.pages].map((p) => [p.url, p])).values()];
     const direct = updateStage.result || fast.result || resolvePrimary(question, analysis, pages);
     return json(200, {
       ok: Boolean(direct?.answer),
       build: BUILD_ID,
       question,
-      analysis,
-      aiRouter: analysis.source,
+      analysis: resolvedAnalysis,
+      aiRouter: resolvedAnalysis.source,
+      bridgedUpdate: updateStage.bridgedUpdate || null,
       updateRoute: updateStage.route,
       fastRoute: fast.route,
       direct,
@@ -2460,13 +2867,15 @@ export async function GET(request) {
       { tier: "B", source: "steal-a-brainrot.wiki", policy: "USED ONLY WHEN S+ AND A+ MISS" },
       { tier: "C", source: "Tavily/NVIDIA", policy: "EMERGENCY ONLY" },
     ],
-    conflictPolicy: "AI ROUTES QUESTION FIRST; DIRECT S+ FACT = 0.995 AND IMMEDIATE RETURN; A+ ONLY ON S+ MISS; B ONLY ON S+/A+ MISS",
+    conflictPolicy: "AI ROUTES QUESTION FIRST; DATE QUESTIONS BRIDGE TO UPDATE N; DIRECT S+ FACT = 0.995 AND IMMEDIATE RETURN; A+ ONLY ON S+ MISS; B ONLY ON S+/A+ MISS",
     architecture: {
       aiQuestionRouterFirst: true,
       aiDoesNotAnswerQuestion: true,
       deterministicRouterFallback: true,
       dedicatedUpdateHistoryMode: true,
       updateDateRouting: true,
+      dateToUpdateBridge: true,
+      bridgedAnalysisFeedsFallbacks: true,
       primaryFirst: true,
       primaryImmediateReturn: true,
       exactBrainrotPageFirst: true,
