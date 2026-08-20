@@ -1,4 +1,4 @@
-const BUILD_ID = "SAB_PAGE_GUARD_ENGINE_R29_2026_08_19";
+const BUILD_ID = "SAB_RELATION_SCHEMA_ENGINE_R30_2026_08_19";
 
 const PRIMARY_ORIGIN = "https://steal-a-brainrot.org";
 const FANDOM_API = "https://stealabrainrot.fandom.com/api.php";
@@ -54,6 +54,11 @@ const REL = Object.freeze({
   MACHINE: "MACHINE",
   UPDATE: "UPDATE",
   COLLECTION: "COLLECTION",
+  OUTCOME: "OUTCOME",
+  FREQUENCY: "FREQUENCY",
+  ACTIVE_RANGE: "ACTIVE_RANGE",
+  REPLACED_BY: "REPLACED_BY",
+  REPLACED_IN: "REPLACED_IN",
 });
 
 const SOURCE = Object.freeze({
@@ -332,8 +337,37 @@ function extractUpdateNumber(question) {
   return m ? m[1] : null;
 }
 
+
+function extractAllUpdateNumbers(question) {
+  const q = oneLine(question, 700);
+  return [...new Set(
+    [...q.matchAll(/\bupdate\s*(\d+(?:\.\d+)?)\b/gi)]
+      .map((m) => Number(m[1]))
+      .filter((n) => Number.isFinite(n) && n > 0)
+  )];
+}
+
+function extractLifecycleHints(question) {
+  const q = oneLine(question, 700);
+  const fromTo = q.match(/\bfrom\s+update\s*(\d+(?:\.\d+)?)\s+(?:through|to|until|thru)\s+update\s*(\d+(?:\.\d+)?)/i);
+  const replacedIn = q.match(/\breplaced\s+(?:in|during|by\s+update)\s*update?\s*(\d+(?:\.\d+)?)/i)
+    || q.match(/\breplaced\s+in\s+update\s*(\d+(?:\.\d+)?)/i);
+
+  return {
+    activeFrom: fromTo ? Number(fromTo[1]) : null,
+    activeTo: fromTo ? Number(fromTo[2]) : null,
+    replacedIn: replacedIn ? Number(replacedIn[1]) : null,
+  };
+}
+
 function inferRelation(question) {
   const q = oneLine(question, 700).toLowerCase();
+
+  if (/\b(?:how often|how frequently|what interval|what cadence|frequency|recurr?ence|every how many)\b/.test(q)) return REL.FREQUENCY;
+  if (/\bwhat\s+(?:replaced|replaces)\b|\breplaced by what\b/.test(q)) return REL.REPLACED_BY;
+  if (/\b(?:which|what)\s+update\b[^?]{0,80}\breplaced\b|\breplaced in which update\b/.test(q)) return REL.REPLACED_IN;
+  if (/\b(?:active|ran|available)\s+from\s+update\b|\bactive range\b/.test(q) && !/\b(?:what|which)\s+machine\b/.test(q)) return REL.ACTIVE_RANGE;
+  if (/\b(?:result|outcome)\b/.test(q) && /\britual\b/.test(q)) return REL.OUTCOME;
 
   if (/\b(?:what|which)(?:\s+[a-z0-9'-]+){0,4}\s+(?:brainrot|brain rot)\b/.test(q)) return REL.BRAINROT;
   if (/\b(?:what|which)(?:\s+[a-z0-9'-]+){0,4}\s+(?:gear|item)\b/.test(q)) return REL.GEAR;
@@ -404,6 +438,8 @@ function analyzeQuestion(question) {
   const rebirth = extractRebirthNumber(q);
   const updateRaw = extractUpdateNumber(q);
   const update = updateRaw ? Number(updateRaw) : null;
+  const updateNumbers = extractAllUpdateNumbers(q);
+  const lifecycle = extractLifecycleHints(q);
   const date = extractExplicitDate(q);
   const current = isCurrent(q);
 
@@ -425,11 +461,15 @@ function analyzeQuestion(question) {
     relation,
     rebirth,
     update,
+    updateNumbers,
+    activeFrom: lifecycle.activeFrom,
+    activeTo: lifecycle.activeTo,
+    replacedIn: lifecycle.replacedIn,
     date,
     current,
     intent: inferIntent(q, relation, update, date),
     rawQuestion: q,
-    source: "DETERMINISTIC_R29",
+    source: "DETERMINISTIC_R30",
   };
 }
 
@@ -569,7 +609,7 @@ async function fetchPage(url, source, deadline) {
   const html = await fetchText(source.key, url, {
     headers: {
       Accept: "text/html,application/xhtml+xml",
-      "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R29",
+      "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R30",
     },
   }, timeout);
   const page = {
@@ -903,7 +943,7 @@ function withBridgedUpdate(analysis, update) {
     source:
       analysis.source === "NVIDIA_QUESTION_ROUTER"
         ? "NVIDIA_QUESTION_ROUTER+DATE_BRIDGE"
-        : "DETERMINISTIC_R29+DATE_BRIDGE",
+        : "DETERMINISTIC_R30+DATE_BRIDGE",
   };
 }
 
@@ -1947,7 +1987,7 @@ async function fandomSearchTitles(query, deadline) {
     format: "json",
   });
   try {
-    const data = await fetchJson("FANDOM_SEARCH", `${FANDOM_API}?${params.toString()}`, { headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R29" } }, Math.min(CFG.FANDOM_TIMEOUT_MS, left - 20));
+    const data = await fetchJson("FANDOM_SEARCH", `${FANDOM_API}?${params.toString()}`, { headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R30" } }, Math.min(CFG.FANDOM_TIMEOUT_MS, left - 20));
     return (Array.isArray(data?.query?.search) ? data.query.search : []).map((x) => oneLine(x?.title, 300)).filter(Boolean);
   } catch {
     return [];
@@ -1960,7 +2000,7 @@ async function fetchFandomPage(title, deadline) {
   if (cached) return { ...cached, cache: "HIT" };
   const left = timeLeft(deadline);
   if (left < 250) throw new Error("FANDOM_BUDGET_EXHAUSTED");
-  const data = await fetchJson("FANDOM_PARSE", fandomParseUrl(title), { headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R29" } }, Math.min(CFG.FANDOM_TIMEOUT_MS, left - 20));
+  const data = await fetchJson("FANDOM_PARSE", fandomParseUrl(title), { headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R30" } }, Math.min(CFG.FANDOM_TIMEOUT_MS, left - 20));
   if (data?.error) throw new Error(`FANDOM_PARSE_${data.error.code || "ERROR"}`);
   const p = data?.parse || {};
   const html = typeof p.text === "string" ? p.text : String(p.text?.["*"] || "");
@@ -2094,6 +2134,12 @@ function mergeAnalysis(ai, fallback) {
 
   const updateNum = Number(ai.update);
   const rebirthNum = Number(ai.rebirth);
+  const activeFromNum = Number(ai.activeFrom);
+  const activeToNum = Number(ai.activeTo);
+  const replacedInNum = Number(ai.replacedIn);
+  const updateNumbers = Array.isArray(ai.updateNumbers)
+    ? ai.updateNumbers.map(Number).filter((n) => Number.isFinite(n) && n > 0).slice(0, 8)
+    : (fallback.updateNumbers || []);
 
   return {
     entity,
@@ -2101,6 +2147,10 @@ function mergeAnalysis(ai, fallback) {
     relation,
     rebirth: Number.isFinite(rebirthNum) && rebirthNum > 0 ? rebirthNum : fallback.rebirth,
     update: Number.isFinite(updateNum) && updateNum > 0 ? updateNum : fallback.update,
+    updateNumbers,
+    activeFrom: Number.isFinite(activeFromNum) && activeFromNum > 0 ? activeFromNum : fallback.activeFrom,
+    activeTo: Number.isFinite(activeToNum) && activeToNum > 0 ? activeToNum : fallback.activeTo,
+    replacedIn: Number.isFinite(replacedInNum) && replacedInNum > 0 ? replacedInNum : fallback.replacedIn,
     date: normalizeAiDate(ai.date) || fallback.date || null,
     current: typeof ai.current === "boolean" ? ai.current : fallback.current,
     intent: oneLine(ai.intent, 80) || fallback.intent,
@@ -2115,15 +2165,37 @@ function enforceQuestionSemantics(question, analysis) {
   const q = oneLine(question, 700).toLowerCase();
   const next = { ...analysis, rawQuestion: oneLine(question, 700) };
 
-  // "What is the rare 1% result from X ritual?" asks for the spawned/result
-  // brainrot, NOT the drop-rate number itself.
+  // Ritual result wording is an OUTCOME family, not a percentage property.
   if (
     /\b(?:result|outcome)\b/.test(q) &&
-    /\britual\b/.test(q) &&
-    /\b\d+(?:\.\d+)?\s*%/.test(q)
+    /\britual\b/.test(q)
   ) {
-    next.relation = REL.SPAWN;
-    next.wanted = REL.SPAWN;
+    next.relation = REL.OUTCOME;
+    next.wanted = REL.OUTCOME;
+  }
+
+  if (/\b(?:how often|how frequently|what interval|frequency|recurr?ence)\b/.test(q)) {
+    next.relation = REL.FREQUENCY;
+    next.wanted = REL.FREQUENCY;
+  }
+
+  // A range/lifecycle question that asks WHICH MACHINE still wants the machine name.
+  // Because the machine is the unknown answer, do not quote a guessed entity.
+  if (/\b(?:what|which)\s+machine\b/.test(q)) {
+    next.relation = REL.MACHINE;
+    next.wanted = REL.MACHINE;
+    next.entity = null;
+    next.entities = [];
+  }
+
+  // Stable named anchors improve deterministic fallback if NVIDIA routing is unavailable.
+  if (q.includes("queen bee")) {
+    next.entity = "Queen Bee";
+    next.entities = ["Queen Bee", ...(next.entities || []).filter((x) => norm(x) !== norm("Queen Bee"))];
+  }
+  if (q.includes("job job job sahur")) {
+    next.entity = "Job Job Job Sahur";
+    next.entities = ["Job Job Job Sahur", ...(next.entities || []).filter((x) => norm(x) !== norm("Job Job Job Sahur"))];
   }
 
   // Reverse identification: "Which Secret brainrot ... costs $27.5B?"
@@ -2196,7 +2268,7 @@ async function analyzeQuestionAI(question, deadline) {
                 "For questions like 'What rebirth was added in the August 15, 2026 update?', set date=2026-08-15, relation=REBIRTH, wanted=REBIRTH.",
                 "For 'What did Update 62 add?', set update=62, relation=UPDATE, wanted=UPDATE, intent=UPDATE_SUMMARY.",
                 "Use canonical entity names when obvious, but never invent facts.",
-                'Return JSON only: {"intent":"...","entity":null,"aliases":[],"relation":"...","wanted":"...","update":null,"rebirth":null,"date":null,"current":false}',
+                'Return JSON only: {"intent":"...","entity":null,"aliases":[],"relation":"...","wanted":"...","update":null,"updateNumbers":[],"activeFrom":null,"activeTo":null,"replacedIn":null,"rebirth":null,"date":null,"current":false}',
               ].join("\n"),
             },
             {
@@ -2444,7 +2516,7 @@ function deterministicHighValueExactPage(question, analysis, page, source) {
 
   // Chance-based ritual result: "rare 1% result" -> exact brainrot name.
   if (
-    [REL.SPAWN, REL.REWARD, REL.BRAINROT].includes(analysis.relation) &&
+    [REL.SPAWN, REL.OUTCOME, REL.REWARD, REL.BRAINROT].includes(analysis.relation) &&
     /\b\d+(?:\.\d+)?\s*%/.test(question) &&
     /\britual\b/i.test(question)
   ) {
@@ -2452,7 +2524,7 @@ function deterministicHighValueExactPage(question, analysis, page, source) {
     if (candidate) {
       return makeResult(
         candidate,
-        analysis.relation === REL.BRAINROT ? REL.BRAINROT : REL.SPAWN,
+        analysis.relation === REL.BRAINROT ? REL.BRAINROT : (analysis.relation === REL.OUTCOME ? REL.OUTCOME : REL.SPAWN),
         source,
         page,
         `${source.key}_CHANCE_RESULT_EXACT_PAGE`,
@@ -2529,7 +2601,7 @@ function expectedPrimaryFamilies(question, analysis) {
     add("/brainrots/");
   }
 
-  if ([REL.SPAWN, REL.REQUIREMENT, REL.FORMATION, REL.RITUAL, REL.REWARD].includes(rel) || /\britual\b/.test(q)) {
+  if ([REL.SPAWN, REL.OUTCOME, REL.REQUIREMENT, REL.FORMATION, REL.RITUAL, REL.REWARD].includes(rel) || /\britual\b/.test(q)) {
     add("/rituals/");
     if (analysis.update || analysis.date) add("/events/");
   }
@@ -2544,9 +2616,14 @@ function expectedPrimaryFamilies(question, analysis) {
     add("/events/");
   }
 
-  if (rel === REL.MACHINE || /\bmachine\b/.test(q)) {
+  if ([REL.MACHINE, REL.ACTIVE_RANGE, REL.REPLACED_BY, REL.REPLACED_IN].includes(rel) || /\bmachine\b/.test(q)) {
     add("/machines");
     add("/events/");
+  }
+
+  if (rel === REL.FREQUENCY) {
+    add("/events/");
+    add("/machines");
   }
 
   if ([REL.UPDATE, REL.EVENT, REL.DATE].includes(rel) || analysis.update || analysis.date) {
@@ -2610,12 +2687,16 @@ function importantQuestionClues(question, analysis) {
   }
 
   if (analysis.update) clues.push({ value: `Update ${analysis.update}`, weight: 5, kind: "update" });
+  if (analysis.activeFrom) clues.push({ value: `Update ${analysis.activeFrom}`, weight: 3, kind: "lifecycle" });
+  if (analysis.activeTo) clues.push({ value: `Update ${analysis.activeTo}`, weight: 2, kind: "lifecycle" });
+  if (analysis.replacedIn) clues.push({ value: `Update ${analysis.replacedIn}`, weight: 5, kind: "lifecycle" });
   if (analysis.date) clues.push({ value: humanDateFromIso(analysis.date), weight: 5, kind: "date" });
 
   // Named relation anchors.
   const anchors = [
     ["Job Job Job Sahur", 5],
     ["RNG Machine", 4],
+    ["Queen Bee", 5],
     ["Rainbow", 3],
     ["Crystal", 3],
     ["ritual", 2],
@@ -2702,7 +2783,7 @@ function snippetEligibility(row, question, analysis, source) {
 
   // Numeric/date/update clues should not be ignored if present in the question.
   const hardClues = importantQuestionClues(question, analysis)
-    .filter((x) => ["money", "percent", "multiplier", "update", "date"].includes(x.kind));
+    .filter((x) => ["money", "percent", "multiplier", "update", "date", "lifecycle"].includes(x.kind));
 
   if (hardClues.length) {
     const hardMatched = hardClues.filter((x) => pageHasClue(combined, x.value));
@@ -2751,7 +2832,7 @@ function pageEligibility(question, analysis, page, source) {
   const coverage = weightedClueCoverage(question, analysis, page.text);
 
   const hardClues = importantQuestionClues(question, analysis)
-    .filter((x) => ["money", "percent", "multiplier", "update", "date"].includes(x.kind));
+    .filter((x) => ["money", "percent", "multiplier", "update", "date", "lifecycle"].includes(x.kind));
 
   const hardMatched = hardClues.filter((x) => pageHasClue(page.text, x.value));
 
@@ -2861,7 +2942,19 @@ function answerTypeValid(question, analysis, answer, page) {
     return { valid: false, reason: "EXPECTED_PERCENTAGE" };
   }
 
-  if ([REL.BRAINROT, REL.SPAWN, REL.REWARD, REL.MUTATION, REL.TRAIT, REL.GEAR, REL.MACHINE].includes(rel)) {
+  if (rel === REL.FREQUENCY && !/\b(?:every\s+\w+|every\s+\d+|hour|hours|minute|minutes|daily|weekly|once|twice)\b/i.test(value)) {
+    return { valid: false, reason: "EXPECTED_FREQUENCY" };
+  }
+
+  if (rel === REL.REPLACED_IN && !/\bUpdate\s*\d+(?:\.\d+)?\b/i.test(value)) {
+    return { valid: false, reason: "EXPECTED_UPDATE" };
+  }
+
+  if (rel === REL.ACTIVE_RANGE && !/\bUpdate\s*\d+/i.test(value)) {
+    return { valid: false, reason: "EXPECTED_UPDATE_RANGE" };
+  }
+
+  if ([REL.BRAINROT, REL.SPAWN, REL.OUTCOME, REL.REWARD, REL.MUTATION, REL.TRAIT, REL.GEAR, REL.MACHINE, REL.REPLACED_BY].includes(rel)) {
     if (genericRolePhrase(value)) {
       return { valid: false, reason: "GENERIC_ROLE_PHRASE" };
     }
@@ -2944,6 +3037,11 @@ function relationSearchWord(relation) {
     case REL.MACHINE: return "machine";
     case REL.UPDATE: return "update";
     case REL.COLLECTION: return "collection";
+    case REL.OUTCOME: return "outcome result reward spawn";
+    case REL.FREQUENCY: return "frequency every interval returns occurs";
+    case REL.ACTIVE_RANGE: return "active from through update available range";
+    case REL.REPLACED_BY: return "replaced by replacement";
+    case REL.REPLACED_IN: return "replaced in update";
     default: return "";
   }
 }
@@ -2959,29 +3057,40 @@ function humanDateFromIso(date) {
 }
 
 
+
 function exactSearchQuery(question, analysis, source) {
   const parts = [];
 
   if (analysis.entity) parts.push(`"${oneLine(analysis.entity, 180)}"`);
-  if (analysis.update) parts.push(`"Update ${analysis.update}"`);
   if (analysis.date) parts.push(`"${humanDateFromIso(analysis.date)}"`);
 
   const relation = relationSearchWord(analysis.relation);
   if (relation) parts.push(relation);
 
+  // Lifecycle/range questions are intentionally searched with a FEW strong
+  // anchors instead of every update number in the sentence.
+  if (analysis.activeFrom || analysis.activeTo || analysis.replacedIn) {
+    if (analysis.replacedIn) parts.push(`"Update ${analysis.replacedIn}"`, "replaced");
+    if (analysis.activeFrom) parts.push(`"Update ${analysis.activeFrom}"`);
+    if (!analysis.activeFrom && analysis.update) parts.push(`"Update ${analysis.update}"`);
+  } else if (analysis.update) {
+    parts.push(`"Update ${analysis.update}"`);
+  }
+
   for (const clue of searchCluesFromQuestion(question)) {
-    if (/[\s]/.test(clue)) parts.push(`"${clue}"`);
+    // Update numbers are handled structurally above; don't force every one.
+    if (/^Update\s*\d/i.test(clue)) continue;
+    if (/\s/.test(clue)) parts.push(`"${clue}"`);
     else parts.push(clue);
   }
 
-  // Keep the original wording as unquoted search terms. This preserves clues
-  // such as "$27.5B", "1%", "rare", and route names that structured routing
-  // may intentionally omit.
-  const original = oneLine(question, 500)
-    .replace(/[?!.]+$/g, "")
-    .trim();
-
-  if (original) parts.push(original);
+  // For normal questions preserve wording. For multi-update lifecycle questions,
+  // preserving the whole sentence over-constrains search, so keep only useful words.
+  const updateCount = (analysis.updateNumbers || []).length;
+  if (updateCount <= 1 && !analysis.activeFrom && !analysis.replacedIn) {
+    const original = oneLine(question, 500).replace(/[?!.]+$/g, "").trim();
+    if (original) parts.push(original);
+  }
 
   return `site:${source.host} ${parts.join(" ")}`.trim();
 }
@@ -3014,6 +3123,11 @@ function relationEvidenceScore(text, relation) {
     [REL.MACHINE]: /\bmachine\b/,
     [REL.UPDATE]: /\bupdate\b/,
     [REL.COLLECTION]: /\bcollection\b/,
+    [REL.OUTCOME]: /\b(?:outcome|result|reward|spawn)\b/,
+    [REL.FREQUENCY]: /\b(?:every|hour|hours|minute|minutes|daily|weekly|frequency|interval|returns?|occurs?)\b/,
+    [REL.ACTIVE_RANGE]: /\b(?:active|available|from|through|until|update)\b/,
+    [REL.REPLACED_BY]: /\b(?:replaced by|replacement|replaced)\b/,
+    [REL.REPLACED_IN]: /\b(?:replaced in|update)\b/,
   };
 
   return checks[relation]?.test(t) ? 1 : 0;
@@ -3167,7 +3281,11 @@ async function aiExtractSinglePage(question, analysis, page, source, deadline) {
                 "For GEAR return only the item/gear name.",
                 "For MULTIPLIER return only the multiplier.",
                 "For INCOME return only income per second.",
-                "For SPAWN/REWARD/BRAINROT questions return ONLY the brainrot/entity name, never the percentage or an explanatory sentence.",
+                "For SPAWN/OUTCOME/REWARD/BRAINROT questions return ONLY the brainrot/entity name, never the percentage or an explanatory sentence.",
+                "For FREQUENCY return only the recurrence phrase, e.g. Every two hours.",
+                "For ACTIVE_RANGE return only the update range.",
+                "For REPLACED_IN return only Update<number>.",
+                "For REPLACED_BY return only the replacement entity name.",
                 "For reverse identification questions like 'Which Secret brainrot ... has a base cost of $27.5B?', return ONLY the matching page/entity name.",
                 "For chance questions like 'rare 1% result', return ONLY the entity attached to that exact chance.",
                 "For broad UPDATE questions return a short comma-separated list of major additions explicitly stated on this page.",
@@ -3183,6 +3301,10 @@ async function aiExtractSinglePage(question, analysis, page, source, deadline) {
                   entity: analysis.entity,
                   relation: analysis.relation,
                   update: analysis.update,
+                  updateNumbers: analysis.updateNumbers,
+                  activeFrom: analysis.activeFrom,
+                  activeTo: analysis.activeTo,
+                  replacedIn: analysis.replacedIn,
                   date: analysis.date,
                   intent: analysis.intent,
                 },
@@ -4067,7 +4189,7 @@ function runSelfTests() {
     "What is the rare 1% result from the Job Job Job Sahur ritual?",
     analyzeQuestion("What is the rare 1% result from the Job Job Job Sahur ritual?")
   );
-  check("R28 rare ritual relation spawn", r28Rare.relation === REL.SPAWN);
+  check("R28/R30 rare ritual relation outcome", r28Rare.relation === REL.OUTCOME);
 
   const r28Reverse = enforceQuestionSemantics(
     "Which Secret brainrot from the RNG Machine in Update 61 has a base cost of $27.5B?",
@@ -4277,6 +4399,41 @@ function runSelfTests() {
       "Which mutation from Update 59 has a 13x multiplier and came with the Spain event?"
     )?.url.endsWith("/wiki/mutations")
   );
+
+
+  const r30MachineQ = "Which machine ran from Update 57 through Update 60 before being replaced in Update 61?";
+  const r30Machine = enforceQuestionSemantics(r30MachineQ, analyzeQuestion(r30MachineQ));
+  check("R30 machine lifecycle relation", r30Machine.relation === REL.MACHINE);
+  check("R30 activeFrom", r30Machine.activeFrom === 57);
+  check("R30 activeTo", r30Machine.activeTo === 60);
+  check("R30 replacedIn", r30Machine.replacedIn === 61);
+  check("R30 all update numbers", (r30Machine.updateNumbers || []).join(",") === "57,60,61");
+
+  const r30Query = exactSearchQuery(r30MachineQ, r30Machine, SOURCE.PRIMARY);
+  check("R30 lifecycle query uses replacement update", r30Query.includes('"Update 61"'));
+  check("R30 lifecycle query not full sentence", !r30Query.includes("ran from Update 57 through Update 60 before being replaced"));
+
+  const r30FreqQ = "How often does the Queen Bee event return during Update 61?";
+  const r30Freq = enforceQuestionSemantics(r30FreqQ, analyzeQuestion(r30FreqQ));
+  check("R30 frequency relation", r30Freq.relation === REL.FREQUENCY);
+
+  const r30FreqPage = syntheticPrimaryPage(
+    "RNG Machine + Queen Bee Event",
+    `${PRIMARY_ORIGIN}/events/rng-machine-queen-bee-event-2026-08-08`,
+    ["Queen Bee event", "Update 61", "The Queen Bee event returns every two hours."]
+  );
+  check("R30 frequency answer valid", answerTypeValid(r30FreqQ, r30Freq, "Every two hours", r30FreqPage).valid === true);
+
+  const r30OutcomeQ = "What is the common 99% outcome of the Job Job Job Sahur ritual?";
+  const r30Outcome = enforceQuestionSemantics(r30OutcomeQ, analyzeQuestion(r30OutcomeQ));
+  check("R30 outcome relation", r30Outcome.relation === REL.OUTCOME);
+
+  const r30OutcomePage = syntheticPrimaryPage(
+    "Job Job Job Sahur Ritual",
+    `${PRIMARY_ORIGIN}/rituals/job-job-job-sahur-ritual`,
+    ["Job Job Job Sahur Ritual", "Yess my Resume with a 99% outcome chance", "Noo my Resume with a 1% outcome chance"]
+  );
+  check("R30 outcome deterministic", deterministicHighValueExactPage(r30OutcomeQ, r30Outcome, r30OutcomePage, SOURCE.PRIMARY)?.answer === "Yess my Resume");
 
   // Priority behavior: once S+ has a direct value, lower tier disagreement does not participate.
   const primary = makeResult("10x", REL.MULTIPLIER, SOURCE.PRIMARY, mutationPage, "PRIMARY_MUTATION_SECTION", 0.995);
@@ -4489,12 +4646,17 @@ export async function GET(request) {
       { tier: "B", source: "steal-a-brainrot.wiki", policy: "USED ONLY WHEN S+ AND A+ MISS" },
       { tier: "C", source: "Tavily/NVIDIA", policy: "EMERGENCY ONLY" },
     ],
-    conflictPolicy: "AI ROUTES QUESTION; URL FAMILY + HARD CLUES VALIDATE PAGE BEFORE AI; TRY MAX 2 ELIGIBLE PAGES PER TIER; ANSWER TYPE + CLUE-LOCAL EVIDENCE MUST PASS; S+ VERIFIED = 0.995 + STOP; A+ ONLY ON S+ MISS; B ONLY ON S+/A+ MISS",
+    conflictPolicy: "AI ROUTES INTO RICH RELATION SCHEMA; MULTI-UPDATE QUESTIONS USE LIFECYCLE HINTS WITHOUT OVER-CONSTRAINING SEARCH; URL FAMILY + HARD CLUES VALIDATE PAGE; ANSWER TYPE + CLUE-LOCAL EVIDENCE MUST PASS; S+ VERIFIED = 0.995 + STOP; A+ ONLY ON S+ MISS; B ONLY ON S+/A+ MISS",
     architecture: {
       aiQuestionRouterFirst: true,
       exactPageSearchFirst: true,
       cluePreservingSearch: true,
       urlFamilyRouting: true,
+      richRelationSchema: true,
+      frequencyRelation: true,
+      outcomeRelation: true,
+      lifecycleRelations: true,
+      multiUpdateDeconstraint: true,
       snippetEligibilityGuard: true,
       openedPageEligibilityGuard: true,
       maxTwoPagesPerTier: true,
@@ -4568,7 +4730,8 @@ export async function POST(request) {
       const result = await resolveQuestion(question, lore);
       items.push({
         index: question.index,
-        attribute: question.expectedAttribute !== "NONE" ? question.expectedAttribute : result.answerType,
+        attribute: result.answerType,
+        expectedAttribute: question.expectedAttribute,
         ...result,
       });
     } catch (error) {
