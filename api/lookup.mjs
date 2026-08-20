@@ -1,4 +1,4 @@
-const BUILD_ID = "SAB_DIRECT_SPLUS_LINK_ENGINE_R23_2026_08_19";
+const BUILD_ID = "SAB_AUTHORITATIVE_SOURCE_ENGINE_R24_2026_08_19";
 
 const PRIMARY_ORIGIN = "https://steal-a-brainrot.org";
 const FANDOM_API = "https://stealabrainrot.fandom.com/api.php";
@@ -9,11 +9,11 @@ const NVIDIA_URL = "https://integrate.api.nvidia.com/v1/chat/completions";
 const DEFAULT_MODEL = "nvidia/nemotron-3-super-120b-a12b";
 
 const CFG = Object.freeze({
-  GLOBAL_BUDGET_MS: Number(process.env.LOOKUP_BUDGET_MS || 4300),
-  PRIMARY_TIMEOUT_MS: Number(process.env.PRIMARY_TIMEOUT_MS || 1900),
-  FANDOM_TIMEOUT_MS: Number(process.env.FANDOM_TIMEOUT_MS || 1100),
-  BACKUP_TIMEOUT_MS: Number(process.env.BACKUP_TIMEOUT_MS || 950),
-  TAVILY_TIMEOUT_MS: Number(process.env.TAVILY_TIMEOUT_MS || 1000),
+  GLOBAL_BUDGET_MS: Number(process.env.LOOKUP_BUDGET_MS || 3200),
+  PRIMARY_TIMEOUT_MS: Number(process.env.PRIMARY_TIMEOUT_MS || 1050),
+  FANDOM_TIMEOUT_MS: Number(process.env.FANDOM_TIMEOUT_MS || 900),
+  BACKUP_TIMEOUT_MS: Number(process.env.BACKUP_TIMEOUT_MS || 800),
+  TAVILY_TIMEOUT_MS: Number(process.env.TAVILY_TIMEOUT_MS || 800),
   NVIDIA_TIMEOUT_MS: Number(process.env.NVIDIA_TIMEOUT_MS || 850),
 
   MAX_PRIMARY_PAGES: 7,
@@ -60,19 +60,19 @@ const SOURCE = Object.freeze({
     tier: "S+",
     key: "PRIMARY_SPLUS",
     host: "steal-a-brainrot.org",
-    confidence: 0.99,
+    confidence: 0.995,
   },
   FANDOM: {
     tier: "A+",
     key: "FANDOM_A_PLUS",
     host: "stealabrainrot.fandom.com",
-    confidence: 0.93,
+    confidence: 0.97,
   },
   WIKI: {
     tier: "B",
     key: "WIKI_B",
     host: "steal-a-brainrot.wiki",
-    confidence: 0.86,
+    confidence: 0.94,
   },
   EMERGENCY: {
     tier: "C",
@@ -379,7 +379,7 @@ function analyzeQuestion(question) {
     rebirth,
     update,
     current,
-    source: "DETERMINISTIC_R23",
+    source: "DETERMINISTIC_R24",
   };
 }
 
@@ -519,7 +519,7 @@ async function fetchPage(url, source, deadline) {
   const html = await fetchText(source.key, url, {
     headers: {
       Accept: "text/html,application/xhtml+xml",
-      "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R23",
+      "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R24",
     },
   }, timeout);
   const page = {
@@ -594,6 +594,39 @@ function isPrimaryEntityFieldRelation(relation) {
   ].includes(relation);
 }
 
+
+function ritualDetailCandidates(analysis) {
+  const candidates = [];
+  const add = (slug) => {
+    slug = slugify(slug);
+    if (!slug) return;
+    candidates.push(`${PRIMARY_ORIGIN}/rituals/${slug}`);
+  };
+
+  const entity = oneLine(analysis.entity || "", 180);
+  const tokens = entity
+    .toLowerCase()
+    .match(/[a-z0-9]+/g) || [];
+
+  // Most S+ ritual URLs are based on the distinctive ritual-name token.
+  // For "Bombardiro Crocodilo", this tries /rituals/crocodilo-ritual first.
+  if (tokens.length) {
+    add(`${tokens[tokens.length - 1]}-ritual`);
+    add(`${tokens[0]}-ritual`);
+    add(`${tokens.join("-")}-ritual`);
+  }
+
+  for (const alias of analysis.entities || []) {
+    const a = alias.toLowerCase().match(/[a-z0-9]+/g) || [];
+    if (a.length) {
+      add(`${a[a.length - 1]}-ritual`);
+      add(`${a.join("-")}-ritual`);
+    }
+  }
+
+  return [...new Set(candidates)].slice(0, 5);
+}
+
 async function primaryFastPath(question, analysis, deadline) {
   const errors = [];
   const pages = [];
@@ -602,6 +635,7 @@ async function primaryFastPath(question, analysis, deadline) {
   async function get(url) {
     if (!url || tried.has(url)) return null;
     tried.add(url);
+
     try {
       const page = await fetchPage(url, SOURCE.PRIMARY, deadline);
       pages.push(page);
@@ -612,17 +646,17 @@ async function primaryFastPath(question, analysis, deadline) {
     }
   }
 
-  // 1) Exact Brainrot page FIRST. Nothing else is allowed to delay this.
+  // 1) Exact Brainrot page.
   if (analysis.entity && isPrimaryEntityFieldRelation(analysis.relation)) {
     const exact = `${PRIMARY_ORIGIN}/brainrots/${slugify(analysis.entity)}`;
     const page = await get(exact);
     if (page) {
       const result = resolvePrimaryEntityPage(page, analysis);
-      if (result) return { result, pages, errors, route: "EXACT_BRAINROT" };
+      if (result) return { result, pages, errors, route: "EXACT_BRAINROT_SPLUS" };
     }
   }
 
-  // 2) Rebirth has one canonical primary page.
+  // 2) Rebirth canonical page.
   if (
     analysis.relation === REL.REBIRTH ||
     analysis.relation === REL.GEAR ||
@@ -632,11 +666,11 @@ async function primaryFastPath(question, analysis, deadline) {
     const page = await get(`${PRIMARY_ORIGIN}/wiki/rebirth`);
     if (page) {
       const result = resolvePrimaryRebirth(page, analysis);
-      if (result) return { result, pages, errors, route: "DIRECT_REBIRTH" };
+      if (result) return { result, pages, errors, route: "DIRECT_REBIRTH_SPLUS" };
     }
   }
 
-  // 3) Mutation / trait multiplier has one canonical primary page.
+  // 3) Mutation / trait canonical page.
   if (
     analysis.relation === REL.MULTIPLIER ||
     analysis.relation === REL.MUTATION ||
@@ -646,34 +680,43 @@ async function primaryFastPath(question, analysis, deadline) {
     const page = await get(`${PRIMARY_ORIGIN}/wiki/mutations`);
     if (page) {
       const result = resolvePrimaryMutation(page, analysis);
-      if (result) return { result, pages, errors, route: "DIRECT_MUTATIONS" };
+      if (result) return { result, pages, errors, route: "DIRECT_MUTATIONS_SPLUS" };
     }
   }
 
-  // 4) Ritual: open S+ ritual hub, follow the best matching S+ ritual link,
-  // then parse the exact detail page. Tavily is NOT needed for normal rituals.
+  // 4) Ritual detail pages BEFORE hub/search.
   if (
-    [REL.REQUIREMENT, REL.SPAWN, REL.FORMATION, REL.WEATHER, REL.DROP_RATE, REL.RITUAL].includes(analysis.relation) ||
+    [REL.REQUIREMENT, REL.SPAWN, REL.FORMATION, REL.WEATHER, REL.DROP_RATE, REL.RITUAL, REL.STATUS].includes(analysis.relation) ||
     /\britual\b/i.test(question)
   ) {
-    const hub = await get(`${PRIMARY_ORIGIN}/rituals`);
-    if (hub) {
-      // Hub itself can answer some direct spawn questions.
-      const hubResult = resolvePrimaryRitual(hub, analysis);
-      if (hubResult) return { result: hubResult, pages, errors, route: "RITUAL_HUB" };
+    for (const url of ritualDetailCandidates(analysis)) {
+      if (timeLeft(deadline) < 280) break;
+      const detail = await get(url);
+      if (!detail) continue;
 
-      const link = bestPrimaryLink(hub, analysis, "/rituals/");
-      if (link) {
-        const detail = await get(link.url);
-        if (detail) {
-          const result = resolvePrimaryRitual(detail, analysis);
-          if (result) return { result, pages, errors, route: "EXACT_RITUAL_LINK" };
+      const result = resolvePrimaryRitual(detail, analysis);
+      if (result) return { result, pages, errors, route: "EXACT_RITUAL_SPLUS" };
+    }
+
+    if (timeLeft(deadline) > 280) {
+      const hub = await get(`${PRIMARY_ORIGIN}/rituals`);
+      if (hub) {
+        const hubResult = resolvePrimaryRitual(hub, analysis);
+        if (hubResult) return { result: hubResult, pages, errors, route: "RITUAL_HUB_SPLUS" };
+
+        const link = bestPrimaryLink(hub, analysis, "/rituals/");
+        if (link && timeLeft(deadline) > 280) {
+          const detail = await get(link.url);
+          if (detail) {
+            const result = resolvePrimaryRitual(detail, analysis);
+            if (result) return { result, pages, errors, route: "FOLLOWED_RITUAL_SPLUS" };
+          }
         }
       }
     }
   }
 
-  // 5) Structured S+ hubs for the remaining common categories.
+  // 5) Other structured S+ hubs.
   const hubs = [];
   if (analysis.relation === REL.CONTENTS || /\blucky block\b/i.test(question)) hubs.push("/lucky-blocks");
   if (analysis.relation === REL.MACHINE || /\bmachine\b/i.test(question)) hubs.push("/machines");
@@ -681,13 +724,14 @@ async function primaryFastPath(question, analysis, deadline) {
   if (analysis.relation === REL.COLLECTION || /\bcollection\b/i.test(question)) hubs.push("/collections");
 
   for (const path of hubs) {
+    if (timeLeft(deadline) < 280) break;
     const page = await get(`${PRIMARY_ORIGIN}${path}`);
     if (!page) continue;
     const result = resolvePrimaryGenericPage(page, analysis);
-    if (result) return { result, pages, errors, route: `DIRECT_${path}` };
+    if (result) return { result, pages, errors, route: `DIRECT_${path}_SPLUS` };
   }
 
-  return { result: null, pages, errors, route: "PRIMARY_FAST_MISS" };
+  return { result: null, pages, errors, route: "SPLUS_DIRECT_MISS" };
 }
 
 function primaryCandidateUrls(question, analysis) {
@@ -734,66 +778,128 @@ function findEntityPagePrimary(pages, analysis) {
     : null;
 }
 
+
 function resolvePrimaryEntityPage(page, analysis) {
   if (!page) return null;
-  const relation = analysis.relation;
-  const lines = page.lines;
-  const text = page.text;
 
+  const relation = analysis.relation;
+  const lines = page.lines || [];
+  const text = page.text || "";
+
+  // The S+ site exposes these as direct visible fields.
+  // A direct field match is authoritative for this lookup and returns immediately.
   if (relation === REL.COST) {
-    const v = findLabelValue(lines, ["Base Cost", "Cost", "Price"]);
-    const answer = normalizeAnswer(v || text.match(/Base Cost\s*\n?\s*(\$[\d.]+\s*[KMBTQ]?)/i)?.[1], REL.COST);
-    if (answer) return makeResult(answer, relation, SOURCE.PRIMARY, page, "PRIMARY_ENTITY_FIELD", 0.995);
+    const v =
+      findLabelValue(lines, ["Base Cost", "Cost", "Price"]) ||
+      text.match(/\bBase Cost\b[\s:|-]{0,20}(\$\s*[\d.]+\s*[KMBTQ]?)/i)?.[1] ||
+      text.match(/\blisted base cost of\s+(\$\s*[\d.]+\s*[KMBTQ]?)/i)?.[1];
+
+    const answer = normalizeAnswer(v, REL.COST);
+    if (answer) return makeResult(answer, relation, SOURCE.PRIMARY, page, "SPLUS_DIRECT_ENTITY_COST", 0.995);
   }
 
   if (relation === REL.INCOME) {
-    const v = findLabelValue(lines, ["Income per Second", "Base Income/sec", "Income/sec", "Generates"]);
-    const answer = normalizeAnswer(v || text.match(/(?:Income per Second|Base Income\/sec|Generates)\s*\n?\s*(\$[\d.]+\s*[KMBTQ]?(?:\/s)?)/i)?.[1], REL.INCOME);
-    if (answer) return makeResult(answer, relation, SOURCE.PRIMARY, page, "PRIMARY_ENTITY_FIELD", 0.995);
+    const v =
+      findLabelValue(lines, ["Income per Second", "Base Income/sec", "Income/sec", "Generates"]) ||
+      text.match(/\bIncome per Second\b[\s:|-]{0,25}(\$\s*[\d.]+\s*[KMBTQ]?(?:\s*\/\s*s)?)/i)?.[1] ||
+      text.match(/\b(?:generating|generates?)\s+(\$\s*[\d.]+\s*[KMBTQ]?)\s*(?:\/second|\/s|per second)/i)?.[1];
+
+    const answer = normalizeAnswer(v, REL.INCOME);
+    if (answer) return makeResult(answer, relation, SOURCE.PRIMARY, page, "SPLUS_DIRECT_ENTITY_INCOME", 0.995);
   }
 
   if (relation === REL.RARITY) {
-    let v = findLabelValue(lines, ["Rarity"]);
-    if (!v) {
-      const quick = text.match(/\bis an?\s+([A-Za-z][A-Za-z ]{1,40}?)\s+brainrot\b/i) || text.match(/\bis a\s+([A-Za-z][A-Za-z ]{1,40}?)\s+brainrot\b/i);
-      if (quick) v = quick[1];
-    }
+    let v =
+      findLabelValue(lines, ["Rarity"]) ||
+      text.match(/\bis\s+(?:an?\s+)?([A-Za-z][A-Za-z ]{1,45}?)\s+brainrot\b/i)?.[1] ||
+      text.match(/\b([A-Za-z][A-Za-z ]{1,45}?)\s+brainrot generating\b/i)?.[1];
+
     if (!v) {
       const idx = lines.findIndex((x) => similarity(x, page.title) >= 0.92);
-      if (idx >= 0 && lines[idx + 1] && !/^(?:base cost|income|event|image)/i.test(lines[idx + 1])) v = lines[idx + 1];
+      if (
+        idx >= 0 &&
+        lines[idx + 1] &&
+        !/^(?:base cost|income|event|efficiency|image|identity)/i.test(lines[idx + 1])
+      ) {
+        v = lines[idx + 1];
+      }
     }
-    if (v) return makeResult(v, relation, SOURCE.PRIMARY, page, "PRIMARY_ENTITY_FIELD", 0.99);
+
+    if (v) return makeResult(v, relation, SOURCE.PRIMARY, page, "SPLUS_DIRECT_ENTITY_RARITY", 0.995);
   }
 
   if (relation === REL.DATE) {
-    const v = findLabelValue(lines, ["Added to Game", "Release Date"]);
-    const date = v?.match(/(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+20\d{2}/i)?.[0] || text.match(/recorded game-added date of\s+((?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+20\d{2})/i)?.[1];
-    if (date) return makeResult(date, relation, SOURCE.PRIMARY, page, "PRIMARY_ENTITY_FIELD", 0.99);
+    const v =
+      findLabelValue(lines, ["Added to Game", "Release Date"]) ||
+      text.match(
+        /recorded game-added date of\s+((?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+20\d{2})/i
+      )?.[1];
+
+    const date = String(v || "").match(
+      /(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+20\d{2}/i
+    )?.[0];
+
+    if (date) return makeResult(date, relation, SOURCE.PRIMARY, page, "SPLUS_DIRECT_ENTITY_DATE", 0.995);
   }
 
   if (relation === REL.STATUS) {
     const v = findLabelValue(lines, ["Current Availability", "Release Status", "Status"]);
-    if (v) return makeResult(v, relation, SOURCE.PRIMARY, page, "PRIMARY_ENTITY_FIELD", 0.985);
+    if (v) return makeResult(v, relation, SOURCE.PRIMARY, page, "SPLUS_DIRECT_ENTITY_STATUS", 0.995);
   }
 
   if (relation === REL.METHOD) {
     const v = findLabelValue(lines, ["Primary Route", "Current Availability"]);
-    if (v) return makeResult(v, relation, SOURCE.PRIMARY, page, "PRIMARY_ENTITY_FIELD", 0.985);
-    const how = extractSectionValue(text, ["How to Obtain", "How to Get", "How to Get It"], ["Related Brainrots", "Mutation Income Calculator", "Tips"]);
-    if (how) return makeResult(how, relation, SOURCE.PRIMARY, page, "PRIMARY_ENTITY_SECTION", 0.975);
+    if (v) return makeResult(v, relation, SOURCE.PRIMARY, page, "SPLUS_DIRECT_ENTITY_METHOD", 0.995);
+
+    const how = extractSectionValue(
+      text,
+      ["How to Obtain", "How to Get", "How to Get It"],
+      ["Related Brainrots", "Mutation Income Calculator", "Tips", "Release Status"]
+    );
+    if (how) return makeResult(how, relation, SOURCE.PRIMARY, page, "SPLUS_DIRECT_ENTITY_SECTION", 0.99);
   }
 
   return null;
 }
 
+
 function rebirthSections(page) {
-  const sections = extractHeadingSections(page.html);
-  return sections
+  const htmlSections = extractHeadingSections(page.html)
     .map((s) => {
       const m = s.title.match(/\bREBIRTH\s+(\d{1,3})\b/i);
       return m ? { number: Number(m[1]), title: s.title, text: s.text } : null;
     })
     .filter(Boolean);
+
+  if (htmlSections.length >= 3) return htmlSections;
+
+  // Plain-text fallback: survives site markup changes.
+  const raw = String(page.text || "");
+  const markers = [];
+  const re = /\bREBIRTH\s+(\d{1,3})\b/gi;
+  let m;
+  while ((m = re.exec(raw)) !== null) {
+    markers.push({ number: Number(m[1]), start: m.index, end: re.lastIndex });
+  }
+
+  const out = [];
+  const seen = new Set();
+  for (let i = 0; i < markers.length; i++) {
+    const cur = markers[i];
+    if (seen.has(cur.number)) continue;
+    const next = markers.slice(i + 1).find((x) => x.number !== cur.number);
+    const end = next ? next.start : Math.min(raw.length, cur.start + 5000);
+    const sectionText = clean(raw.slice(cur.start, end), 5000);
+    if (!sectionText) continue;
+    seen.add(cur.number);
+    out.push({
+      number: cur.number,
+      title: `REBIRTH ${cur.number}`,
+      text: sectionText,
+    });
+  }
+
+  return out;
 }
 
 function resolvePrimaryRebirth(page, analysis) {
@@ -803,32 +909,78 @@ function resolvePrimaryRebirth(page, analysis) {
 
   if (analysis.current) {
     const max = Math.max(...sections.map((s) => s.number));
-    return makeResult(`Rebirth${max}`, REL.REBIRTH, SOURCE.PRIMARY, page, "PRIMARY_REBIRTH_MAX", 0.995);
+    return makeResult(`Rebirth${max}`, REL.REBIRTH, SOURCE.PRIMARY, page, "SPLUS_DIRECT_REBIRTH_MAX", 0.995);
   }
 
   if (analysis.relation === REL.REBIRTH && analysis.entity) {
     let best = null;
+    const wanted = norm(analysis.entity);
+
     for (const section of sections) {
-      const score = Math.max(bestEntityScore(analysis, section.text), similarity(analysis.entity, section.text));
+      const sectionNorm = norm(section.text);
+      const exact = wanted && sectionNorm.includes(wanted) ? 1 : 0;
+      const score = Math.max(
+        exact,
+        bestEntityScore(analysis, section.text),
+        similarity(analysis.entity, section.text)
+      );
+
       if (!best || score > best.score) best = { section, score };
     }
+
     if (best && best.score >= 0.45) {
-      return makeResult(`Rebirth${best.section.number}`, REL.REBIRTH, SOURCE.PRIMARY, page, "PRIMARY_REBIRTH_REVERSE", 0.995);
+      return makeResult(
+        `Rebirth${best.section.number}`,
+        REL.REBIRTH,
+        SOURCE.PRIMARY,
+        page,
+        "SPLUS_DIRECT_REBIRTH_REVERSE",
+        0.995
+      );
+    }
+
+    // Final raw-text fallback: locate the item, then choose the closest preceding REBIRTH marker.
+    const raw = String(page.text || "");
+    const idx = raw.toLowerCase().indexOf(String(analysis.entity).toLowerCase());
+    if (idx >= 0) {
+      const before = raw.slice(Math.max(0, idx - 2500), idx);
+      const all = [...before.matchAll(/\bREBIRTH\s+(\d{1,3})\b/gi)];
+      const last = all[all.length - 1];
+      if (last) {
+        return makeResult(
+          `Rebirth${Number(last[1])}`,
+          REL.REBIRTH,
+          SOURCE.PRIMARY,
+          page,
+          "SPLUS_DIRECT_REBIRTH_NEAREST_MARKER",
+          0.995
+        );
+      }
     }
   }
 
   if (analysis.relation === REL.GEAR && analysis.rebirth) {
     const section = sections.find((s) => s.number === analysis.rebirth);
     if (!section) return null;
-    const v = extractSectionValue(section.text, ["New Items", "🎁New Items"], ["Bonuses", "⚡Bonuses", "Requirements"]);
-    if (v) return makeResult(v.split(" | ")[0], REL.GEAR, SOURCE.PRIMARY, page, "PRIMARY_REBIRTH_ITEM", 0.995);
+
+    const v =
+      extractSectionValue(section.text, ["New Items", "🎁New Items"], ["Bonuses", "⚡Bonuses", "Requirements"]) ||
+      section.text.match(/New Items[\s:|-]{0,30}([A-Za-z][A-Za-z0-9' -]{2,100})/i)?.[1];
+
+    if (v) return makeResult(v.split(" | ")[0], REL.GEAR, SOURCE.PRIMARY, page, "SPLUS_DIRECT_REBIRTH_ITEM", 0.995);
   }
 
   if (analysis.relation === REL.REQUIREMENT && analysis.rebirth) {
     const section = sections.find((s) => s.number === analysis.rebirth);
     if (!section) return null;
-    const v = extractSectionValue(section.text, ["Requirements", "📋Requirements"], ["New Items", "🎁New Items", "Bonuses"]);
-    if (v) return makeResult(v, REL.REQUIREMENT, SOURCE.PRIMARY, page, "PRIMARY_REBIRTH_REQUIREMENT", 0.99);
+
+    const v = extractSectionValue(
+      section.text,
+      ["Requirements", "📋Requirements"],
+      ["New Items", "🎁New Items", "Bonuses"]
+    );
+
+    if (v) return makeResult(v, REL.REQUIREMENT, SOURCE.PRIMARY, page, "SPLUS_DIRECT_REBIRTH_REQUIREMENT", 0.995);
   }
 
   return null;
@@ -858,61 +1010,109 @@ function resolvePrimaryMutation(page, analysis) {
   return null;
 }
 
+
+function cleanRitualSpawn(value) {
+  let v = oneLine(value, 180)
+    .replace(/^Image:\s*/i, "")
+    .replace(/\bTrait Grant\b.*$/i, "")
+    .trim();
+
+  // Collapse simple duplicated labels such as "Los Crocodillitos Los Crocodillitos".
+  const parts = v.split(/\s+/);
+  if (parts.length >= 2 && parts.length % 2 === 0) {
+    const half = parts.length / 2;
+    if (norm(parts.slice(0, half).join(" ")) === norm(parts.slice(half).join(" "))) {
+      v = parts.slice(0, half).join(" ");
+    }
+  }
+  return v;
+}
+
 function resolvePrimaryRitual(page, analysis) {
   if (!page) return null;
-  const text = page.text;
-  const title = page.title;
-  const specific = /ritual/i.test(title) && bestEntityScore(analysis, `${title} ${text.slice(0, 700)}`) >= 0.35;
+
+  const text = String(page.text || "");
+  const title = page.title || "";
+  const detailUrl = /\/rituals\/[^/?#]+-ritual\/?$/i.test(page.url || "");
+  const specific =
+    detailUrl ||
+    (
+      /ritual/i.test(title) &&
+      bestEntityScore(analysis, `${title} ${text.slice(0, 1200)}`) >= 0.30
+    );
 
   if (specific) {
     if (analysis.relation === REL.REQUIREMENT) {
-      const players = text.match(/(\d+)\s+players required/i)?.[1];
-      const required = text.match(/Requires\s+([^\n|]{2,100})/i)?.[1] || text.match(/each holding\s+([^\n,.]{2,100})/i)?.[1];
+      const players = text.match(/\b(\d+)\s+players required\b/i)?.[1];
+      const required =
+        text.match(/\bRequires\s+([A-Za-z0-9' -]{2,100})/i)?.[1] ||
+        text.match(/\beach holding\s+(?:an?\s+)?([A-Za-z0-9' -]{2,100})/i)?.[1];
+
       if (required) {
-        const value = players ? `${required} x${players}` : required;
-        return makeResult(value, REL.REQUIREMENT, SOURCE.PRIMARY, page, "PRIMARY_RITUAL_REQUIREMENT", 0.995);
+        const value = players ? `${oneLine(required, 100)} x${players}` : oneLine(required, 100);
+        return makeResult(value, REL.REQUIREMENT, SOURCE.PRIMARY, page, "SPLUS_DIRECT_RITUAL_REQUIREMENT", 0.995);
       }
     }
 
     if (analysis.relation === REL.SPAWN) {
-      const expected = extractSectionValue(text, ["Brainrot Spawn"], ["Trait Grant", "Important Notes"]);
-      if (expected) return makeResult(expected.split(" | ")[0], REL.SPAWN, SOURCE.PRIMARY, page, "PRIMARY_RITUAL_SPAWN", 0.995);
-      const m = text.match(/Brainrot Spawn\s*\n?\s*([^\n]{2,100})/i);
-      if (m) return makeResult(m[1], REL.SPAWN, SOURCE.PRIMARY, page, "PRIMARY_RITUAL_SPAWN", 0.995);
+      let expected =
+        findLabelValue(page.lines || [], ["Brainrot Spawn"], 4) ||
+        extractSectionValue(text, ["Brainrot Spawn"], ["Trait Grant", "Important Notes"]);
+
+      if (!expected) {
+        expected =
+          text.match(/\bBrainrot Spawn\b[\s:|-]{0,80}(?:Image:\s*)?([A-Z][A-Za-z0-9' -]{2,100})/i)?.[1];
+      }
+
+      if (expected) {
+        const answer = cleanRitualSpawn(String(expected).split(" | ")[0]);
+        if (answer) return makeResult(answer, REL.SPAWN, SOURCE.PRIMARY, page, "SPLUS_DIRECT_RITUAL_SPAWN", 0.995);
+      }
     }
 
     if (analysis.relation === REL.FORMATION) {
-      const m = text.match(/(?:Line up|Formation:)\s*([^\n.]{2,140})/i) || text.match(/line up in a straight line/i);
-      if (m) return makeResult(m[1] || m[0], REL.FORMATION, SOURCE.PRIMARY, page, "PRIMARY_RITUAL_FORMATION", 0.99);
+      const m =
+        text.match(/\bLine up in a straight line\b/i) ||
+        text.match(/\bFormation\s*[:|-]\s*([^\n.]{2,140})/i);
+
+      if (m) return makeResult(m[1] || m[0], REL.FORMATION, SOURCE.PRIMARY, page, "SPLUS_DIRECT_RITUAL_FORMATION", 0.995);
     }
 
     if (analysis.relation === REL.DROP_RATE) {
-      const v = findLabelValue(page.lines, ["Success Rate"]);
-      if (v) return makeResult(v, REL.DROP_RATE, SOURCE.PRIMARY, page, "PRIMARY_RITUAL_RATE", 0.985);
+      const v = findLabelValue(page.lines || [], ["Success Rate"]);
+      if (v) return makeResult(v, REL.DROP_RATE, SOURCE.PRIMARY, page, "SPLUS_DIRECT_RITUAL_RATE", 0.99);
+    }
+
+    if (analysis.relation === REL.STATUS) {
+      const v = findLabelValue(page.lines || [], ["Status"]);
+      if (v) return makeResult(v, REL.STATUS, SOURCE.PRIMARY, page, "SPLUS_DIRECT_RITUAL_STATUS", 0.995);
     }
   }
 
-  // Hub page supports ritual -> spawn from the actual ritual link/card text.
-  if (analysis.relation === REL.SPAWN && /\/rituals\/?$/.test(page.url)) {
+  // Hub fallback. Still S+, but only used when exact detail routing misses.
+  if (analysis.relation === REL.SPAWN && /\/rituals\/?$/.test(page.url || "")) {
     const links = primaryLinks(page, "/rituals/");
     let best = null;
+
     for (const link of links) {
       const score = bestEntityScore(analysis, `${link.label} ${link.pathname}`);
       if (!best || score > best.score) best = { ...link, score };
     }
-    if (best && best.score >= 0.38) {
-      const m = best.label.match(/Rewards?:\s*([A-Za-z0-9' -]{2,100}?)(?:\s+[a-z-]+\s+trait|\s+\d+\s+players?\s+required|$)/i);
-      if (m?.[1]) return makeResult(m[1], REL.SPAWN, SOURCE.PRIMARY, page, "PRIMARY_RITUAL_HUB_LINK", 0.99);
-    }
 
-    const flat = page.text;
-    const entityParts = (analysis.entities || []).filter(Boolean);
-    for (const entity of entityParts) {
-      const key = entity.split(/\s+/).slice(-1)[0];
-      if (!key || key.length < 4) continue;
-      const re = new RegExp(`${key}\\s+Ritual\\s+Rewards?:\\s*([A-Za-z0-9' -]{2,100}?)(?:\\s+[a-z-]+\\s+trait|\\s+\\d+\\s+players?\\s+required|$)`, "i");
-      const m = flat.match(re);
-      if (m?.[1]) return makeResult(m[1], REL.SPAWN, SOURCE.PRIMARY, page, "PRIMARY_RITUAL_HUB_TEXT", 0.985);
+    if (best && best.score >= 0.35) {
+      const m = best.label.match(
+        /Rewards?:\s*([A-Za-z0-9' -]{2,100}?)(?:\s+[a-z-]+\s+trait|\s+\d+\s+players?\s+required|$)/i
+      );
+      if (m?.[1]) {
+        return makeResult(
+          cleanRitualSpawn(m[1]),
+          REL.SPAWN,
+          SOURCE.PRIMARY,
+          page,
+          "SPLUS_RITUAL_HUB_CARD",
+          0.995
+        );
+      }
     }
   }
 
@@ -1089,7 +1289,7 @@ async function fandomSearchTitles(query, deadline) {
     format: "json",
   });
   try {
-    const data = await fetchJson("FANDOM_SEARCH", `${FANDOM_API}?${params.toString()}`, { headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R23" } }, Math.min(CFG.FANDOM_TIMEOUT_MS, left - 20));
+    const data = await fetchJson("FANDOM_SEARCH", `${FANDOM_API}?${params.toString()}`, { headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R24" } }, Math.min(CFG.FANDOM_TIMEOUT_MS, left - 20));
     return (Array.isArray(data?.query?.search) ? data.query.search : []).map((x) => oneLine(x?.title, 300)).filter(Boolean);
   } catch {
     return [];
@@ -1102,7 +1302,7 @@ async function fetchFandomPage(title, deadline) {
   if (cached) return { ...cached, cache: "HIT" };
   const left = timeLeft(deadline);
   if (left < 250) throw new Error("FANDOM_BUDGET_EXHAUSTED");
-  const data = await fetchJson("FANDOM_PARSE", fandomParseUrl(title), { headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R23" } }, Math.min(CFG.FANDOM_TIMEOUT_MS, left - 20));
+  const data = await fetchJson("FANDOM_PARSE", fandomParseUrl(title), { headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R24" } }, Math.min(CFG.FANDOM_TIMEOUT_MS, left - 20));
   if (data?.error) throw new Error(`FANDOM_PARSE_${data.error.code || "ERROR"}`);
   const p = data?.parse || {};
   const html = typeof p.text === "string" ? p.text : String(p.text?.["*"] || "");
@@ -1137,7 +1337,12 @@ function backupResolveText(page, analysis, source) {
   if (analysis.relation === REL.REQUIREMENT) answer = text.match(/(?:requires?|requirement)[:\s]+([^\n|]{2,160})/i)?.[1];
   if (analysis.relation === REL.DATE) answer = text.match(/(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+20\d{2}/i)?.[0];
 
-  return answer ? makeResult(answer, analysis.relation, source, page, `${source.key}_DIRECT`, source.confidence) : null;
+  if (!answer) return null;
+  const confidence =
+    source === SOURCE.FANDOM ? 0.97 :
+    source === SOURCE.WIKI ? 0.94 :
+    source.confidence;
+  return makeResult(answer, analysis.relation, source, page, `${source.key}_DIRECT`, confidence);
 }
 
 async function fandomStage(question, analysis, deadline) {
@@ -1327,92 +1532,115 @@ function finalize(base, question, analysis, startedAt, diagnostics = {}) {
   };
 }
 
+
 async function resolveQuestion(questionObj, lore = "") {
   const startedAt = nowMs();
   const deadline = startedAt + CFG.GLOBAL_BUDGET_MS;
   const question = questionObj.question;
+
   const cached = getCachedAnswer(question);
-  if (cached) return { ...cached, cache: "HIT", searchLatencyMs: nowMs() - startedAt };
+  if (cached) {
+    return {
+      ...cached,
+      cache: "HIT",
+      searchLatencyMs: nowMs() - startedAt,
+    };
+  }
 
   const analysis = analyzeQuestion(question);
+
   const diagnostic = {
     primaryFastErrors: [],
     primaryFastRoute: "",
     primaryErrors: [],
-    primaryDiscoveryErrors: [],
     fandomErrors: [],
     wikiErrors: [],
     emergencyErrors: [],
   };
 
-  // ---------------- S+ PRIMARY FAST PATH ----------------
-  // Exact S+ pages are fetched and parsed BEFORE any backup/search work.
-  // A direct S+ answer returns immediately and can never be downgraded.
+  // =====================================================
+  // S+ PRIMARY
+  // Direct evidence = 0.995 and RETURN NOW.
+  // No Fandom/Tavily/AI disagreement is allowed to lower it.
+  // =====================================================
   const fast = await primaryFastPath(question, analysis, deadline);
   diagnostic.primaryFastErrors = fast.errors;
   diagnostic.primaryFastRoute = fast.route;
 
   let result = fast.result;
+
   if (result) {
     const final = finalize(result, question, analysis, startedAt, diagnostic);
     setCachedAnswer(question, final);
     return final;
   }
 
-  // ---------------- S+ PRIMARY BROAD PASS ----------------
-  const primary = await fetchPrimaryCandidates(question, analysis, deadline);
-  primary.pages.unshift(...fast.pages);
-  primary.pages = [...new Map(primary.pages.map((p) => [p.url, p])).values()];
-  diagnostic.primaryErrors = primary.errors;
-  result = resolvePrimary(question, analysis, primary.pages);
-  if (result) {
-    const final = finalize(result, question, analysis, startedAt, diagnostic);
-    setCachedAnswer(question, final);
-    return final;
-  }
+  // One broad S+ pass only. No Tavily discovery before A+.
+  if (timeLeft(deadline) > 260) {
+    const primary = await fetchPrimaryCandidates(question, analysis, deadline);
+    primary.pages.unshift(...fast.pages);
+    primary.pages = [...new Map(primary.pages.map((p) => [p.url, p])).values()];
+    diagnostic.primaryErrors = primary.errors;
 
-  // Primary discovery is still S+: Tavily only locates pages on steal-a-brainrot.org.
-  if (timeLeft(deadline) > 350) {
-    const discovered = await primaryDiscovery(question, analysis, deadline);
-    diagnostic.primaryDiscoveryErrors = discovered.search?.errors || [];
-    result = discovered.result;
+    result = resolvePrimary(question, analysis, primary.pages);
+
     if (result) {
       const final = finalize(result, question, analysis, startedAt, diagnostic);
       setCachedAnswer(question, final);
       return final;
     }
-    primary.pages.push(...discovered.pages);
+
+    fast.pages.push(...primary.pages);
   }
 
-  // ---------------- A+ FANDOM BACKUP ----------------
-  if (timeLeft(deadline) > 300) {
+  // =====================================================
+  // A+ FANDOM
+  // Only reached when S+ did not produce the requested fact.
+  // Direct A+ evidence is accepted immediately.
+  // =====================================================
+  if (timeLeft(deadline) > 240) {
     const fandom = await fandomStage(question, analysis, deadline);
     diagnostic.fandomErrors = fandom.errors || [];
     result = fandom.result;
+
     if (result) {
+      // Exact backup evidence should never become "low confidence".
+      result.confidence = Math.max(result.confidence || 0, 0.97);
+      result.candidateConfidence = result.confidence;
+
       const final = finalize(result, question, analysis, startedAt, diagnostic);
       setCachedAnswer(question, final);
       return final;
     }
   }
 
-  // ---------------- B WIKI BACKUP ----------------
-  if (timeLeft(deadline) > 280) {
+  // =====================================================
+  // B WIKI
+  // =====================================================
+  if (timeLeft(deadline) > 220) {
     const wiki = await wikiStage(question, analysis, deadline);
     diagnostic.wikiErrors = wiki.search?.errors || [];
     result = wiki.result;
+
     if (result) {
+      result.confidence = Math.max(result.confidence || 0, 0.94);
+      result.candidateConfidence = result.confidence;
+
       const final = finalize(result, question, analysis, startedAt, diagnostic);
       setCachedAnswer(question, final);
       return final;
     }
   }
 
-  // ---------------- EMERGENCY ----------------
-  if (timeLeft(deadline) > 300) {
-    const emergency = await emergencyStage(question, analysis, primary.pages, deadline);
+  // =====================================================
+  // Emergency web/AI only after S+, A+, B all miss.
+  // Low confidence is allowed ONLY down here.
+  // =====================================================
+  if (timeLeft(deadline) > 260) {
+    const emergency = await emergencyStage(question, analysis, fast.pages, deadline);
     diagnostic.emergencyErrors = emergency.search?.errors || [];
     result = emergency.result;
+
     if (result) {
       const final = finalize(result, question, analysis, startedAt, diagnostic);
       setCachedAnswer(question, final);
@@ -1420,15 +1648,21 @@ async function resolveQuestion(questionObj, lore = "") {
     }
   }
 
-  return finalize({
-    answer: "UNKNOWN",
-    candidateAnswer: "UNKNOWN",
-    confidence: 0,
-    reason: "no_verified_answer_after_priority_chain",
-    route: "REVIEW",
-    sourceCount: 0,
-    sources: [],
-  }, question, analysis, startedAt, diagnostic);
+  return finalize(
+    {
+      answer: "UNKNOWN",
+      candidateAnswer: "UNKNOWN",
+      confidence: 0,
+      reason: "ALL_PRIORITY_SOURCES_MISSED_OR_FAILED",
+      route: "REVIEW",
+      sourceCount: 0,
+      sources: [],
+    },
+    question,
+    analysis,
+    startedAt,
+    diagnostic
+  );
 }
 
 function validateQuestions(value) {
@@ -1541,6 +1775,71 @@ function runSelfTests() {
   check(
     "primary ritual best detail link",
     bestPrimaryLink(ritualHub, analyzeQuestion("What does the Bombardiro Crocodilo ritual spawn?"), "/rituals/")?.url.endsWith("/rituals/crocodilo-ritual")
+  );
+
+
+  const liveShapeTralalero = syntheticPrimaryPage(
+    "Tralalero Tralala",
+    `${PRIMARY_ORIGIN}/brainrots/tralalero-tralala`,
+    [
+      "Tralalero Tralala",
+      "Brainrot God",
+      "Base Cost",
+      "$10.0M",
+      "Income per Second",
+      "$50.0K",
+      "Tralalero Tralala is a Brainrot God brainrot generating $50.0K/second",
+    ]
+  );
+  check(
+    "R24 live-shape income",
+    resolvePrimaryEntityPage(liveShapeTralalero, analyzeQuestion("What is the income of Tralalero Tralala per second?"))?.answer === "$50.0K/s"
+  );
+
+  const liveShapeRebirth = syntheticPrimaryPage(
+    "Rebirth System Guide",
+    `${PRIMARY_ORIGIN}/wiki/rebirth`,
+    [
+      "REBIRTH 17",
+      "Requirements",
+      "Cash: $2.5Qa",
+      "New Items",
+      "Giant Potion",
+      "Bonuses",
+      "MULTI x17",
+      "REBIRTH 18",
+      "New Items",
+      "Flash Teleport",
+      "REBIRTH 19",
+      "New Items",
+      "Grief Shield",
+    ]
+  );
+  liveShapeRebirth.html = `<main>${liveShapeRebirth.lines.map((x) => `<div>${x}</div>`).join("")}</main>`;
+  liveShapeRebirth.text = liveShapeRebirth.lines.join("\n");
+  check(
+    "R24 plain-text rebirth reverse",
+    resolvePrimaryRebirth(liveShapeRebirth, analyzeQuestion("What rebirth unlocks Giant Potion?"))?.answer === "Rebirth17"
+  );
+
+  const liveShapeRitual = syntheticPrimaryPage(
+    "Crocodilo Ritual",
+    `${PRIMARY_ORIGIN}/rituals/crocodilo-ritual`,
+    [
+      "Crocodilo Ritual",
+      "3 players required",
+      "Requirements",
+      "Requires Bombardiro Crocodilo",
+      "Expected Results",
+      "Brainrot Spawn",
+      "Los Crocodillitos",
+      "Trait Grant",
+      "explosive Trait",
+    ]
+  );
+  check(
+    "R24 ritual direct spawn",
+    resolvePrimaryRitual(liveShapeRitual, analyzeQuestion("What does the Bombardiro Crocodilo ritual spawn?"))?.answer === "Los Crocodillitos"
   );
 
   // Priority behavior: once S+ has a direct value, lower tier disagreement does not participate.
@@ -1681,7 +1980,7 @@ export async function GET(request) {
       { tier: "B", source: "steal-a-brainrot.wiki", policy: "USED ONLY WHEN S+ AND A+ MISS" },
       { tier: "C", source: "Tavily/NVIDIA", policy: "EMERGENCY ONLY" },
     ],
-    conflictPolicy: "LOWER-TIER DISAGREEMENT NEVER DOWNGRADES A DIRECT S+ ANSWER",
+    conflictPolicy: "DIRECT S+ FACT = 0.995 AND IMMEDIATE RETURN; A+ USED ONLY ON S+ MISS; B USED ONLY ON S+/A+ MISS",
     architecture: {
       primaryFirst: true,
       primaryImmediateReturn: true,
@@ -1690,7 +1989,10 @@ export async function GET(request) {
       directMutationPageFirst: true,
       ritualHubLinkFollow: true,
       exactRitualDetailFollow: true,
-      primaryDomainDiscovery: true,
+      primaryDomainDiscovery: false,
+      primaryTextFallback: true,
+      ritualSlugCandidates: true,
+      authoritativeDirectSourceReturn: true,
       fandomFallbackOnly: true,
       wikiFallbackOnly: true,
       emergencyFallbackOnly: true,
