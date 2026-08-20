@@ -1,4 +1,4 @@
-const BUILD_ID = "SAB_AI_DATE_BRIDGE_ENGINE_R26_2026_08_19";
+const BUILD_ID = "SAB_EXACT_PAGE_AI_ENGINE_R27_2026_08_19";
 
 const PRIMARY_ORIGIN = "https://steal-a-brainrot.org";
 const FANDOM_API = "https://stealabrainrot.fandom.com/api.php";
@@ -9,12 +9,12 @@ const NVIDIA_URL = "https://integrate.api.nvidia.com/v1/chat/completions";
 const DEFAULT_MODEL = "nvidia/nemotron-3-super-120b-a12b";
 
 const CFG = Object.freeze({
-  GLOBAL_BUDGET_MS: Number(process.env.LOOKUP_BUDGET_MS || 3200),
+  GLOBAL_BUDGET_MS: Number(process.env.LOOKUP_BUDGET_MS || 4800),
   PRIMARY_TIMEOUT_MS: Number(process.env.PRIMARY_TIMEOUT_MS || 1050),
   FANDOM_TIMEOUT_MS: Number(process.env.FANDOM_TIMEOUT_MS || 900),
   BACKUP_TIMEOUT_MS: Number(process.env.BACKUP_TIMEOUT_MS || 800),
-  TAVILY_TIMEOUT_MS: Number(process.env.TAVILY_TIMEOUT_MS || 800),
-  NVIDIA_TIMEOUT_MS: Number(process.env.NVIDIA_TIMEOUT_MS || 850),
+  TAVILY_TIMEOUT_MS: Number(process.env.TAVILY_TIMEOUT_MS || 950),
+  NVIDIA_TIMEOUT_MS: Number(process.env.NVIDIA_TIMEOUT_MS || 950),
   NVIDIA_ANALYZE_TIMEOUT_MS: Number(process.env.NVIDIA_ANALYZE_TIMEOUT_MS || 650),
 
   MAX_PRIMARY_PAGES: 7,
@@ -428,7 +428,7 @@ function analyzeQuestion(question) {
     date,
     current,
     intent: inferIntent(q, relation, update, date),
-    source: "DETERMINISTIC_R26",
+    source: "DETERMINISTIC_R27",
   };
 }
 
@@ -568,7 +568,7 @@ async function fetchPage(url, source, deadline) {
   const html = await fetchText(source.key, url, {
     headers: {
       Accept: "text/html,application/xhtml+xml",
-      "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R26",
+      "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R27",
     },
   }, timeout);
   const page = {
@@ -902,7 +902,7 @@ function withBridgedUpdate(analysis, update) {
     source:
       analysis.source === "NVIDIA_QUESTION_ROUTER"
         ? "NVIDIA_QUESTION_ROUTER+DATE_BRIDGE"
-        : "DETERMINISTIC_R26+DATE_BRIDGE",
+        : "DETERMINISTIC_R27+DATE_BRIDGE",
   };
 }
 
@@ -1946,7 +1946,7 @@ async function fandomSearchTitles(query, deadline) {
     format: "json",
   });
   try {
-    const data = await fetchJson("FANDOM_SEARCH", `${FANDOM_API}?${params.toString()}`, { headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R26" } }, Math.min(CFG.FANDOM_TIMEOUT_MS, left - 20));
+    const data = await fetchJson("FANDOM_SEARCH", `${FANDOM_API}?${params.toString()}`, { headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R27" } }, Math.min(CFG.FANDOM_TIMEOUT_MS, left - 20));
     return (Array.isArray(data?.query?.search) ? data.query.search : []).map((x) => oneLine(x?.title, 300)).filter(Boolean);
   } catch {
     return [];
@@ -1959,7 +1959,7 @@ async function fetchFandomPage(title, deadline) {
   if (cached) return { ...cached, cache: "HIT" };
   const left = timeLeft(deadline);
   if (left < 250) throw new Error("FANDOM_BUDGET_EXHAUSTED");
-  const data = await fetchJson("FANDOM_PARSE", fandomParseUrl(title), { headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R26" } }, Math.min(CFG.FANDOM_TIMEOUT_MS, left - 20));
+  const data = await fetchJson("FANDOM_PARSE", fandomParseUrl(title), { headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R27" } }, Math.min(CFG.FANDOM_TIMEOUT_MS, left - 20));
   if (data?.error) throw new Error(`FANDOM_PARSE_${data.error.code || "ERROR"}`);
   const p = data?.parse || {};
   const html = typeof p.text === "string" ? p.text : String(p.text?.["*"] || "");
@@ -2271,6 +2271,460 @@ async function emergencyStage(question, analysis, evidencePages, deadline) {
   }
 }
 
+
+function relationSearchWord(relation) {
+  switch (relation) {
+    case REL.COST: return "cost price";
+    case REL.INCOME: return "income per second";
+    case REL.RARITY: return "rarity";
+    case REL.STATUS: return "status availability";
+    case REL.METHOD: return "obtain get";
+    case REL.DATE: return "date added";
+    case REL.MULTIPLIER: return "multiplier";
+    case REL.REQUIREMENT: return "requirement requires";
+    case REL.SPAWN: return "spawn reward";
+    case REL.FORMATION: return "formation";
+    case REL.WEATHER: return "weather";
+    case REL.DROP_RATE: return "drop rate chance";
+    case REL.REWARD: return "reward";
+    case REL.CONTENTS: return "contents drops";
+    case REL.REBIRTH: return "rebirth";
+    case REL.GEAR: return "gear item unlock";
+    case REL.BRAINROT: return "brainrot";
+    case REL.MUTATION: return "mutation";
+    case REL.TRAIT: return "trait";
+    case REL.RITUAL: return "ritual";
+    case REL.EVENT: return "event";
+    case REL.MACHINE: return "machine";
+    case REL.UPDATE: return "update";
+    case REL.COLLECTION: return "collection";
+    default: return "";
+  }
+}
+
+function humanDateFromIso(date) {
+  if (!date || !/^20\d{2}-\d{2}-\d{2}$/.test(String(date))) return "";
+  const [y, m, d] = String(date).split("-").map(Number);
+  const names = [
+    "", "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December",
+  ];
+  return `${names[m]} ${d}, ${y}`;
+}
+
+function exactSearchQuery(question, analysis, source) {
+  const parts = [];
+
+  if (analysis.entity) parts.push(`"${oneLine(analysis.entity, 180)}"`);
+  if (analysis.update) parts.push(`"Update ${analysis.update}"`);
+  if (analysis.date) parts.push(`"${humanDateFromIso(analysis.date)}"`);
+
+  const relation = relationSearchWord(analysis.relation);
+  if (relation) parts.push(relation);
+
+  // If AI/deterministic routing produced almost no useful keys, preserve the original question.
+  if (!parts.length || (parts.length === 1 && !analysis.entity && !analysis.update && !analysis.date)) {
+    parts.push(oneLine(question, 500));
+  }
+
+  return `site:${source.host} ${parts.join(" ")}`.trim();
+}
+
+function relationEvidenceScore(text, relation) {
+  const t = oneLine(text, 3000).toLowerCase();
+
+  const checks = {
+    [REL.COST]: /\b(?:cost|price)\b/,
+    [REL.INCOME]: /\b(?:income|per second|generat)\b/,
+    [REL.RARITY]: /\brarity\b/,
+    [REL.STATUS]: /\b(?:status|available|obtainable)\b/,
+    [REL.METHOD]: /\b(?:obtain|get|method)\b/,
+    [REL.DATE]: /\b(?:date|added|released)\b/,
+    [REL.MULTIPLIER]: /\b(?:multiplier|multi|boost|\d+(?:\.\d+)?x)\b/,
+    [REL.REQUIREMENT]: /\b(?:requires?|requirement|needed)\b/,
+    [REL.SPAWN]: /\b(?:spawn|reward|result)\b/,
+    [REL.FORMATION]: /\bformation\b/,
+    [REL.WEATHER]: /\bweather\b/,
+    [REL.DROP_RATE]: /\b(?:drop rate|chance|probability)\b/,
+    [REL.REWARD]: /\breward\b/,
+    [REL.CONTENTS]: /\b(?:contents|drops)\b/,
+    [REL.REBIRTH]: /\brebirth\b/,
+    [REL.GEAR]: /\b(?:gear|item|unlock|potion|shield|teleport)\b/,
+    [REL.BRAINROT]: /\bbrainrot\b/,
+    [REL.MUTATION]: /\bmutation\b/,
+    [REL.TRAIT]: /\btrait\b/,
+    [REL.RITUAL]: /\britual\b/,
+    [REL.EVENT]: /\bevent\b/,
+    [REL.MACHINE]: /\bmachine\b/,
+    [REL.UPDATE]: /\bupdate\b/,
+    [REL.COLLECTION]: /\bcollection\b/,
+  };
+
+  return checks[relation]?.test(t) ? 1 : 0;
+}
+
+function scoreExactSearchResult(row, analysis, source) {
+  if (!row || row.host !== source.host) return -999;
+
+  const combined = `${row.title}\n${row.url}\n${row.content}`;
+  let score = clamp(row.score) * 4;
+
+  if (analysis.entity) {
+    score += bestEntityScore(analysis, combined) * 5;
+  }
+
+  if (
+    analysis.update &&
+    new RegExp(`\\bUpdate\\s*${analysis.update}\\b`, "i").test(combined)
+  ) {
+    score += 6;
+  }
+
+  if (analysis.date) {
+    const date = humanDateFromIso(analysis.date);
+    if (date && combined.toLowerCase().includes(date.toLowerCase())) score += 6;
+  }
+
+  score += relationEvidenceScore(combined, analysis.relation) * 2;
+
+  try {
+    const url = new URL(row.url);
+    const path = url.pathname.toLowerCase();
+
+    // Prefer specific content pages over home/search/calculator pages.
+    if (path.split("/").filter(Boolean).length >= 2) score += 1.5;
+    if (/\/(?:calculator|search)(?:\/|$)/.test(path)) score -= 4;
+  } catch {}
+
+  return score;
+}
+
+function pickExactSearchResult(search, analysis, source) {
+  const ranked = (search?.results || [])
+    .filter((row) => row.host === source.host)
+    .map((row) => ({
+      ...row,
+      exactScore: scoreExactSearchResult(row, analysis, source),
+    }))
+    .sort((a, b) => b.exactScore - a.exactScore);
+
+  const best = ranked[0] || null;
+  if (!best) return null;
+
+  // Keep this fairly permissive because AI will still verify the actual page.
+  return best.exactScore >= 1.5 ? best : null;
+}
+
+function fandomTitleFromResultUrl(url) {
+  try {
+    const u = new URL(url);
+    const marker = "/wiki/";
+    const i = u.pathname.indexOf(marker);
+    if (i < 0) return null;
+
+    return decodeURIComponent(
+      u.pathname
+        .slice(i + marker.length)
+        .replace(/_/g, " ")
+    );
+  } catch {
+    return null;
+  }
+}
+
+async function openExactResult(row, source, deadline) {
+  if (!row?.url) throw new Error(`${source.key}_NO_RESULT_URL`);
+
+  if (source === SOURCE.FANDOM) {
+    const title = fandomTitleFromResultUrl(row.url) || row.title;
+    if (!title) throw new Error("FANDOM_RESULT_NO_TITLE");
+    return fetchFandomPage(title, deadline);
+  }
+
+  return fetchPage(row.url, source, deadline);
+}
+
+function pageEvidenceSupported(raw, page) {
+  const evidence = oneLine(raw?.evidence, 300);
+  const answer = oneLine(raw?.answer, 500);
+
+  if (!answer || norm(answer) === "unknown") return false;
+
+  // Strongest validation: model must quote a short supporting fragment
+  // that actually exists on the single opened page.
+  if (evidence && norm(page?.text || "").includes(norm(evidence))) return true;
+
+  // Exact/normalized answer itself appearing on page is also enough.
+  if (evidenceSupports(answer, page?.text || "")) return true;
+
+  // For list answers, every comma-separated item must independently exist.
+  const items = answer
+    .split(/[,;]+/)
+    .map((x) => oneLine(x, 140))
+    .filter(Boolean);
+
+  return (
+    items.length > 1 &&
+    items.every((item) => evidenceSupports(item, page?.text || ""))
+  );
+}
+
+async function aiExtractSinglePage(question, analysis, page, source, deadline) {
+  if (!env("NVIDIA_API_KEY") || timeLeft(deadline) < 260) {
+    return {
+      result: null,
+      error: "NVIDIA_EXTRACTOR_UNAVAILABLE",
+    };
+  }
+
+  try {
+    const data = await fetchJson(
+      `${source.key}_AI_EXTRACT`,
+      NVIDIA_URL,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${env("NVIDIA_API_KEY")}`,
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          model: process.env.NVIDIA_MODEL || DEFAULT_MODEL,
+          stream: false,
+          temperature: 0,
+          max_tokens: 180,
+          chat_template_kwargs: { enable_thinking: false },
+          messages: [
+            {
+              role: "system",
+              content: [
+                "You extract one Steal a Brainrot answer from ONE supplied page.",
+                "Use ONLY the supplied page text. Never use memory or outside knowledge.",
+                "If the page does not explicitly support the requested answer, return UNKNOWN.",
+                `Requested relation: ${analysis.relation}.`,
+                analysis.update ? `Requested update: ${analysis.update}.` : "",
+                analysis.date ? `Requested date: ${analysis.date}.` : "",
+                analysis.entity ? `Requested entity: ${analysis.entity}.` : "",
+                "For REBIRTH return Rebirth<number>.",
+                "For MACHINE return only the machine name.",
+                "For GEAR return only the item/gear name.",
+                "For MULTIPLIER return only the multiplier.",
+                "For INCOME return only income per second.",
+                "For broad UPDATE questions return a short comma-separated list of major additions explicitly stated on this page.",
+                "Also provide a SHORT verbatim evidence fragment copied from the page that supports the answer.",
+                'Return JSON only: {"answer":"UNKNOWN or value","evidence":"short exact page fragment","reason":"short"}',
+              ].filter(Boolean).join("\n"),
+            },
+            {
+              role: "user",
+              content: JSON.stringify({
+                question,
+                analysis: {
+                  entity: analysis.entity,
+                  relation: analysis.relation,
+                  update: analysis.update,
+                  date: analysis.date,
+                  intent: analysis.intent,
+                },
+                page: {
+                  title: page.title,
+                  url: page.url,
+                  text: oneLine(page.text, 12000),
+                },
+              }),
+            },
+          ],
+        }),
+      },
+      Math.max(
+        260,
+        Math.min(
+          CFG.NVIDIA_TIMEOUT_MS,
+          timeLeft(deadline) - 30
+        )
+      )
+    );
+
+    const raw = parseModelJson(data?.choices?.[0]?.message?.content);
+    const answer = oneLine(raw?.answer, 500);
+
+    if (!answer || norm(answer) === "unknown") {
+      return {
+        result: null,
+        error: "AI_PAGE_UNKNOWN",
+      };
+    }
+
+    if (!pageEvidenceSupported(raw, page)) {
+      return {
+        result: null,
+        error: "AI_PAGE_EVIDENCE_NOT_VERIFIED",
+      };
+    }
+
+    return {
+      result: makeResult(
+        answer,
+        analysis.relation,
+        source,
+        page,
+        `${source.key}_EXACT_PAGE_AI`,
+        source.confidence
+      ),
+      error: null,
+    };
+  } catch (error) {
+    return {
+      result: null,
+      error: errorCode(error),
+    };
+  }
+}
+
+function deterministicExactPageFallback(question, analysis, page, source) {
+  // Same-page deterministic extraction only. This is a reliability fallback
+  // if NVIDIA extraction times out; it does not search another source.
+  if (source === SOURCE.PRIMARY) {
+    const primary = resolvePrimary(question, analysis, [page]);
+    if (primary) {
+      primary.confidence = source.confidence;
+      return primary;
+    }
+  }
+
+  const backup = backupResolveText(page, analysis, source);
+  if (backup) {
+    backup.confidence = source.confidence;
+    return backup;
+  }
+
+  return null;
+}
+
+async function exactTierLookup(question, analysis, source, deadline) {
+  const query = exactSearchQuery(question, analysis, source);
+  const search = await tavilySearch(
+    query,
+    deadline,
+    [source.host],
+    analysis.current
+  );
+
+  const row = pickExactSearchResult(search, analysis, source);
+
+  if (!row) {
+    return {
+      result: null,
+      search,
+      page: null,
+      query,
+      error: "NO_EXACT_SEARCH_RESULT",
+    };
+  }
+
+  let page;
+
+  try {
+    page = await openExactResult(row, source, deadline);
+  } catch (error) {
+    return {
+      result: null,
+      search,
+      page: null,
+      query,
+      selected: row,
+      error: errorCode(error),
+    };
+  }
+
+  const ai = await aiExtractSinglePage(
+    question,
+    analysis,
+    page,
+    source,
+    deadline
+  );
+
+  if (ai.result) {
+    return {
+      result: ai.result,
+      search,
+      page,
+      query,
+      selected: row,
+      error: null,
+    };
+  }
+
+  const deterministic = deterministicExactPageFallback(
+    question,
+    analysis,
+    page,
+    source
+  );
+
+  if (deterministic) {
+    deterministic.reason = `${source.key}_EXACT_PAGE_DETERMINISTIC`;
+    deterministic.confidence = source.confidence;
+
+    return {
+      result: deterministic,
+      search,
+      page,
+      query,
+      selected: row,
+      error: ai.error,
+    };
+  }
+
+  return {
+    result: null,
+    search,
+    page,
+    query,
+    selected: row,
+    error: ai.error || "EXACT_PAGE_NO_SUPPORTED_ANSWER",
+  };
+}
+
+function trustLogForTier(source, answer) {
+  if (source === SOURCE.PRIMARY) {
+    return [
+      `S+ VERIFIED • ${answer} • 99.5%`,
+    ];
+  }
+
+  if (source === SOURCE.FANDOM) {
+    return [
+      "BEST SOURCE MISS • Checking trusted backup",
+      `A+ VERIFIED • ${answer} • 97%`,
+    ];
+  }
+
+  if (source === SOURCE.WIKI) {
+    return [
+      "BEST SOURCE MISS",
+      "TRUSTED BACKUP MISS • Checking secondary source",
+      `B VERIFIED • ${answer} • 94%`,
+    ];
+  }
+
+  return [
+    "NO TRUSTED SOURCE FOUND • Using emergency evidence",
+    `EMERGENCY • ${answer}`,
+  ];
+}
+
+function attachTrustLog(result, source) {
+  if (!result) return result;
+
+  return {
+    ...result,
+    trustLog: trustLogForTier(source, result.answer),
+    trustedTier: source.tier,
+  };
+}
+
 function answerCacheKey(question) {
   return norm(question);
 }
@@ -2311,6 +2765,7 @@ function finalize(base, question, analysis, startedAt, diagnostics = {}) {
 
 
 
+
 async function resolveQuestion(questionObj, lore = "") {
   const startedAt = nowMs();
   const deadline = startedAt + CFG.GLOBAL_BUDGET_MS;
@@ -2325,146 +2780,194 @@ async function resolveQuestion(questionObj, lore = "") {
     };
   }
 
-  // =====================================================
-  // AI FIRST: understand the question, NOT the answer.
-  // If NVIDIA fails/times out, deterministic R25 takes over.
-  // =====================================================
+  // AI understands the question first. It never supplies the trivia answer.
   const routed = await analyzeQuestionAI(question, deadline);
   const analysis = routed.analysis;
 
   const diagnostic = {
     aiQuestionRouter: analysis.source,
     aiQuestionRouterError: routed.aiError,
-    updateRoute: "",
-    updateErrors: [],
-    primaryFastErrors: [],
-    primaryFastRoute: "",
-    primaryErrors: [],
-    fandomErrors: [],
-    wikiErrors: [],
+
+    primaryQuery: "",
+    primarySelectedPage: "",
+    primaryError: "",
+
+    fandomQuery: "",
+    fandomSelectedPage: "",
+    fandomError: "",
+
+    wikiQuery: "",
+    wikiSelectedPage: "",
+    wikiError: "",
+
     emergencyErrors: [],
   };
 
   // =====================================================
-  // Dedicated S+ update/date history mode.
+  // 1) S+ ONLY.
+  // Search steal-a-brainrot.org -> open ONE best page -> AI extracts
+  // ONLY from that page. If supported, 0.995 and STOP.
   // =====================================================
-  const updateStage = await primaryUpdateHistoryPath(question, analysis, deadline);
-  diagnostic.updateRoute = updateStage.route;
-  diagnostic.updateErrors = updateStage.errors || [];
-  diagnostic.dateBridgeUpdate = updateStage.bridgedUpdate || null;
+  const primary = await exactTierLookup(
+    question,
+    analysis,
+    SOURCE.PRIMARY,
+    deadline
+  );
 
-  const resolvedAnalysis = updateStage.analysis || analysis;
+  diagnostic.primaryQuery = primary.query;
+  diagnostic.primarySelectedPage = primary.page?.url || primary.selected?.url || "";
+  diagnostic.primaryError = primary.error || "";
 
-  let result = updateStage.result;
-  if (result) {
-    const final = finalize(result, question, resolvedAnalysis, startedAt, diagnostic);
+  if (primary.result) {
+    const result = attachTrustLog(primary.result, SOURCE.PRIMARY);
+    const final = finalize(
+      result,
+      question,
+      analysis,
+      startedAt,
+      diagnostic
+    );
+
+    final.trustLog = result.trustLog;
+    final.trustedTier = "S+";
+
     setCachedAnswer(question, final);
     return final;
   }
 
   // =====================================================
-  // S+ NORMAL PRIMARY.
-  // Direct S+ fact = 0.995 and immediate return.
+  // 2) A+ FANDOM.
+  // This is the FIRST point where the result/log says best source missed.
   // =====================================================
-  const fast = await primaryFastPath(question, resolvedAnalysis, deadline);
-  diagnostic.primaryFastErrors = fast.errors;
-  diagnostic.primaryFastRoute = fast.route;
+  if (timeLeft(deadline) > 500) {
+    const fandom = await exactTierLookup(
+      question,
+      analysis,
+      SOURCE.FANDOM,
+      deadline
+    );
 
-  result = fast.result;
-  if (result) {
-    const final = finalize(result, question, resolvedAnalysis, startedAt, diagnostic);
-    setCachedAnswer(question, final);
-    return final;
-  }
+    diagnostic.fandomQuery = fandom.query;
+    diagnostic.fandomSelectedPage = fandom.page?.url || fandom.selected?.url || "";
+    diagnostic.fandomError = fandom.error || "";
 
-  if (timeLeft(deadline) > 260) {
-    const primary = await fetchPrimaryCandidates(question, resolvedAnalysis, deadline);
-    primary.pages.unshift(...updateStage.pages, ...fast.pages);
-    primary.pages = [...new Map(primary.pages.map((p) => [p.url, p])).values()];
-    diagnostic.primaryErrors = primary.errors;
+    if (fandom.result) {
+      const result = attachTrustLog(fandom.result, SOURCE.FANDOM);
+      const final = finalize(
+        result,
+        question,
+        analysis,
+        startedAt,
+        diagnostic
+      );
 
-    result = resolvePrimary(question, resolvedAnalysis, primary.pages);
-    if (result) {
-      const final = finalize(result, question, resolvedAnalysis, startedAt, diagnostic);
+      final.trustLog = result.trustLog;
+      final.trustedTier = "A+";
+
       setCachedAnswer(question, final);
       return final;
     }
-
-    fast.pages.push(...updateStage.pages, ...primary.pages);
+  } else {
+    diagnostic.fandomError = "BUDGET_EXHAUSTED_BEFORE_A_PLUS";
   }
 
   // =====================================================
-  // A+ FANDOM only on true S+ miss.
+  // 3) B SECONDARY WIKI.
   // =====================================================
-  if (timeLeft(deadline) > 240) {
-    const fandom = await fandomStage(question, resolvedAnalysis, deadline);
-    diagnostic.fandomErrors = fandom.errors || [];
-    result = fandom.result;
+  if (timeLeft(deadline) > 450) {
+    const wiki = await exactTierLookup(
+      question,
+      analysis,
+      SOURCE.WIKI,
+      deadline
+    );
 
-    if (result && result.answer && result.answer !== "UNKNOWN") {
-      result.confidence = Math.max(result.confidence || 0, 0.97);
-      result.candidateConfidence = result.confidence;
+    diagnostic.wikiQuery = wiki.query;
+    diagnostic.wikiSelectedPage = wiki.page?.url || wiki.selected?.url || "";
+    diagnostic.wikiError = wiki.error || "";
 
-      const final = finalize(result, question, resolvedAnalysis, startedAt, diagnostic);
+    if (wiki.result) {
+      const result = attachTrustLog(wiki.result, SOURCE.WIKI);
+      const final = finalize(
+        result,
+        question,
+        analysis,
+        startedAt,
+        diagnostic
+      );
+
+      final.trustLog = result.trustLog;
+      final.trustedTier = "B";
+
       setCachedAnswer(question, final);
       return final;
     }
+  } else {
+    diagnostic.wikiError = "BUDGET_EXHAUSTED_BEFORE_B";
   }
 
   // =====================================================
-  // B WIKI only on S+ + A+ miss.
+  // 4) EMERGENCY only after the trusted chain misses.
   // =====================================================
-  if (timeLeft(deadline) > 220) {
-    const wiki = await wikiStage(question, resolvedAnalysis, deadline);
-    diagnostic.wikiErrors = wiki.search?.errors || [];
-    result = wiki.result;
-
-    if (result && result.answer && result.answer !== "UNKNOWN") {
-      result.confidence = Math.max(result.confidence || 0, 0.94);
-      result.candidateConfidence = result.confidence;
-
-      const final = finalize(result, question, resolvedAnalysis, startedAt, diagnostic);
-      setCachedAnswer(question, final);
-      return final;
-    }
-  }
-
-  // =====================================================
-  // Emergency web/AI only after authoritative tiers miss.
-  // =====================================================
-  if (timeLeft(deadline) > 260) {
+  if (timeLeft(deadline) > 350) {
     const emergency = await emergencyStage(
       question,
-      resolvedAnalysis,
-      [...updateStage.pages, ...fast.pages],
+      analysis,
+      primary.page ? [primary.page] : [],
       deadline
     );
 
     diagnostic.emergencyErrors = emergency.search?.errors || [];
-    result = emergency.result;
 
-    if (result) {
-      const final = finalize(result, question, resolvedAnalysis, startedAt, diagnostic);
+    if (emergency.result) {
+      const result = attachTrustLog(
+        emergency.result,
+        SOURCE.EMERGENCY
+      );
+
+      const final = finalize(
+        result,
+        question,
+        analysis,
+        startedAt,
+        diagnostic
+      );
+
+      final.trustLog = result.trustLog;
+      final.trustedTier = "C";
+
       setCachedAnswer(question, final);
       return final;
     }
   }
 
-  return finalize(
+  const failed = finalize(
     {
       answer: "UNKNOWN",
       candidateAnswer: "UNKNOWN",
       confidence: 0,
-      reason: "ALL_PRIORITY_SOURCES_MISSED_OR_FAILED",
+      reason: "NO_TRUSTED_SOURCE_FOUND",
       route: "REVIEW",
       sourceCount: 0,
       sources: [],
     },
     question,
-    resolvedAnalysis,
+    analysis,
     startedAt,
     diagnostic
   );
+
+  failed.trustLog = [
+    "BEST SOURCE MISS",
+    "TRUSTED BACKUP MISS",
+    "SECONDARY SOURCE MISS",
+    "NO TRUSTED SOURCE FOUND • REVIEW",
+  ];
+
+  failed.trustedTier = "NONE";
+
+  return failed;
 }
 
 function validateQuestions(value) {
@@ -2485,10 +2988,31 @@ function validateQuestions(value) {
   });
 }
 
+
 function makeTrace(items) {
-  const failed = items.find((item) => item.answer === "UNKNOWN");
-  if (failed) return `REVIEW • ${failed.answerType || "TEXT"} • ${failed.reason || "unknown"} • ${failed.searchLatencyMs || 0}ms`;
-  return items.map((item) => `${item.route}:${item.answer}:${Math.round((item.confidence || 0) * 100)}%:${item.searchLatencyMs || 0}ms`).join(" | ");
+  return items.map((item) => {
+    if (item.answer === "UNKNOWN") {
+      return "NO TRUSTED SOURCE FOUND • REVIEW";
+    }
+
+    if (item.trustedTier === "S+") {
+      return `S+ VERIFIED • ${item.answer} • 99.5%`;
+    }
+
+    if (item.trustedTier === "A+") {
+      return `BEST SOURCE MISS → A+ VERIFIED • ${item.answer} • 97%`;
+    }
+
+    if (item.trustedTier === "B") {
+      return `S+ + A+ MISS → B VERIFIED • ${item.answer} • 94%`;
+    }
+
+    if (item.trustedTier === "C") {
+      return `TRUSTED SOURCES MISS → EMERGENCY • ${item.answer}`;
+    }
+
+    return `${item.route}:${item.answer}:${Math.round((item.confidence || 0) * 100)}%`;
+  }).join(" | ");
 }
 
 function syntheticPrimaryPage(title, url, lines) {
@@ -2712,6 +3236,66 @@ function runSelfTests() {
     ).update}` === "Update62"
   );
 
+
+  const r27UpdateAnalysis = analyzeQuestion("Which machine made its debut in Update 61?");
+  check(
+    "R27 primary query update61",
+    exactSearchQuery(
+      "Which machine made its debut in Update 61?",
+      r27UpdateAnalysis,
+      SOURCE.PRIMARY
+    ).includes('"Update 61"')
+  );
+
+  const r27DateAnalysis = analyzeQuestion("What rebirth was introduced on August 15, 2026?");
+  check(
+    "R27 primary query date",
+    exactSearchQuery(
+      "What rebirth was introduced on August 15, 2026?",
+      r27DateAnalysis,
+      SOURCE.PRIMARY
+    ).includes('"August 15, 2026"')
+  );
+
+  const r27Rows = {
+    results: [
+      {
+        title: "Calculator",
+        url: "https://steal-a-brainrot.org/calculator",
+        content: "Steal a Brainrot calculator",
+        score: 0.9,
+        host: "steal-a-brainrot.org",
+      },
+      {
+        title: "RNG Machine + Queen Bee Event",
+        url: "https://steal-a-brainrot.org/events/rng-machine-queen-bee-event-2026-08-08",
+        content: "Update 61 added the RNG Machine.",
+        score: 0.7,
+        host: "steal-a-brainrot.org",
+      },
+    ],
+  };
+
+  check(
+    "R27 exact page ranking",
+    pickExactSearchResult(
+      r27Rows,
+      r27UpdateAnalysis,
+      SOURCE.PRIMARY
+    )?.url.includes("rng-machine")
+  );
+
+  check(
+    "R27 S+ log",
+    trustLogForTier(SOURCE.PRIMARY, "RNG Machine")[0] ===
+      "S+ VERIFIED • RNG Machine • 99.5%"
+  );
+
+  check(
+    "R27 A+ miss log",
+    trustLogForTier(SOURCE.FANDOM, "Example")[0].startsWith("BEST SOURCE MISS")
+  );
+
   // Priority behavior: once S+ has a direct value, lower tier disagreement does not participate.
   const primary = makeResult("10x", REL.MULTIPLIER, SOURCE.PRIMARY, mutationPage, "PRIMARY_MUTATION_SECTION", 0.995);
   const fandom = makeResult("9x", REL.MULTIPLIER, SOURCE.FANDOM, { title: "Mutations", url: "fandom" }, "FANDOM_DIRECT", 0.93);
@@ -2813,6 +3397,51 @@ export async function GET(request) {
     });
   }
 
+  if (test === "exact") {
+    const question = oneLine(
+      url.searchParams.get("q") || "Which machine made its debut in Update 61?",
+      700
+    );
+
+    const started = nowMs();
+    const deadline = started + 3000;
+    const routed = await analyzeQuestionAI(question, deadline);
+    const analysis = routed.analysis;
+
+    const query = exactSearchQuery(question, analysis, SOURCE.PRIMARY);
+    const search = await tavilySearch(
+      query,
+      deadline,
+      [SOURCE.PRIMARY.host],
+      analysis.current
+    );
+
+    const selected = pickExactSearchResult(
+      search,
+      analysis,
+      SOURCE.PRIMARY
+    );
+
+    return json(200, {
+      ok: Boolean(selected),
+      build: BUILD_ID,
+      question,
+      analysis,
+      query,
+      selected,
+      candidates: search.results
+        .filter((row) => row.host === SOURCE.PRIMARY.host)
+        .map((row) => ({
+          title: row.title,
+          url: row.url,
+          score: scoreExactSearchResult(row, analysis, SOURCE.PRIMARY),
+        }))
+        .sort((a, b) => b.score - a.score),
+      errors: search.errors,
+      ms: nowMs() - started,
+    });
+  }
+
   if (test === "resolve") {
     const question = oneLine(url.searchParams.get("q") || "What rarity is Tralalero Tralala?", 700);
     ANSWER_CACHE.delete(answerCacheKey(question));
@@ -2867,9 +3496,15 @@ export async function GET(request) {
       { tier: "B", source: "steal-a-brainrot.wiki", policy: "USED ONLY WHEN S+ AND A+ MISS" },
       { tier: "C", source: "Tavily/NVIDIA", policy: "EMERGENCY ONLY" },
     ],
-    conflictPolicy: "AI ROUTES QUESTION FIRST; DATE QUESTIONS BRIDGE TO UPDATE N; DIRECT S+ FACT = 0.995 AND IMMEDIATE RETURN; A+ ONLY ON S+ MISS; B ONLY ON S+/A+ MISS",
+    conflictPolicy: "AI ROUTES QUESTION; SEARCH ONE EXACT S+ PAGE; AI EXTRACTS ONLY FROM THAT PAGE; S+ VERIFIED = 0.995 + STOP; A+ ONLY ON S+ MISS; B ONLY ON S+/A+ MISS",
     architecture: {
       aiQuestionRouterFirst: true,
+      exactPageSearchFirst: true,
+      onePageEvidencePerTier: true,
+      aiSinglePageExtraction: true,
+      strictEvidenceVerification: true,
+      primaryStopsAllFallbacks: true,
+      cleanTrustTierLogs: true,
       aiDoesNotAnswerQuestion: true,
       deterministicRouterFallback: true,
       dedicatedUpdateHistoryMode: true,
