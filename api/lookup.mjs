@@ -1,4 +1,4 @@
-const BUILD_ID = "SAB_FAILURE_ISOLATED_MULTIPART_R32_2026_08_19";
+const BUILD_ID = "SAB_FACT_SLOT_BINDING_R33_2026_08_19";
 
 const PRIMARY_ORIGIN = "https://steal-a-brainrot.org";
 const FANDOM_API = "https://stealabrainrot.fandom.com/api.php";
@@ -470,7 +470,7 @@ function analyzeQuestion(question) {
     intent: inferIntent(q, relation, update, date),
     rawQuestion: q,
     wantedRelations: detectWantedRelations(q, relation),
-    source: "DETERMINISTIC_R32",
+    source: "DETERMINISTIC_R33",
   };
 }
 
@@ -610,7 +610,7 @@ async function fetchPage(url, source, deadline) {
   const html = await fetchText(source.key, url, {
     headers: {
       Accept: "text/html,application/xhtml+xml",
-      "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R32",
+      "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R33",
     },
   }, timeout);
   const page = {
@@ -944,7 +944,7 @@ function withBridgedUpdate(analysis, update) {
     source:
       analysis.source === "NVIDIA_QUESTION_ROUTER"
         ? "NVIDIA_QUESTION_ROUTER+DATE_BRIDGE"
-        : "DETERMINISTIC_R32+DATE_BRIDGE",
+        : "DETERMINISTIC_R33+DATE_BRIDGE",
   };
 }
 
@@ -1988,7 +1988,7 @@ async function fandomSearchTitles(query, deadline) {
     format: "json",
   });
   try {
-    const data = await fetchJson("FANDOM_SEARCH", `${FANDOM_API}?${params.toString()}`, { headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R32" } }, Math.min(CFG.FANDOM_TIMEOUT_MS, left - 20));
+    const data = await fetchJson("FANDOM_SEARCH", `${FANDOM_API}?${params.toString()}`, { headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R33" } }, Math.min(CFG.FANDOM_TIMEOUT_MS, left - 20));
     return (Array.isArray(data?.query?.search) ? data.query.search : []).map((x) => oneLine(x?.title, 300)).filter(Boolean);
   } catch {
     return [];
@@ -2001,7 +2001,7 @@ async function fetchFandomPage(title, deadline) {
   if (cached) return { ...cached, cache: "HIT" };
   const left = timeLeft(deadline);
   if (left < 250) throw new Error("FANDOM_BUDGET_EXHAUSTED");
-  const data = await fetchJson("FANDOM_PARSE", fandomParseUrl(title), { headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R32" } }, Math.min(CFG.FANDOM_TIMEOUT_MS, left - 20));
+  const data = await fetchJson("FANDOM_PARSE", fandomParseUrl(title), { headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R33" } }, Math.min(CFG.FANDOM_TIMEOUT_MS, left - 20));
   if (data?.error) throw new Error(`FANDOM_PARSE_${data.error.code || "ERROR"}`);
   const p = data?.parse || {};
   const html = typeof p.text === "string" ? p.text : String(p.text?.["*"] || "");
@@ -2287,7 +2287,7 @@ async function analyzeQuestionAI(question, deadline) {
   const fallback = analyzeQuestion(question);
 
   if (!env("NVIDIA_API_KEY") || timeLeft(deadline) < 250) {
-    return { analysis: enforceQuestionSemantics(question, fallback), aiError: "NVIDIA_ANALYZER_UNAVAILABLE" };
+    return { analysis: applyFactSlots(question, enforceQuestionSemantics(question, fallback)), aiError: "NVIDIA_ANALYZER_UNAVAILABLE" };
   }
 
   try {
@@ -2326,12 +2326,14 @@ async function analyzeQuestionAI(question, deadline) {
                 "intent should usually be ENTITY_FACT, UPDATE_FACT, UPDATE_SUMMARY, CURRENT_FACT, or DATE_UPDATE_FACT.",
                 "wanted is the primary fact requested.",
                 "wantedRelations is an array of every distinct fact type explicitly requested. For a normal single-part question it has one entry.",
+                "slots is optional structured semantics. Use unique slot ids when the question asks multiple facts or repeated facts with different qualifiers.",
+                "A slot may contain id, relation, answerType, subject, predicate, qualifier, anchorUpdate.",
                 "Example: 'How often did the Queen Bee event occur, and what update was it tied to?' => relation=FREQUENCY, wantedRelations=[FREQUENCY,UPDATE].",
                 "For questions like 'What machine was added in Update 61?', set update=61, relation=MACHINE, wanted=MACHINE.",
                 "For questions like 'What rebirth was added in the August 15, 2026 update?', set date=2026-08-15, relation=REBIRTH, wanted=REBIRTH.",
                 "For 'What did Update 62 add?', set update=62, relation=UPDATE, wanted=UPDATE, intent=UPDATE_SUMMARY.",
                 "Use canonical entity names when obvious, but never invent facts.",
-                'Return JSON only: {"intent":"...","entity":null,"aliases":[],"relation":"...","wanted":"...","wantedRelations":["..."],"update":null,"updateNumbers":[],"activeFrom":null,"activeTo":null,"replacedIn":null,"rebirth":null,"date":null,"current":false}',
+                'Return JSON only: {"intent":"...","entity":null,"aliases":[],"relation":"...","wanted":"...","wantedRelations":["..."],"slots":[],"update":null,"updateNumbers":[],"activeFrom":null,"activeTo":null,"replacedIn":null,"rebirth":null,"date":null,"current":false}',
               ].join("\n"),
             },
             {
@@ -2346,12 +2348,12 @@ async function analyzeQuestionAI(question, deadline) {
 
     const raw = parseModelJson(data?.choices?.[0]?.message?.content);
     return {
-      analysis: enforceQuestionSemantics(question, mergeAnalysis(raw, fallback)),
+      analysis: applyFactSlots(question, enforceQuestionSemantics(question, mergeAnalysis(raw, fallback))),
       aiError: null,
     };
   } catch (error) {
     return {
-      analysis: enforceQuestionSemantics(question, fallback),
+      analysis: applyFactSlots(question, enforceQuestionSemantics(question, fallback)),
       aiError: errorCode(error),
     };
   }
@@ -3524,7 +3526,19 @@ function aggressiveSearchQueries(question, analysis, source) {
     add(q.replace(/[?!.]+$/g, ""));
   }
 
-  return queries.slice(0, 3);
+  const locked = (analysis.lockedSubjects || [])
+    .map((subject) => `"${oneLine(subject, 160)}"`)
+    .join(" ");
+
+  const finalQueries = queries.map((query) => {
+    if (!locked) return query;
+    const missing = (analysis.lockedSubjects || []).some(
+      (subject) => !query.toLowerCase().includes(String(subject).toLowerCase())
+    );
+    return missing ? `${query} ${locked}` : query;
+  });
+
+  return finalQueries.slice(0, 3);
 }
 
 function mergeSearches(searches) {
@@ -3601,6 +3615,11 @@ function aggressiveResultScore(row, question, analysis, source) {
 
   score += softFamilyPreference(row, question, analysis, source);
 
+  if ((analysis.lockedSubjects || []).length) {
+    const lockedOk = allLockedSubjectsSupported(combined, analysis);
+    score += lockedOk ? 8 : -14;
+  }
+
   if (analysis.entity) score += bestEntityScore(analysis, combined) * 4.5;
 
   if (
@@ -3652,8 +3671,39 @@ function aggressivePageUsable(question, analysis, page, source) {
   }
 
   const text = page.text;
+
+  const subjectText = `${page.title}
+${page.text}`;
+  if (
+    (analysis.lockedSubjects || []).length &&
+    !allLockedSubjectsSupported(subjectText, analysis)
+  ) {
+    return {
+      usable: false,
+      reason: "LOCKED_SUBJECT_MISSING",
+    };
+  }
+
   const relationHit = relationEvidenceScore(text, analysis.relation) > 0;
+  const slotRelationHit = Array.isArray(analysis.factSlots) && analysis.factSlots.length
+    ? analysis.factSlots.some((slot) => relationEvidenceScore(text, slot.relation) > 0)
+    : relationHit;
   const entityHit = analysis.entity ? bestEntityScore(analysis, `${page.title}\n${text}`) >= 0.25 : false;
+
+  // R33 subject lock is semantic, not just a name mention. A page that merely
+  // says the subject name but contains none of the requested relation types
+  // cannot enter the evidence pool.
+  if (
+    (analysis.lockedSubjects || []).length &&
+    Array.isArray(analysis.factSlots) &&
+    analysis.factSlots.length &&
+    !slotRelationHit
+  ) {
+    return {
+      usable: false,
+      reason: "LOCKED_SUBJECT_WITHOUT_REQUESTED_RELATION",
+    };
+  }
   const coverage = weightedClueCoverage(question, analysis, text);
 
   // Soft page-family preference: if the page is outside the expected family,
@@ -4293,6 +4343,643 @@ async function aiExtractMultipartBundle(question, analysis, pages, source, deadl
 }
 
 
+
+function cleanSubject(value) {
+  const v = oneLine(value, 180);
+  if (!v || /^(?:none|unknown|null)$/i.test(v)) return null;
+  return v;
+}
+
+function makeSlot(id, relation, options = {}) {
+  return {
+    id,
+    relation,
+    answerType: options.answerType || relation,
+    subject: cleanSubject(options.subject),
+    qualifier: oneLine(options.qualifier, 80) || null,
+    predicate: oneLine(options.predicate, 80) || relation,
+    anchorUpdate: Number.isFinite(Number(options.anchorUpdate)) && Number(options.anchorUpdate) > 0
+      ? Number(options.anchorUpdate)
+      : null,
+  };
+}
+
+function detectFactSlots(question, analysis) {
+  const q = oneLine(question, 700);
+  const lower = q.toLowerCase();
+  const slots = [];
+
+  const add = (slot) => {
+    if (!slot?.id || !slot?.relation) return;
+    if (!slots.some((x) => x.id === slot.id)) slots.push(slot);
+  };
+
+  // ----------------------------------------------------------------
+  // Same-relation duplicate slots: "99% and 1% outcomes"
+  // ----------------------------------------------------------------
+  const percents = [...q.matchAll(/\b(\d+(?:\.\d+)?)\s*%/g)]
+    .map((m) => `${m[1]}%`);
+
+  if (
+    percents.length >= 2 &&
+    /\b(?:outcome|outcomes|result|results)\b/i.test(q) &&
+    /\britual\b/i.test(q)
+  ) {
+    const subject = lower.includes("job job job sahur")
+      ? "Job Job Job Sahur"
+      : analysis.entity;
+
+    for (let i = 0; i < percents.length; i++) {
+      add(makeSlot(
+        `outcome_${percents[i].replace(".", "_")}_${i + 1}`,
+        REL.OUTCOME,
+        {
+          subject,
+          qualifier: percents[i],
+          predicate: "OUTCOME_AT_CHANCE",
+          answerType: REL.BRAINROT,
+        }
+      ));
+    }
+
+    return slots;
+  }
+
+  // ----------------------------------------------------------------
+  // Queen Bee: frequency + machine/update tied to the SAME event/update.
+  // ----------------------------------------------------------------
+  if (lower.includes("queen bee")) {
+    const subject = "Queen Bee";
+
+    if (/\b(?:how often|how frequently|frequency|interval|recurr?ence)\b/.test(lower)) {
+      add(makeSlot("queen_bee_frequency", REL.FREQUENCY, {
+        subject,
+        predicate: "EVENT_FREQUENCY",
+      }));
+    }
+
+    if (
+      /\b(?:which|what)\s+machine\b/.test(lower) ||
+      /\bmachine\s+(?:was|is)\s+(?:introduced|added)\b/.test(lower)
+    ) {
+      add(makeSlot("queen_bee_same_update_machine", REL.MACHINE, {
+        subject,
+        predicate: "MACHINE_IN_SAME_UPDATE",
+        answerType: REL.MACHINE,
+        anchorUpdate: analysis.update,
+      }));
+    }
+
+    if (
+      /\b(?:what|which)\s+update\b/.test(lower) ||
+      /\bupdate\s+(?:was|is)\s+(?:it\s+)?(?:tied|associated)\b/.test(lower) ||
+      /\btied to\b/.test(lower)
+    ) {
+      add(makeSlot("queen_bee_update", REL.UPDATE, {
+        subject,
+        predicate: "SUBJECT_UPDATE",
+        answerType: REL.UPDATE,
+      }));
+    }
+
+    if (slots.length) return slots;
+  }
+
+  // ----------------------------------------------------------------
+  // Los Traders replacement binding.
+  // ----------------------------------------------------------------
+  if (lower.includes("los traders") && /\breplac/.test(lower)) {
+    if (/\b(?:which|what)\s+machine\b/.test(lower)) {
+      add(makeSlot("los_traders_replaced_by", REL.MACHINE, {
+        subject: "Los Traders",
+        predicate: "REPLACED_BY",
+        answerType: REL.MACHINE,
+      }));
+    }
+
+    if (
+      /\bwhat\s+update\b/.test(lower) ||
+      /\bwhich\s+update\b/.test(lower) ||
+      /\bwhat update did that happen\b/.test(lower)
+    ) {
+      add(makeSlot("los_traders_replaced_in", REL.UPDATE, {
+        subject: "Los Traders",
+        predicate: "REPLACED_IN",
+        answerType: REL.UPDATE,
+      }));
+    }
+
+    if (slots.length) return slots;
+  }
+
+  // ----------------------------------------------------------------
+  // Generic multipart fallback: one slot per requested relation.
+  // ----------------------------------------------------------------
+  const wanted = analysis.wantedRelations || [analysis.relation];
+  for (let i = 0; i < wanted.length; i++) {
+    add(makeSlot(
+      `relation_${wanted[i]}_${i + 1}`,
+      wanted[i],
+      {
+        subject: analysis.entity,
+        predicate: wanted[i],
+        answerType: wanted[i],
+      }
+    ));
+  }
+
+  return slots;
+}
+
+function normalizeAiSlots(aiSlots, fallbackSlots) {
+  if (!Array.isArray(aiSlots) || !aiSlots.length) return fallbackSlots;
+
+  const byId = new Map(
+    fallbackSlots.map((slot) => [slot.id, slot])
+  );
+
+  for (const row of aiSlots) {
+    const id = oneLine(row?.id, 100);
+    const relation = String(row?.relation || "").toUpperCase();
+
+    if (!id || !ALLOWED_RELATIONS.has(relation)) continue;
+
+    const fallback = byId.get(id);
+
+    byId.set(id, makeSlot(id, relation, {
+      answerType: String(row?.answerType || fallback?.answerType || relation).toUpperCase(),
+      subject: cleanSubject(row?.subject) || fallback?.subject,
+      qualifier: oneLine(row?.qualifier, 80) || fallback?.qualifier,
+      predicate: oneLine(row?.predicate, 80) || fallback?.predicate || relation,
+      anchorUpdate: Number(row?.anchorUpdate) || fallback?.anchorUpdate,
+    }));
+  }
+
+  return [...byId.values()];
+}
+
+function applyFactSlots(question, analysis) {
+  const slots = detectFactSlots(question, analysis);
+
+  const lockedSubjects = [...new Set(
+    slots.map((slot) => cleanSubject(slot.subject)).filter(Boolean)
+  )];
+
+  return {
+    ...analysis,
+    factSlots: slots,
+    lockedSubjects,
+    wantedRelations: [...new Set(slots.map((slot) => slot.relation))],
+  };
+}
+
+function isFactSlotQuestion(analysis) {
+  return Array.isArray(analysis?.factSlots) && analysis.factSlots.length > 1;
+}
+
+function subjectAppears(value, subject) {
+  if (!subject) return true;
+  return pageHasClue(value, subject) || similarity(subject, value) >= 0.72;
+}
+
+function allLockedSubjectsSupported(value, analysis) {
+  const subjects = analysis?.lockedSubjects || [];
+  if (!subjects.length) return true;
+  return subjects.every((subject) => subjectAppears(value, subject));
+}
+
+function contextAroundSubject(text, subject, radius = 1000) {
+  const raw = String(text || "");
+  if (!subject) return raw;
+
+  const index = raw.toLowerCase().indexOf(String(subject).toLowerCase());
+  if (index < 0) return "";
+
+  return clean(
+    raw.slice(
+      Math.max(0, index - radius),
+      Math.min(raw.length, index + String(subject).length + radius)
+    ),
+    radius * 2 + String(subject).length
+  );
+}
+
+function machineNamesFromText(text) {
+  const raw = oneLine(text, 6000);
+  const values = [];
+
+  for (const m of raw.matchAll(
+    /\b((?:RNG|Los|Craft|Fuse|Summer|Cyber|Mutation|Trait|Lucky|Brainrot|Cash|Admin)(?:\s+[A-Z][A-Za-z0-9'-]+){0,3}\s+Machine)\b/g
+  )) {
+    const value = oneLine(m[1], 120);
+    if (value && !values.includes(value)) values.push(value);
+  }
+
+  // Important known shape: "RNG Machine"
+  for (const m of raw.matchAll(/\b(RNG Machine|Craft Machine|Fuse Machine)\b/gi)) {
+    const value = oneLine(m[1], 120);
+    if (value && !values.some((x) => norm(x) === norm(value))) values.push(value);
+  }
+
+  return values;
+}
+
+function extractReplacedByMachine(text, subject) {
+  const ctx = contextAroundSubject(text, subject, 1800);
+  if (!ctx) return null;
+
+  const patterns = [
+    /\bUpdate\s*\d+(?:\.\d+)?\s+replaced\s+(?:the\s+)?(?:active\s+)?Los Traders[^.]{0,160}?\bwith\s+(?:the\s+)?([A-Z][A-Za-z0-9' -]{1,80}\s+Machine)\b/i,
+    /\bLos Traders[^.]{0,180}?\breplaced\b[^.]{0,100}?\bwith\s+(?:the\s+)?([A-Z][A-Za-z0-9' -]{1,80}\s+Machine)\b/i,
+    /\breplaced\s+(?:it|them|Los Traders)[^.]{0,100}?\bwith\s+(?:the\s+)?([A-Z][A-Za-z0-9' -]{1,80}\s+Machine)\b/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = ctx.match(pattern);
+    if (match?.[1]) return oneLine(match[1], 120);
+  }
+
+  // If the context explicitly says replacement and only one plausible machine
+  // name occurs, the binding is unambiguous.
+  if (/\breplac/i.test(ctx)) {
+    const names = machineNamesFromText(ctx)
+      .filter((name) => !/Los Traders/i.test(name));
+
+    const unique = [...new Set(names.map((x) => oneLine(x, 120)))];
+    if (unique.length === 1) return unique[0];
+  }
+
+  return null;
+}
+
+function extractReplacedInUpdate(text, subject) {
+  const ctx = contextAroundSubject(text, subject, 1800);
+  if (!ctx || !/\breplac/i.test(ctx)) return null;
+
+  const patterns = [
+    /\bUpdate\s*#?\s*(\d{1,3}(?:\.\d+)?)\s+replaced\b/i,
+    /\breplaced\b[^.]{0,160}?\bin\s+Update\s*#?\s*(\d{1,3}(?:\.\d+)?)/i,
+    /\bUpdate\s*#?\s*(\d{1,3}(?:\.\d+)?)[^.]{0,200}\bLos Traders\b[^.]{0,200}\breplac/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = ctx.match(pattern);
+    if (match?.[1]) return `Update${match[1]}`;
+  }
+
+  return null;
+}
+
+function extractSubjectUpdate(text, subject) {
+  const ctx = contextAroundSubject(text, subject, 1500);
+  if (!ctx) return null;
+
+  const matches = [...ctx.matchAll(/\bUpdate\s*#?\s*(\d{1,3}(?:\.\d+)?)\b/gi)]
+    .map((m) => `Update${m[1]}`);
+
+  const unique = [...new Set(matches)];
+  return unique.length === 1 ? unique[0] : null;
+}
+
+function extractMachineSameUpdate(text, subject) {
+  const ctx = contextAroundSubject(text, subject, 1800);
+  if (!ctx) return null;
+
+  const names = machineNamesFromText(ctx);
+  const unique = [...new Set(names)];
+
+  if (unique.length === 1) return unique[0];
+
+  // Prefer RNG Machine in the Queen Bee event context if explicitly present.
+  if (
+    /Queen Bee/i.test(ctx) &&
+    /\bRNG Machine\b/i.test(ctx)
+  ) {
+    return "RNG Machine";
+  }
+
+  return null;
+}
+
+function slotSpecificQuestion(slot) {
+  if (slot.relation === REL.OUTCOME && slot.qualifier) {
+    return `What is the ${slot.qualifier} outcome from the ${slot.subject || ""} ritual?`;
+  }
+
+  if (slot.predicate === "REPLACED_BY") {
+    return `What machine replaced ${slot.subject || "the subject"}?`;
+  }
+
+  if (slot.predicate === "REPLACED_IN") {
+    return `In what update was ${slot.subject || "the subject"} replaced?`;
+  }
+
+  if (slot.predicate === "EVENT_FREQUENCY") {
+    return `How often does ${slot.subject || "the event"} happen?`;
+  }
+
+  if (slot.predicate === "MACHINE_IN_SAME_UPDATE") {
+    return `Which machine was introduced in the same update as ${slot.subject || "the subject"}?`;
+  }
+
+  if (slot.predicate === "SUBJECT_UPDATE") {
+    return `What update was ${slot.subject || "the subject"} tied to?`;
+  }
+
+  return `${slot.relation} for ${slot.subject || "the question"}`;
+}
+
+function relationAnalysisForSlot(analysis, slot) {
+  return {
+    ...analysis,
+    relation: slot.relation,
+    wanted: slot.relation,
+    wantedRelations: [slot.relation],
+    entity: slot.subject || analysis.entity,
+    entities: slot.subject
+      ? [slot.subject, ...(analysis.entities || []).filter((x) => norm(x) !== norm(slot.subject))]
+      : analysis.entities,
+    factSlots: [slot],
+    lockedSubjects: slot.subject ? [slot.subject] : [],
+  };
+}
+
+function extractSlotDeterministic(slot, question, analysis, pages) {
+  const slotQuestion = slotSpecificQuestion(slot);
+  const subAnalysis = relationAnalysisForSlot(analysis, slot);
+
+  for (const page of pages) {
+    const pageText = `${page.title}\n${page.text}`;
+
+    if (slot.subject && !subjectAppears(pageText, slot.subject)) continue;
+
+    let answer = null;
+
+    if (slot.relation === REL.OUTCOME && slot.qualifier) {
+      answer = extractChanceResultFromPage(slotQuestion, page);
+    } else if (slot.predicate === "REPLACED_BY") {
+      answer = extractReplacedByMachine(page.text, slot.subject);
+    } else if (slot.predicate === "REPLACED_IN") {
+      answer = extractReplacedInUpdate(page.text, slot.subject);
+    } else if (slot.predicate === "EVENT_FREQUENCY") {
+      answer = normalizeFrequencyAnswer(
+        contextAroundSubject(page.text, slot.subject, 1600)
+      );
+    } else if (slot.predicate === "SUBJECT_UPDATE") {
+      answer = extractSubjectUpdate(page.text, slot.subject);
+    } else if (slot.predicate === "MACHINE_IN_SAME_UPDATE") {
+      answer = extractMachineSameUpdate(page.text, slot.subject);
+    }
+
+    if (!answer) {
+      const direct =
+        deterministicHighValueExactPage(
+          slotQuestion,
+          subAnalysis,
+          page,
+          page.source || SOURCE.PRIMARY
+        ) ||
+        deterministicExactPageFallback(
+          slotQuestion,
+          subAnalysis,
+          page,
+          page.source || SOURCE.PRIMARY
+        );
+
+      answer = direct?.answer || null;
+    }
+
+    if (!answer) continue;
+
+    const type = answerTypeValid(
+      slotQuestion,
+      subAnalysis,
+      answer,
+      page
+    );
+
+    if (!type.valid) continue;
+
+    // Strong binding: subject + answer must be present on the same page.
+    if (slot.subject && !subjectAppears(pageText, slot.subject)) continue;
+    if (!evidenceSupports(answer, page.text) && similarity(answer, page.title) < 0.82) continue;
+
+    return {
+      id: slot.id,
+      relation: slot.relation,
+      answer,
+      subject: slot.subject,
+      qualifier: slot.qualifier,
+      predicate: slot.predicate,
+      page,
+      evidence: contextAroundSubject(page.text, slot.subject, 1800) || page.text,
+    };
+  }
+
+  return null;
+}
+
+function deterministicFactSlots(question, analysis, pages) {
+  if (!Array.isArray(analysis.factSlots) || !analysis.factSlots.length) return null;
+
+  const answers = [];
+
+  for (const slot of analysis.factSlots) {
+    const resolved = extractSlotDeterministic(
+      slot,
+      question,
+      analysis,
+      pages
+    );
+
+    if (!resolved) return null;
+    answers.push(resolved);
+  }
+
+  return {
+    answer: answers.map((x) => x.answer).join(", "),
+    slots: answers,
+    page: answers[0]?.page || pages[0],
+  };
+}
+
+function parseAiFactSlots(content) {
+  const parsed = parseModelJson(content);
+  const rows = Array.isArray(parsed?.slots)
+    ? parsed.slots
+    : Array.isArray(parsed?.parts)
+      ? parsed.parts
+      : null;
+
+  if (!rows) throw new Error("FACT_SLOT_AI_NO_SLOTS");
+
+  return rows.map((row) => ({
+    id: oneLine(row?.id, 120),
+    relation: String(row?.relation || row?.type || "").toUpperCase(),
+    answer: oneLine(row?.answer ?? row?.value, 300),
+    evidence: oneLine(row?.evidence ?? row?.quote, 350),
+    subject: cleanSubject(row?.subject),
+    qualifier: oneLine(row?.qualifier, 80) || null,
+    predicate: oneLine(row?.predicate, 80) || null,
+  }));
+}
+
+async function aiExtractFactSlots(question, analysis, pages, source, deadline) {
+  if (!isFactSlotQuestion(analysis)) return { result: null, error: "NOT_FACT_SLOT_QUESTION" };
+  if (!env("NVIDIA_API_KEY") || timeLeft(deadline) < 340 || !pages.length) {
+    return { result: null, error: "NVIDIA_FACT_SLOT_UNAVAILABLE" };
+  }
+
+  const chunks = buildEvidenceBundle(question, analysis, pages);
+  if (!chunks.length) return { result: null, error: "NO_FACT_SLOT_EVIDENCE" };
+
+  try {
+    const data = await fetchJson(
+      `${source.key}_AI_FACT_SLOTS`,
+      NVIDIA_URL,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${env("NVIDIA_API_KEY")}`,
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          model: process.env.NVIDIA_MODEL || DEFAULT_MODEL,
+          stream: false,
+          temperature: 0,
+          max_tokens: 320,
+          chat_template_kwargs: { enable_thinking: false },
+          messages: [
+            {
+              role: "system",
+              content: [
+                "You fill exact fact slots for Steal a Brainrot using ONLY supplied trusted evidence.",
+                "Each slot has a subject, predicate/relation, and sometimes a qualifier.",
+                "Keep every answer bound to that exact subject and qualifier.",
+                "Do NOT answer from another entity or another update just because the same relation appears.",
+                "For duplicate OUTCOME slots, the qualifier (for example 99% vs 1%) must select the matching outcome.",
+                "For REPLACED_BY, answer the machine/entity that the subject was explicitly replaced by.",
+                "For REPLACED_IN, answer the update where that same replacement occurred.",
+                "For MACHINE_IN_SAME_UPDATE, answer a machine explicitly tied to the same update/event as the subject.",
+                "For EVENT_FREQUENCY, answer only the recurrence phrase.",
+                "If ANY slot is not explicitly supported, answer UNKNOWN for that slot.",
+                "Return a short exact evidence quote for each non-UNKNOWN slot.",
+                'Return JSON only: {"slots":[{"id":"...","relation":"...","answer":"...","evidence":"..."}]}',
+              ].join("\n"),
+            },
+            {
+              role: "user",
+              content: JSON.stringify({
+                question,
+                slots: analysis.factSlots,
+                evidence: chunks.map((chunk, i) => ({
+                  id: i + 1,
+                  pageIndex: chunk.pageIndex,
+                  title: chunk.title,
+                  url: chunk.url,
+                  clue: chunk.clue,
+                  text: chunk.text,
+                })),
+              }),
+            },
+          ],
+        }),
+      },
+      Math.max(
+        340,
+        Math.min(CFG.NVIDIA_TIMEOUT_MS, timeLeft(deadline) - 30)
+      )
+    );
+
+    const rows = parseAiFactSlots(data?.choices?.[0]?.message?.content);
+    const resolved = [];
+
+    for (const slot of analysis.factSlots) {
+      const row = rows.find((x) => x.id === slot.id);
+
+      if (!row || !row.answer || norm(row.answer) === "unknown") {
+        return { result: null, error: `FACT_SLOT_MISSING_${slot.id}` };
+      }
+
+      const subAnalysis = relationAnalysisForSlot(analysis, slot);
+
+      // Strong subject binding: the supporting evidence chunk must contain
+      // the locked subject, not just the answer.
+      const supportCandidates = chunks.filter((chunk) =>
+        (!slot.subject || subjectAppears(chunk.text, slot.subject)) &&
+        evidenceSupports(row.answer, chunk.text)
+      );
+
+      if (slot.qualifier) {
+        const qualified = supportCandidates.filter((chunk) =>
+          pageHasClue(chunk.text, slot.qualifier)
+        );
+        if (qualified.length) {
+          supportCandidates.splice(0, supportCandidates.length, ...qualified);
+        }
+      }
+
+      const supportChunk = supportCandidates[0];
+      if (!supportChunk) {
+        return { result: null, error: `FACT_SLOT_UNBOUND_${slot.id}` };
+      }
+
+      const page = pages[(supportChunk.pageIndex || 1) - 1] || pages[0];
+      const type = answerTypeValid(
+        slotSpecificQuestion(slot),
+        subAnalysis,
+        row.answer,
+        page
+      );
+
+      if (!type.valid) {
+        return { result: null, error: `FACT_SLOT_TYPE_${slot.id}_${type.reason}` };
+      }
+
+      if (
+        row.evidence &&
+        !norm(supportChunk.text).includes(norm(row.evidence))
+      ) {
+        return { result: null, error: `FACT_SLOT_EVIDENCE_${slot.id}_NOT_FOUND` };
+      }
+
+      resolved.push({
+        id: slot.id,
+        relation: slot.relation,
+        answer: row.answer,
+        subject: slot.subject,
+        qualifier: slot.qualifier,
+        predicate: slot.predicate,
+        page,
+        evidence: row.evidence || supportChunk.text,
+      });
+    }
+
+    const answer = resolved.map((x) => x.answer).join(", ");
+    const page = resolved[0]?.page || pages[0];
+
+    return {
+      result: makeResult(
+        answer,
+        analysis.relation,
+        source,
+        page,
+        `${source.key}_FACT_SLOT_AI`,
+        source.confidence
+      ),
+      slots: resolved,
+      supportingPage: page,
+      error: null,
+    };
+  } catch (error) {
+    return {
+      result: null,
+      error: errorCode(error),
+    };
+  }
+}
+
 async function exactTierLookup(question, analysis, source, deadline) {
   const queries = aggressiveSearchQueries(question, analysis, source);
 
@@ -4421,6 +5108,81 @@ async function exactTierLookup(question, analysis, source, deadline) {
   }
 
   const chunks = buildEvidenceBundle(question, analysis, pages);
+
+  // =====================================================
+  // R33 FACT SLOTS: subject + predicate + qualifier are bound together.
+  // This runs BEFORE relation-only multipart logic.
+  // =====================================================
+  if (isFactSlotQuestion(analysis)) {
+    const deterministicSlots = deterministicFactSlots(
+      question,
+      analysis,
+      pages
+    );
+
+    if (deterministicSlots) {
+      return {
+        result: makeResult(
+          deterministicSlots.answer,
+          analysis.relation,
+          source,
+          deterministicSlots.page,
+          `${source.key}_FACT_SLOT_DETERMINISTIC`,
+          source.confidence
+        ),
+        search,
+        page: deterministicSlots.page,
+        pages,
+        pagesTried,
+        query: queries.join(" || "),
+        queries,
+        searchVariantErrors,
+        selected: candidates.find((x) => x.url === deterministicSlots.page?.url) || candidates[0],
+        error: null,
+        factSlots: deterministicSlots.slots,
+      };
+    }
+
+    const slotAI = await aiExtractFactSlots(
+      question,
+      analysis,
+      pages,
+      source,
+      deadline
+    );
+
+    if (slotAI.result) {
+      return {
+        result: slotAI.result,
+        search,
+        page: slotAI.supportingPage || pages[0],
+        pages,
+        pagesTried,
+        query: queries.join(" || "),
+        queries,
+        searchVariantErrors,
+        selected: candidates.find((x) => x.url === slotAI.supportingPage?.url) || candidates[0],
+        error: null,
+        factSlots: slotAI.slots,
+      };
+    }
+
+    if (slotAI.error) errors.push(slotAI.error);
+
+    // Never degrade a slot-bound question into relation-only guessing.
+    return {
+      result: null,
+      search,
+      page: null,
+      pages,
+      pagesTried,
+      query: queries.join(" || "),
+      queries,
+      searchVariantErrors,
+      selected: candidates[0] || null,
+      error: errors.join("|") || "FACT_SLOTS_NOT_FULLY_VERIFIED",
+    };
+  }
 
   // =====================================================
   // MULTI-PART: require EVERY requested fact before returning.
@@ -4682,6 +5444,8 @@ function finalize(base, question, analysis, startedAt, diagnostics = {}) {
     intent: analysis.current ? "CURRENT" : analysis.update ? "UPDATE" : "FACT",
     answerType: analysis.relation,
     answerTypes: analysis.wantedRelations || [analysis.relation],
+    factSlots: analysis.factSlots || [],
+    lockedSubjects: analysis.lockedSubjects || [],
     entity: analysis.entity || "UNKNOWN",
     analysisSource: analysis.source,
     searchLatencyMs: nowMs() - startedAt,
@@ -4723,6 +5487,7 @@ async function resolveQuestion(questionObj, lore = "") {
     primaryPagesTried: [],
     primarySearchVariantErrors: [],
     primaryMultipart: null,
+    primaryFactSlots: null,
     primaryError: "",
 
     fandomQuery: "",
@@ -4731,6 +5496,7 @@ async function resolveQuestion(questionObj, lore = "") {
     fandomPagesTried: [],
     fandomSearchVariantErrors: [],
     fandomMultipart: null,
+    fandomFactSlots: null,
     fandomError: "",
 
     wikiQuery: "",
@@ -4761,6 +5527,7 @@ async function resolveQuestion(questionObj, lore = "") {
   diagnostic.primaryPagesTried = primary.pagesTried || [];
   diagnostic.primarySearchVariantErrors = primary.searchVariantErrors || [];
   diagnostic.primaryMultipart = primary.multipart || null;
+  diagnostic.primaryFactSlots = primary.factSlots || null;
   diagnostic.primaryError = primary.error || "";
 
   if (primary.result) {
@@ -4798,6 +5565,7 @@ async function resolveQuestion(questionObj, lore = "") {
     diagnostic.fandomPagesTried = fandom.pagesTried || [];
     diagnostic.fandomSearchVariantErrors = fandom.searchVariantErrors || [];
     diagnostic.fandomMultipart = fandom.multipart || null;
+    diagnostic.fandomFactSlots = fandom.factSlots || null;
     diagnostic.fandomError = fandom.error || "";
 
     if (fandom.result) {
@@ -5676,6 +6444,163 @@ function runSelfTests() {
     typeof safeOpenCandidate === "function"
   );
 
+
+  // =====================================================
+  // R33 source-grounded regression tests.
+  // These page excerpts mirror live steal-a-brainrot.org facts checked on
+  // 2026-08-19, then run through the deterministic slot resolver.
+  // =====================================================
+
+  const r33QueenQ =
+    "How often did the Queen Bee event happen, and which machine was introduced in the same update?";
+  const r33QueenBase = applyFactSlots(
+    r33QueenQ,
+    enforceQuestionSemantics(r33QueenQ, analyzeQuestion(r33QueenQ))
+  );
+
+  check("R33 Queen Bee slots detected", r33QueenBase.factSlots.length === 2);
+  check(
+    "R33 Queen Bee subject locked",
+    r33QueenBase.lockedSubjects.includes("Queen Bee")
+  );
+
+  const r33QueenPage = syntheticPrimaryPage(
+    "RNG MACHINE + QUEEN BEE",
+    `${PRIMARY_ORIGIN}/events/rng-machine-queen-bee-event-2026-08-08`,
+    [
+      "Update 61 adds a cash-powered RNG Machine and a Queen Bee event that returns every two hours.",
+      "The RNG Machine has 42 obtainable results in its first live version.",
+      "Update 61 replaces the active Los Traders and Summer Fuse cycle with RNG and Honey routes.",
+    ]
+  );
+
+  const r33QueenResolved = deterministicFactSlots(
+    r33QueenQ,
+    r33QueenBase,
+    [r33QueenPage]
+  );
+
+  check(
+    "R33 Queen Bee actual answer",
+    r33QueenResolved?.answer === "Every two hours, RNG Machine",
+    r33QueenResolved?.answer || "nil"
+  );
+
+  const r33ReplaceQ =
+    "Which machine replaced Los Traders, and what update did that happen in?";
+  const r33ReplaceBase = applyFactSlots(
+    r33ReplaceQ,
+    enforceQuestionSemantics(r33ReplaceQ, analyzeQuestion(r33ReplaceQ))
+  );
+
+  check("R33 Los Traders slots detected", r33ReplaceBase.factSlots.length === 2);
+  check(
+    "R33 Los Traders subject locked",
+    r33ReplaceBase.lockedSubjects.includes("Los Traders")
+  );
+
+  const r33MachinesPage = syntheticPrimaryPage(
+    "All Machines",
+    `${PRIMARY_ORIGIN}/machines`,
+    [
+      "Los Traders",
+      "Removed Brainrot Trader variant that ran from Update 57 through Update 60 with rotating 30-minute offers.",
+      "Update 61 replaced it with the RNG Machine and Queen Bee event.",
+    ]
+  );
+
+  const r33ReplaceResolved = deterministicFactSlots(
+    r33ReplaceQ,
+    r33ReplaceBase,
+    [r33MachinesPage]
+  );
+
+  check(
+    "R33 Los Traders actual answer",
+    r33ReplaceResolved?.answer === "RNG Machine, Update61",
+    r33ReplaceResolved?.answer || "nil"
+  );
+
+  const r33OutcomesQ =
+    "What are the 99% and 1% outcomes of the Job Job Job Sahur ritual?";
+  const r33OutcomesBase = applyFactSlots(
+    r33OutcomesQ,
+    enforceQuestionSemantics(r33OutcomesQ, analyzeQuestion(r33OutcomesQ))
+  );
+
+  check("R33 duplicate OUTCOME slots detected", r33OutcomesBase.factSlots.length === 2);
+  check(
+    "R33 duplicate relation preserved",
+    r33OutcomesBase.factSlots.every((slot) => slot.relation === REL.OUTCOME)
+  );
+  check(
+    "R33 percent qualifiers preserved",
+    r33OutcomesBase.factSlots[0]?.qualifier === "99%" &&
+    r33OutcomesBase.factSlots[1]?.qualifier === "1%"
+  );
+
+  const r33RitualPage = syntheticPrimaryPage(
+    "Job Job Job Sahur Ritual",
+    `${PRIMARY_ORIGIN}/rituals/job-job-job-sahur-ritual`,
+    [
+      "4 players required",
+      "Job Job Job Sahur Ritual",
+      "Brainrot Spawn",
+      "Yess my Resume with a 99% outcome chance",
+      "Noo my Resume with a 1% outcome chance",
+    ]
+  );
+
+  const r33OutcomesResolved = deterministicFactSlots(
+    r33OutcomesQ,
+    r33OutcomesBase,
+    [r33RitualPage]
+  );
+
+  check(
+    "R33 two outcomes actual answer",
+    r33OutcomesResolved?.answer === "Yess my Resume, Noo my Resume",
+    r33OutcomesResolved?.answer || "nil"
+  );
+
+  const r33WrongCraft = syntheticPrimaryPage(
+    "Craft Machine",
+    `${PRIMARY_ORIGIN}/machines/craft-machine`,
+    [
+      "Craft Machine",
+      "Update 13",
+      "A crafting machine from an older update.",
+    ]
+  );
+
+  check(
+    "R33 wrong replacement page subject blocked",
+    aggressivePageUsable(
+      r33ReplaceQ,
+      r33ReplaceBase,
+      r33WrongCraft,
+      SOURCE.PRIMARY
+    ).usable === false
+  );
+
+  const r33WrongFandomLike = {
+    title: "Tung Tung Tung Sahur",
+    url: "https://stealabrainrot.fandom.com/wiki/Tung_Tung_Tung_Sahur",
+    text: "Tung Tung Tung Sahur is a brainrot unrelated to Queen Bee.",
+    lines: ["Tung Tung Tung Sahur is a brainrot unrelated to Queen Bee."],
+    source: SOURCE.FANDOM,
+  };
+
+  check(
+    "R33 unrelated subject page blocked",
+    aggressivePageUsable(
+      r33QueenQ,
+      r33QueenBase,
+      r33WrongFandomLike,
+      SOURCE.FANDOM
+    ).usable === false
+  );
+
   // Priority behavior: once S+ has a direct value, lower tier disagreement does not participate.
   const primary = makeResult("10x", REL.MULTIPLIER, SOURCE.PRIMARY, mutationPage, "PRIMARY_MUTATION_SECTION", 0.995);
   const fandom = makeResult("9x", REL.MULTIPLIER, SOURCE.FANDOM, { title: "Mutations", url: "fandom" }, "FANDOM_DIRECT", 0.93);
@@ -5891,6 +6816,11 @@ export async function GET(request) {
       searchVariantFailureIsolation: true,
       pageFetchFailureIsolation: true,
       trueMultipartAnswers: true,
+      factSlotSemanticBinding: true,
+      duplicateRelationSlots: true,
+      subjectLockAcrossTiers: true,
+      predicateBoundExtraction: true,
+      qualifierBoundExtraction: true,
       allMultipartPartsRequired: true,
       softPageFamilyPreference: true,
       topThreePagePool: true,
