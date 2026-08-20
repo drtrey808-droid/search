@@ -1,4 +1,4 @@
-const BUILD_ID = "SAB_AUTHORITATIVE_SOURCE_ENGINE_R24_2026_08_19";
+const BUILD_ID = "SAB_AI_ROUTER_PRIORITY_ENGINE_R25_2026_08_19";
 
 const PRIMARY_ORIGIN = "https://steal-a-brainrot.org";
 const FANDOM_API = "https://stealabrainrot.fandom.com/api.php";
@@ -15,6 +15,7 @@ const CFG = Object.freeze({
   BACKUP_TIMEOUT_MS: Number(process.env.BACKUP_TIMEOUT_MS || 800),
   TAVILY_TIMEOUT_MS: Number(process.env.TAVILY_TIMEOUT_MS || 800),
   NVIDIA_TIMEOUT_MS: Number(process.env.NVIDIA_TIMEOUT_MS || 850),
+  NVIDIA_ANALYZE_TIMEOUT_MS: Number(process.env.NVIDIA_ANALYZE_TIMEOUT_MS || 650),
 
   MAX_PRIMARY_PAGES: 7,
   MAX_BACKUP_PAGES: 5,
@@ -360,12 +361,49 @@ function inferRelation(question) {
   return REL.TEXT;
 }
 
+
+function extractExplicitDate(question) {
+  const q = oneLine(question, 700);
+  const m = q.match(
+    /\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2}),?\s+(20\d{2})\b/i
+  );
+  if (!m) return null;
+
+  const months = {
+    january: 1, february: 2, march: 3, april: 4, may: 5, june: 6,
+    july: 7, august: 8, september: 9, october: 10, november: 11, december: 12,
+  };
+
+  const month = months[m[1].toLowerCase()];
+  return `${m[3]}-${String(month).padStart(2, "0")}-${String(Number(m[2])).padStart(2, "0")}`;
+}
+
+function inferIntent(question, relation, update, date) {
+  const q = oneLine(question, 700).toLowerCase();
+
+  if (update && /\bwhat did\b|\bwhat was added\b|\bwhat got added\b|\bwhat changed\b/.test(q)) {
+    return "UPDATE_SUMMARY";
+  }
+
+  if (update || date) {
+    return "UPDATE_FACT";
+  }
+
+  if (/\bcurrent\b|\bnewest\b|\blatest\b|\bright now\b|\btoday\b/.test(q)) {
+    return "CURRENT_FACT";
+  }
+
+  return "ENTITY_FACT";
+}
+
 function analyzeQuestion(question) {
   const q = oneLine(question, 700);
   const relation = inferRelation(q);
   const entities = candidateEntities(q);
   const rebirth = extractRebirthNumber(q);
-  const update = extractUpdateNumber(q);
+  const updateRaw = extractUpdateNumber(q);
+  const update = updateRaw ? Number(updateRaw) : null;
+  const date = extractExplicitDate(q);
   const current = isCurrent(q);
   let entity = entities[0] || null;
 
@@ -378,8 +416,10 @@ function analyzeQuestion(question) {
     relation,
     rebirth,
     update,
+    date,
     current,
-    source: "DETERMINISTIC_R24",
+    intent: inferIntent(q, relation, update, date),
+    source: "DETERMINISTIC_R25",
   };
 }
 
@@ -519,7 +559,7 @@ async function fetchPage(url, source, deadline) {
   const html = await fetchText(source.key, url, {
     headers: {
       Accept: "text/html,application/xhtml+xml",
-      "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R24",
+      "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R25",
     },
   }, timeout);
   const page = {
@@ -625,6 +665,270 @@ function ritualDetailCandidates(analysis) {
   }
 
   return [...new Set(candidates)].slice(0, 5);
+}
+
+
+function updateNeedleScore(text, analysis) {
+  const t = oneLine(text, 4000).toLowerCase();
+  let score = 0;
+
+  if (analysis.update && new RegExp(`\\bupdate\\s*${analysis.update}\\b`, "i").test(t)) score += 8;
+
+  if (analysis.date) {
+    const [y, m, d] = analysis.date.split("-").map(Number);
+    const names = [
+      "", "January", "February", "March", "April", "May", "June",
+      "July", "August", "September", "October", "November", "December",
+    ];
+    const dateRe = new RegExp(`${names[m]}\\s+0?${d},?\\s+${y}`, "i");
+    if (dateRe.test(t)) score += 8;
+  }
+
+  if (analysis.relation === REL.MACHINE && /\bmachine\b/i.test(t)) score += 2;
+  if (analysis.relation === REL.REBIRTH && /\brebirth\b/i.test(t)) score += 2;
+  if (analysis.relation === REL.BRAINROT && /\bbrainrot\b/i.test(t)) score += 2;
+  if (analysis.relation === REL.GEAR && /\b(?:gear|item|shield|teleport|potion)\b/i.test(t)) score += 2;
+
+  return score;
+}
+
+function contextAroundUpdate(text, analysis, radius = 1500) {
+  const raw = String(text || "");
+  let indices = [];
+
+  if (analysis.update) {
+    const re = new RegExp(`\\bUpdate\\s*${analysis.update}\\b`, "ig");
+    let m;
+    while ((m = re.exec(raw)) !== null) indices.push(m.index);
+  }
+
+  if (analysis.date) {
+    const [y, mo, d] = analysis.date.split("-").map(Number);
+    const names = [
+      "", "January", "February", "March", "April", "May", "June",
+      "July", "August", "September", "October", "November", "December",
+    ];
+    const re = new RegExp(`${names[mo]}\\s+0?${d},?\\s+${y}`, "ig");
+    let m;
+    while ((m = re.exec(raw)) !== null) indices.push(m.index);
+  }
+
+  if (!indices.length) return "";
+  const i = indices[0];
+  return clean(raw.slice(Math.max(0, i - radius), Math.min(raw.length, i + radius)), radius * 2);
+}
+
+function extractUpdateTypedAnswer(context, analysis) {
+  const text = oneLine(context, 5000);
+  if (!text) return null;
+
+  if (analysis.relation === REL.REBIRTH) {
+    const matches = [...text.matchAll(/\bRebirth\s*#?\s*(\d{1,3})\b/gi)];
+    if (matches.length) {
+      const nums = matches.map((m) => Number(m[1])).filter(Number.isFinite);
+      if (nums.length) return `Rebirth${Math.max(...nums)}`;
+    }
+  }
+
+  if (analysis.relation === REL.MACHINE) {
+    const matches = [
+      ...text.matchAll(
+        /\b((?:[A-Z0-9]{2,}|[A-Z][a-z]+)(?:\s+(?:[A-Z0-9]{2,}|[A-Z][a-z]+)){0,3}\s+Machine)\b/g
+      ),
+    ]
+      .map((m) => oneLine(m[1], 100))
+      .filter(Boolean);
+
+    if (matches.length) {
+      const ranked = [...new Set(matches)].sort((a, b) => {
+        const as = /\b(?:RNG|Fuse|Craft|Mutation|Trait|Lucky|Brainrot)\b/i.test(a) ? 1 : 0;
+        const bs = /\b(?:RNG|Fuse|Craft|Mutation|Trait|Lucky|Brainrot)\b/i.test(b) ? 1 : 0;
+        return bs - as || a.length - b.length;
+      });
+      return ranked[0];
+    }
+  }
+
+  if (analysis.relation === REL.GEAR) {
+    const labels = [
+      "New Items", "New Item", "Gear", "Item Unlock", "Unlock",
+    ];
+    const lines = context.split(/\n| \| /).map((x) => oneLine(x, 300)).filter(Boolean);
+    const v = findLabelValue(lines, labels, 5);
+    if (v) return oneLine(v, 120);
+  }
+
+  if (analysis.relation === REL.DATE) {
+    const m = text.match(
+      /\b(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+20\d{2}\b/i
+    );
+    if (m) return m[0];
+  }
+
+  return null;
+}
+
+function primaryEventContextLinks(page) {
+  const html = String(page?.html || "");
+  const out = [];
+  const re = /<a\b[^>]*href\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+  let m;
+
+  while ((m = re.exec(html)) !== null) {
+    const url = absolutePrimaryUrl(m[1]);
+    if (!url) continue;
+
+    let pathname = "";
+    try { pathname = new URL(url).pathname; } catch {}
+    if (!pathname.startsWith("/events/")) continue;
+
+    const start = Math.max(0, m.index - 900);
+    const end = Math.min(html.length, re.lastIndex + 900);
+    const context = htmlToText(html.slice(start, end), 2500);
+    const label = htmlToText(m[2], 400);
+
+    out.push({ url, pathname, label, context });
+  }
+
+  return out;
+}
+
+async function primaryUpdateHistoryPath(question, analysis, deadline) {
+  if (!(analysis.update || analysis.date || /^UPDATE_/.test(analysis.intent || ""))) {
+    return { result: null, pages: [], errors: [], route: "NOT_UPDATE_MODE" };
+  }
+
+  const pages = [];
+  const errors = [];
+  const tried = new Set();
+
+  async function get(url) {
+    if (!url || tried.has(url) || timeLeft(deadline) < 220) return null;
+    tried.add(url);
+    try {
+      const page = await fetchPage(url, SOURCE.PRIMARY, deadline);
+      pages.push(page);
+      return page;
+    } catch (error) {
+      errors.push(`${url}:${errorCode(error)}`);
+      return null;
+    }
+  }
+
+  // For machine questions, /machines is often the cleanest S+ source.
+  if (analysis.relation === REL.MACHINE) {
+    const machines = await get(`${PRIMARY_ORIGIN}/machines`);
+    if (machines) {
+      const context = contextAroundUpdate(machines.text, analysis, 1800);
+      const answer = extractUpdateTypedAnswer(context, analysis);
+      if (answer) {
+        return {
+          result: makeResult(answer, analysis.relation, SOURCE.PRIMARY, machines, "SPLUS_UPDATE_MACHINE_CONTEXT", 0.995),
+          pages,
+          errors,
+          route: "UPDATE_MACHINE_SPLUS",
+        };
+      }
+    }
+  }
+
+  const events = await get(`${PRIMARY_ORIGIN}/events`);
+  if (!events) return { result: null, pages, errors, route: "UPDATE_EVENTS_FETCH_FAILED" };
+
+  // First try the hub context itself.
+  const hubContext = contextAroundUpdate(events.text, analysis, 2000);
+  const hubAnswer = extractUpdateTypedAnswer(hubContext, analysis);
+  if (hubAnswer) {
+    return {
+      result: makeResult(hubAnswer, analysis.relation, SOURCE.PRIMARY, events, "SPLUS_UPDATE_HUB_CONTEXT", 0.995),
+      pages,
+      errors,
+      route: "UPDATE_HUB_SPLUS",
+    };
+  }
+
+  // Then follow the exact event card/link associated with the requested update/date.
+  const links = primaryEventContextLinks(events)
+    .map((link) => ({
+      ...link,
+      score: updateNeedleScore(`${link.label} ${link.context} ${link.pathname}`, analysis),
+    }))
+    .sort((a, b) => b.score - a.score);
+
+  const best = links[0];
+  if (best && best.score >= 6) {
+    const detail = await get(best.url);
+    if (detail) {
+      const context = contextAroundUpdate(detail.text, analysis, 3500) || detail.text;
+      const answer = extractUpdateTypedAnswer(context, analysis);
+
+      if (answer) {
+        return {
+          result: makeResult(answer, analysis.relation, SOURCE.PRIMARY, detail, "SPLUS_UPDATE_DETAIL_CONTEXT", 0.995),
+          pages,
+          errors,
+          route: "UPDATE_DETAIL_SPLUS",
+        };
+      }
+
+      // Broad "What did Update N add?" can use AI ONLY as an extractor from S+ evidence.
+      if (analysis.relation === REL.UPDATE && env("NVIDIA_API_KEY") && timeLeft(deadline) > 320) {
+        try {
+          const data = await fetchJson(
+            "NVIDIA_UPDATE_EXTRACT",
+            NVIDIA_URL,
+            {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${env("NVIDIA_API_KEY")}`,
+                "Content-Type": "application/json",
+                Accept: "application/json",
+              },
+              body: JSON.stringify({
+                model: process.env.NVIDIA_MODEL || DEFAULT_MODEL,
+                stream: false,
+                temperature: 0,
+                max_tokens: 120,
+                chat_template_kwargs: { enable_thinking: false },
+                messages: [
+                  {
+                    role: "system",
+                    content: [
+                      "Extract the answer ONLY from the supplied Steal-a-Brainrot.org evidence.",
+                      "Do not use outside knowledge.",
+                      "The user asks what the specified update added.",
+                      "Return a short comma-separated list of the major additions explicitly present in the evidence.",
+                      'Return JSON only: {"answer":"UNKNOWN or concise list"}',
+                    ].join("\n"),
+                  },
+                  {
+                    role: "user",
+                    content: JSON.stringify({ question, evidence: oneLine(detail.text, 10000) }),
+                  },
+                ],
+              }),
+            },
+            Math.max(250, Math.min(CFG.NVIDIA_TIMEOUT_MS, timeLeft(deadline) - 30))
+          );
+
+          const raw = parseModelJson(data?.choices?.[0]?.message?.content);
+          const answer = oneLine(raw?.answer, 300);
+          if (answer && norm(answer) !== "unknown") {
+            return {
+              result: makeResult(answer, REL.UPDATE, SOURCE.PRIMARY, detail, "SPLUS_UPDATE_AI_EXTRACTED_FROM_PRIMARY", 0.995),
+              pages,
+              errors,
+              route: "UPDATE_SUMMARY_SPLUS",
+            };
+          }
+        } catch (error) {
+          errors.push(`UPDATE_EXTRACT:${errorCode(error)}`);
+        }
+      }
+    }
+  }
+
+  return { result: null, pages, errors, route: "UPDATE_SPLUS_MISS" };
 }
 
 async function primaryFastPath(question, analysis, deadline) {
@@ -1289,7 +1593,7 @@ async function fandomSearchTitles(query, deadline) {
     format: "json",
   });
   try {
-    const data = await fetchJson("FANDOM_SEARCH", `${FANDOM_API}?${params.toString()}`, { headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R24" } }, Math.min(CFG.FANDOM_TIMEOUT_MS, left - 20));
+    const data = await fetchJson("FANDOM_SEARCH", `${FANDOM_API}?${params.toString()}`, { headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R25" } }, Math.min(CFG.FANDOM_TIMEOUT_MS, left - 20));
     return (Array.isArray(data?.query?.search) ? data.query.search : []).map((x) => oneLine(x?.title, 300)).filter(Boolean);
   } catch {
     return [];
@@ -1302,7 +1606,7 @@ async function fetchFandomPage(title, deadline) {
   if (cached) return { ...cached, cache: "HIT" };
   const left = timeLeft(deadline);
   if (left < 250) throw new Error("FANDOM_BUDGET_EXHAUSTED");
-  const data = await fetchJson("FANDOM_PARSE", fandomParseUrl(title), { headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R24" } }, Math.min(CFG.FANDOM_TIMEOUT_MS, left - 20));
+  const data = await fetchJson("FANDOM_PARSE", fandomParseUrl(title), { headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R25" } }, Math.min(CFG.FANDOM_TIMEOUT_MS, left - 20));
   if (data?.error) throw new Error(`FANDOM_PARSE_${data.error.code || "ERROR"}`);
   const p = data?.parse || {};
   const html = typeof p.text === "string" ? p.text : String(p.text?.["*"] || "");
@@ -1401,6 +1705,126 @@ function parseModelJson(text) {
   const last = raw.lastIndexOf("}");
   if (first >= 0 && last > first) return JSON.parse(raw.slice(first, last + 1));
   throw new Error("NVIDIA_INVALID_JSON");
+}
+
+
+const ALLOWED_RELATIONS = new Set(Object.values(REL));
+
+function normalizeAiDate(value) {
+  const raw = oneLine(value, 80);
+  if (!raw) return null;
+
+  if (/^20\d{2}-\d{2}-\d{2}$/.test(raw)) return raw;
+
+  const parsed = extractExplicitDate(raw);
+  return parsed || null;
+}
+
+function mergeAnalysis(ai, fallback) {
+  if (!ai) return fallback;
+
+  const relation = ALLOWED_RELATIONS.has(String(ai.relation || "").toUpperCase())
+    ? String(ai.relation).toUpperCase()
+    : fallback.relation;
+
+  const entity = oneLine(ai.entity, 180) || fallback.entity || null;
+  const aliases = Array.isArray(ai.aliases)
+    ? ai.aliases.map((x) => oneLine(x, 180)).filter(Boolean).slice(0, 8)
+    : [];
+
+  const entities = [...new Set([
+    entity,
+    ...aliases,
+    ...(fallback.entities || []),
+  ].filter(Boolean))].slice(0, 16);
+
+  const updateNum = Number(ai.update);
+  const rebirthNum = Number(ai.rebirth);
+
+  return {
+    entity,
+    entities,
+    relation,
+    rebirth: Number.isFinite(rebirthNum) && rebirthNum > 0 ? rebirthNum : fallback.rebirth,
+    update: Number.isFinite(updateNum) && updateNum > 0 ? updateNum : fallback.update,
+    date: normalizeAiDate(ai.date) || fallback.date || null,
+    current: typeof ai.current === "boolean" ? ai.current : fallback.current,
+    intent: oneLine(ai.intent, 80) || fallback.intent,
+    wanted: oneLine(ai.wanted, 80) || relation,
+    source: "NVIDIA_QUESTION_ROUTER",
+  };
+}
+
+async function analyzeQuestionAI(question, deadline) {
+  const fallback = analyzeQuestion(question);
+
+  if (!env("NVIDIA_API_KEY") || timeLeft(deadline) < 250) {
+    return { analysis: fallback, aiError: "NVIDIA_ANALYZER_UNAVAILABLE" };
+  }
+
+  try {
+    const timeout = Math.max(
+      250,
+      Math.min(
+        CFG.NVIDIA_ANALYZE_TIMEOUT_MS,
+        timeLeft(deadline) - 40
+      )
+    );
+
+    const data = await fetchJson(
+      "NVIDIA_ANALYZE",
+      NVIDIA_URL,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${env("NVIDIA_API_KEY")}`,
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          model: process.env.NVIDIA_MODEL || DEFAULT_MODEL,
+          stream: false,
+          temperature: 0,
+          max_tokens: 180,
+          chat_template_kwargs: { enable_thinking: false },
+          messages: [
+            {
+              role: "system",
+              content: [
+                "You are ONLY a question router for the Roblox game Steal a Brainrot.",
+                "Do NOT answer the trivia question.",
+                "Convert the user's question into structured lookup intent.",
+                `relation MUST be one of: ${[...ALLOWED_RELATIONS].join(", ")}.`,
+                "intent should usually be ENTITY_FACT, UPDATE_FACT, UPDATE_SUMMARY, CURRENT_FACT, or DATE_UPDATE_FACT.",
+                "wanted is the exact type of fact requested, such as MACHINE, REBIRTH, BRAINROT, GEAR, INCOME, COST, RARITY, SPAWN, REQUIREMENT, MULTIPLIER, DATE, UPDATE.",
+                "For questions like 'What machine was added in Update 61?', set update=61, relation=MACHINE, wanted=MACHINE.",
+                "For questions like 'What rebirth was added in the August 15, 2026 update?', set date=2026-08-15, relation=REBIRTH, wanted=REBIRTH.",
+                "For 'What did Update 62 add?', set update=62, relation=UPDATE, wanted=UPDATE, intent=UPDATE_SUMMARY.",
+                "Use canonical entity names when obvious, but never invent facts.",
+                'Return JSON only: {"intent":"...","entity":null,"aliases":[],"relation":"...","wanted":"...","update":null,"rebirth":null,"date":null,"current":false}',
+              ].join("\n"),
+            },
+            {
+              role: "user",
+              content: question,
+            },
+          ],
+        }),
+      },
+      timeout
+    );
+
+    const raw = parseModelJson(data?.choices?.[0]?.message?.content);
+    return {
+      analysis: mergeAnalysis(raw, fallback),
+      aiError: null,
+    };
+  } catch (error) {
+    return {
+      analysis: fallback,
+      aiError: errorCode(error),
+    };
+  }
 }
 
 async function emergencyStage(question, analysis, evidencePages, deadline) {
@@ -1533,6 +1957,7 @@ function finalize(base, question, analysis, startedAt, diagnostics = {}) {
 }
 
 
+
 async function resolveQuestion(questionObj, lore = "") {
   const startedAt = nowMs();
   const deadline = startedAt + CFG.GLOBAL_BUDGET_MS;
@@ -1547,9 +1972,18 @@ async function resolveQuestion(questionObj, lore = "") {
     };
   }
 
-  const analysis = analyzeQuestion(question);
+  // =====================================================
+  // AI FIRST: understand the question, NOT the answer.
+  // If NVIDIA fails/times out, deterministic R25 takes over.
+  // =====================================================
+  const routed = await analyzeQuestionAI(question, deadline);
+  const analysis = routed.analysis;
 
   const diagnostic = {
+    aiQuestionRouter: analysis.source,
+    aiQuestionRouterError: routed.aiError,
+    updateRoute: "",
+    updateErrors: [],
     primaryFastErrors: [],
     primaryFastRoute: "",
     primaryErrors: [],
@@ -1559,52 +1993,59 @@ async function resolveQuestion(questionObj, lore = "") {
   };
 
   // =====================================================
-  // S+ PRIMARY
-  // Direct evidence = 0.995 and RETURN NOW.
-  // No Fandom/Tavily/AI disagreement is allowed to lower it.
+  // Dedicated S+ update/date history mode.
   // =====================================================
-  const fast = await primaryFastPath(question, analysis, deadline);
-  diagnostic.primaryFastErrors = fast.errors;
-  diagnostic.primaryFastRoute = fast.route;
+  const updateStage = await primaryUpdateHistoryPath(question, analysis, deadline);
+  diagnostic.updateRoute = updateStage.route;
+  diagnostic.updateErrors = updateStage.errors || [];
 
-  let result = fast.result;
-
+  let result = updateStage.result;
   if (result) {
     const final = finalize(result, question, analysis, startedAt, diagnostic);
     setCachedAnswer(question, final);
     return final;
   }
 
-  // One broad S+ pass only. No Tavily discovery before A+.
+  // =====================================================
+  // S+ NORMAL PRIMARY.
+  // Direct S+ fact = 0.995 and immediate return.
+  // =====================================================
+  const fast = await primaryFastPath(question, analysis, deadline);
+  diagnostic.primaryFastErrors = fast.errors;
+  diagnostic.primaryFastRoute = fast.route;
+
+  result = fast.result;
+  if (result) {
+    const final = finalize(result, question, analysis, startedAt, diagnostic);
+    setCachedAnswer(question, final);
+    return final;
+  }
+
   if (timeLeft(deadline) > 260) {
     const primary = await fetchPrimaryCandidates(question, analysis, deadline);
-    primary.pages.unshift(...fast.pages);
+    primary.pages.unshift(...updateStage.pages, ...fast.pages);
     primary.pages = [...new Map(primary.pages.map((p) => [p.url, p])).values()];
     diagnostic.primaryErrors = primary.errors;
 
     result = resolvePrimary(question, analysis, primary.pages);
-
     if (result) {
       const final = finalize(result, question, analysis, startedAt, diagnostic);
       setCachedAnswer(question, final);
       return final;
     }
 
-    fast.pages.push(...primary.pages);
+    fast.pages.push(...updateStage.pages, ...primary.pages);
   }
 
   // =====================================================
-  // A+ FANDOM
-  // Only reached when S+ did not produce the requested fact.
-  // Direct A+ evidence is accepted immediately.
+  // A+ FANDOM only on true S+ miss.
   // =====================================================
   if (timeLeft(deadline) > 240) {
     const fandom = await fandomStage(question, analysis, deadline);
     diagnostic.fandomErrors = fandom.errors || [];
     result = fandom.result;
 
-    if (result) {
-      // Exact backup evidence should never become "low confidence".
+    if (result && result.answer && result.answer !== "UNKNOWN") {
       result.confidence = Math.max(result.confidence || 0, 0.97);
       result.candidateConfidence = result.confidence;
 
@@ -1615,14 +2056,14 @@ async function resolveQuestion(questionObj, lore = "") {
   }
 
   // =====================================================
-  // B WIKI
+  // B WIKI only on S+ + A+ miss.
   // =====================================================
   if (timeLeft(deadline) > 220) {
     const wiki = await wikiStage(question, analysis, deadline);
     diagnostic.wikiErrors = wiki.search?.errors || [];
     result = wiki.result;
 
-    if (result) {
+    if (result && result.answer && result.answer !== "UNKNOWN") {
       result.confidence = Math.max(result.confidence || 0, 0.94);
       result.candidateConfidence = result.confidence;
 
@@ -1633,11 +2074,16 @@ async function resolveQuestion(questionObj, lore = "") {
   }
 
   // =====================================================
-  // Emergency web/AI only after S+, A+, B all miss.
-  // Low confidence is allowed ONLY down here.
+  // Emergency web/AI only after authoritative tiers miss.
   // =====================================================
   if (timeLeft(deadline) > 260) {
-    const emergency = await emergencyStage(question, analysis, fast.pages, deadline);
+    const emergency = await emergencyStage(
+      question,
+      analysis,
+      [...updateStage.pages, ...fast.pages],
+      deadline
+    );
+
     diagnostic.emergencyErrors = emergency.search?.errors || [];
     result = emergency.result;
 
@@ -1842,6 +2288,25 @@ function runSelfTests() {
     resolvePrimaryRitual(liveShapeRitual, analyzeQuestion("What does the Bombardiro Crocodilo ritual spawn?"))?.answer === "Los Crocodillitos"
   );
 
+
+  const q61 = analyzeQuestion("What machine was added in Update 61?");
+  check("R25 update61 relation", q61.relation === REL.MACHINE);
+  check("R25 update61 number", q61.update === 61);
+  check("R25 update61 intent", q61.intent === "UPDATE_FACT");
+
+  const qDate = analyzeQuestion("What rebirth was added in the August 15, 2026 update?");
+  check("R25 date update relation", qDate.relation === REL.REBIRTH);
+  check("R25 date parse", qDate.date === "2026-08-15");
+
+  const q62 = analyzeQuestion("What did Update 62 add?");
+  check("R25 update summary intent", q62.intent === "UPDATE_SUMMARY");
+
+  const machineContext = "Update 61 adds the RNG Machine and Queen Bee event.";
+  check("R25 machine context extraction", extractUpdateTypedAnswer(machineContext, { relation: REL.MACHINE }) === "RNG Machine");
+
+  const rebirthContext = "August 15, 2026 Update 62 introduced Rebirth 19 and new items.";
+  check("R25 rebirth context extraction", extractUpdateTypedAnswer(rebirthContext, { relation: REL.REBIRTH }) === "Rebirth19");
+
   // Priority behavior: once S+ has a direct value, lower tier disagreement does not participate.
   const primary = makeResult("10x", REL.MULTIPLIER, SOURCE.PRIMARY, mutationPage, "PRIMARY_MUTATION_SECTION", 0.995);
   const fandom = makeResult("9x", REL.MULTIPLIER, SOURCE.FANDOM, { title: "Mutations", url: "fandom" }, "FANDOM_DIRECT", 0.93);
@@ -1928,8 +2393,19 @@ export async function GET(request) {
   }
 
   if (test === "analyze") {
-    const question = oneLine(url.searchParams.get("q") || "What rarity is Tralalero Tralala?", 700);
-    return json(200, { ok: true, build: BUILD_ID, question, analysis: analyzeQuestion(question) });
+    const question = oneLine(url.searchParams.get("q") || "What machine was added in Update 61?", 700);
+    const started = nowMs();
+    const deterministic = analyzeQuestion(question);
+    const routed = await analyzeQuestionAI(question, started + 1800);
+    return json(200, {
+      ok: true,
+      build: BUILD_ID,
+      question,
+      deterministic,
+      analysis: routed.analysis,
+      aiError: routed.aiError,
+      ms: nowMs() - started,
+    });
   }
 
   if (test === "resolve") {
@@ -1947,16 +2423,20 @@ export async function GET(request) {
     const question = oneLine(url.searchParams.get("q") || "What multiplier does Rainbow mutation have?", 700);
     const started = nowMs();
     const deadline = started + 3000;
-    const analysis = analyzeQuestion(question);
+    const routed = await analyzeQuestionAI(question, deadline);
+    const analysis = routed.analysis;
+    const updateStage = await primaryUpdateHistoryPath(question, analysis, deadline);
     const fast = await primaryFastPath(question, analysis, deadline);
     const stage = await fetchPrimaryCandidates(question, analysis, deadline);
-    const pages = [...new Map([...fast.pages, ...stage.pages].map((p) => [p.url, p])).values()];
-    const direct = fast.result || resolvePrimary(question, analysis, pages);
+    const pages = [...new Map([...updateStage.pages, ...fast.pages, ...stage.pages].map((p) => [p.url, p])).values()];
+    const direct = updateStage.result || fast.result || resolvePrimary(question, analysis, pages);
     return json(200, {
       ok: Boolean(direct?.answer),
       build: BUILD_ID,
       question,
       analysis,
+      aiRouter: analysis.source,
+      updateRoute: updateStage.route,
       fastRoute: fast.route,
       direct,
       pages: pages.map((p) => ({ title: p.title, url: p.url, cache: p.cache, lineCount: p.lines.length })),
@@ -1980,8 +2460,13 @@ export async function GET(request) {
       { tier: "B", source: "steal-a-brainrot.wiki", policy: "USED ONLY WHEN S+ AND A+ MISS" },
       { tier: "C", source: "Tavily/NVIDIA", policy: "EMERGENCY ONLY" },
     ],
-    conflictPolicy: "DIRECT S+ FACT = 0.995 AND IMMEDIATE RETURN; A+ USED ONLY ON S+ MISS; B USED ONLY ON S+/A+ MISS",
+    conflictPolicy: "AI ROUTES QUESTION FIRST; DIRECT S+ FACT = 0.995 AND IMMEDIATE RETURN; A+ ONLY ON S+ MISS; B ONLY ON S+/A+ MISS",
     architecture: {
+      aiQuestionRouterFirst: true,
+      aiDoesNotAnswerQuestion: true,
+      deterministicRouterFallback: true,
+      dedicatedUpdateHistoryMode: true,
+      updateDateRouting: true,
       primaryFirst: true,
       primaryImmediateReturn: true,
       exactBrainrotPageFirst: true,
