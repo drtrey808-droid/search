@@ -1,4 +1,4 @@
-const BUILD_ID = "SAB_KNOWLEDGE_ENGINE_R20_2026_08_19";
+const BUILD_ID = "SAB_REAL_TABLE_ENGINE_R21_2026_08_19";
 
 const FANDOM_API = "https://stealabrainrot.fandom.com/api.php";
 const FANDOM_BASE = "https://stealabrainrot.fandom.com/wiki/";
@@ -7,19 +7,20 @@ const NVIDIA_URL = "https://integrate.api.nvidia.com/v1/chat/completions";
 const DEFAULT_MODEL = "nvidia/nemotron-3-super-120b-a12b";
 
 const CFG = Object.freeze({
-  GLOBAL_BUDGET_MS: Number(process.env.LOOKUP_BUDGET_MS || 1950),
-  WIKI_TIMEOUT_MS: Number(process.env.WIKI_TIMEOUT_MS || 1250),
-  TAVILY_TIMEOUT_MS: Number(process.env.TAVILY_TIMEOUT_MS || 1150),
-  NVIDIA_TIMEOUT_MS: Number(process.env.NVIDIA_TIMEOUT_MS || 900),
+  GLOBAL_BUDGET_MS: Number(process.env.LOOKUP_BUDGET_MS || 1750),
+  WIKI_TIMEOUT_MS: Number(process.env.WIKI_TIMEOUT_MS || 950),
+  TAVILY_TIMEOUT_MS: Number(process.env.TAVILY_TIMEOUT_MS || 850),
+  NVIDIA_TIMEOUT_MS: Number(process.env.NVIDIA_TIMEOUT_MS || 700),
 
-  FALLBACK_START_MS: 425,
+  FALLBACK_START_MS: 300,
 
-  MAX_CANONICAL_PAGES: 7,
-  MAX_SEARCH_RESULTS: 7,
-  MAX_WEB_SOURCES: 12,
-  MAX_AI_EVIDENCE: 10,
+  MAX_CANONICAL_PAGES: 6,
+  MAX_SEARCH_RESULTS: 6,
+  MAX_WEB_SOURCES: 10,
+  MAX_AI_EVIDENCE: 8,
 
   PAGE_CACHE_TTL_MS: 5 * 60 * 1000,
+  TABLE_CACHE_TTL_MS: 5 * 60 * 1000,
   FACT_CACHE_TTL_MS: 5 * 60 * 1000,
   TITLE_CACHE_TTL_MS: 5 * 60 * 1000,
 
@@ -32,7 +33,6 @@ const REL = Object.freeze({
 
   REBIRTH: "REBIRTH",
   GEAR: "GEAR",
-
   BRAINROT: "BRAINROT",
   MUTATION: "MUTATION",
   TRAIT: "TRAIT",
@@ -40,6 +40,7 @@ const REL = Object.freeze({
   EVENT: "EVENT",
   MACHINE: "MACHINE",
   LUCKY_BLOCK: "LUCKY_BLOCK",
+  SLAP: "SLAP",
 
   COST: "COST",
   INCOME: "INCOME",
@@ -66,6 +67,20 @@ const REL = Object.freeze({
   UPDATE: "UPDATE",
 });
 
+const SUBJECT_KIND = Object.freeze({
+  GENERIC: "GENERIC",
+  BRAINROT: "BRAINROT",
+  MUTATION: "MUTATION",
+  TRAIT: "TRAIT",
+  RITUAL: "RITUAL",
+  GEAR: "GEAR",
+  MACHINE: "MACHINE",
+  LUCKY_BLOCK: "LUCKY_BLOCK",
+  EVENT: "EVENT",
+  SLAP: "SLAP",
+  REBIRTH: "REBIRTH",
+});
+
 const HUBS = Object.freeze({
   rebirth: ["Rebirth", "Gears"],
   gear: ["Gears", "Rebirth"],
@@ -83,72 +98,6 @@ const HUBS = Object.freeze({
 
   base: ["Base"],
   rarity: ["Rarities"],
-});
-
-const HEADER_ALIASES = Object.freeze({
-  name: REL.TEXT,
-  brainrot: REL.BRAINROT,
-
-  gear: REL.GEAR,
-
-  multi: REL.MULTIPLIER,
-  multiplier: REL.MULTIPLIER,
-  boost: REL.MULTIPLIER,
-
-  cost: REL.COST,
-  price: REL.COST,
-
-  income: REL.INCOME,
-  earnings: REL.INCOME,
-
-  rarity: REL.RARITY,
-  tier: REL.RARITY,
-
-  status: REL.STATUS,
-  obtainability: REL.STATUS,
-
-  rebirth: REL.REBIRTH,
-
-  requires: REL.REQUIREMENT,
-  requirement: REL.REQUIREMENT,
-  needed: REL.REQUIREMENT,
-  materials: REL.REQUIREMENT,
-
-  spawn: REL.SPAWN,
-  spawns: REL.SPAWN,
-  result: REL.SPAWN,
-  outcome: REL.SPAWN,
-
-  formation: REL.FORMATION,
-  placement: REL.FORMATION,
-
-  weather: REL.WEATHER,
-
-  chance: REL.DROP_RATE,
-  probability: REL.DROP_RATE,
-  rate: REL.DROP_RATE,
-
-  reward: REL.REWARD,
-  rewards: REL.REWARD,
-
-  contents: REL.CONTENTS,
-  drops: REL.CONTENTS,
-
-  date: REL.DATE,
-  released: REL.DATE,
-
-  obtain: REL.METHOD,
-  obtaining: REL.METHOD,
-  method: REL.METHOD,
-  source: REL.METHOD,
-
-  slot: REL.SLOTS,
-  slots: REL.SLOTS,
-
-  floor: REL.FLOORS,
-  floors: REL.FLOORS,
-
-  replacement: REL.REPLACED_BY,
 });
 
 const STATIC_ALIASES = Object.freeze({
@@ -187,12 +136,12 @@ const STATIC_ALIASES = Object.freeze({
     "bombardiro crocodilo",
   ],
 
-  bombardiro: [
+  "bombardiro": [
     "bombardiro",
     "bombardiro crocodilo",
   ],
 
-  tralalero: [
+  "tralalero": [
     "tralalero",
     "tralalero tralala",
   ],
@@ -263,6 +212,7 @@ const STOPWORDS = new Set([
   "trait",
   "ritual",
   "machine",
+  "slap",
 
   "lucky",
   "block",
@@ -315,13 +265,14 @@ const STOPWORDS = new Set([
 ]);
 
 const PAGE_CACHE = new Map();
+const TABLE_CACHE = new Map();
 const FACT_CACHE = new Map();
 const TITLE_CACHE = new Map();
 const ANSWER_CACHE = new Map();
 
-/* ---------------------------------------------------------
-   BASIC HELPERS
---------------------------------------------------------- */
+/* =========================================================
+   BASIC
+========================================================= */
 
 function clean(value, limit = 3000) {
   return String(value ?? "")
@@ -340,9 +291,9 @@ function norm(value) {
     .replace(/[^a-z0-9]+/g, "");
 }
 
-function tokens(value) {
+function words(value) {
   return (
-    clean(value, 1000)
+    clean(value, 1200)
       .toLowerCase()
       .match(/[a-z0-9]+/g) ||
     []
@@ -365,16 +316,6 @@ function clamp(value, min = 0, max = 1) {
   );
 }
 
-function env(name) {
-  return String(
-    process.env[name] ||
-    ""
-  )
-    .trim()
-    .replace(/^Bearer\s+/i, "")
-    .trim();
-}
-
 function nowMs() {
   return Date.now();
 }
@@ -394,6 +335,16 @@ function sleep(ms) {
         ms
       )
   );
+}
+
+function env(name) {
+  return String(
+    process.env[name] ||
+    ""
+  )
+    .trim()
+    .replace(/^Bearer\s+/i, "")
+    .trim();
 }
 
 function errorCode(error) {
@@ -472,15 +423,15 @@ function articleUrl(title) {
   );
 }
 
-/* ---------------------------------------------------------
-   SAFE HTTP
---------------------------------------------------------- */
+/* =========================================================
+   HTTP
+========================================================= */
 
 async function fetchText(
   label,
   url,
   options = {},
-  timeoutMs = 1200
+  timeoutMs = 900
 ) {
   const controller =
     new AbortController();
@@ -501,6 +452,7 @@ async function fetchText(
           url,
           {
             ...options,
+
             signal:
               controller.signal,
           }
@@ -550,7 +502,7 @@ async function fetchJson(
   label,
   url,
   options = {},
-  timeoutMs = 1200
+  timeoutMs = 900
 ) {
   const text =
     await fetchText(
@@ -577,9 +529,9 @@ async function fetchJson(
   }
 }
 
-/* ---------------------------------------------------------
-   HTML / WIKI TEXT CLEANUP
---------------------------------------------------------- */
+/* =========================================================
+   HTML / WIKITEXT
+========================================================= */
 
 function decodeHtmlEntities(value) {
   return String(value ?? "")
@@ -591,26 +543,26 @@ function decodeHtmlEntities(value) {
     .replace(/&gt;/gi, ">")
     .replace(
       /&#(\d+);/g,
-      (_, number) => {
-        const n =
-          Number(number);
+      (_, n) => {
+        const number =
+          Number(n);
 
-        return Number.isFinite(n)
-          ? String.fromCodePoint(n)
+        return Number.isFinite(number)
+          ? String.fromCodePoint(number)
           : " ";
       }
     )
     .replace(
       /&#x([0-9a-f]+);/gi,
-      (_, number) => {
-        const n =
+      (_, n) => {
+        const number =
           Number.parseInt(
-            number,
+            n,
             16
           );
 
-        return Number.isFinite(n)
-          ? String.fromCodePoint(n)
+        return Number.isFinite(number)
+          ? String.fromCodePoint(number)
           : " ";
       }
     );
@@ -649,47 +601,72 @@ function htmlToText(
 }
 
 function stripWiki(value) {
+  let text =
+    String(value ?? "");
+
+  text =
+    text.replace(
+      /<!--[\s\S]*?-->/g,
+      " "
+    );
+
+  text =
+    text.replace(
+      /<ref\b[^>]*>[\s\S]*?<\/ref>/gi,
+      " "
+    );
+
+  text =
+    text.replace(
+      /<ref\b[^>]*\/>/gi,
+      " "
+    );
+
+  text =
+    text.replace(
+      /\[\[([^|\]]+)\|([^\]]+)\]\]/g,
+      "$2"
+    );
+
+  text =
+    text.replace(
+      /\[\[([^\]]+)\]\]/g,
+      "$1"
+    );
+
+  for (
+    let i = 0;
+    i < 5;
+    i++
+  ) {
+    text =
+      text.replace(
+        /\{\{[^{}]*\}\}/g,
+        " "
+      );
+  }
+
+  text =
+    text.replace(
+      /'''?/g,
+      ""
+    );
+
+  text =
+    text.replace(
+      /<[^>]+>/g,
+      " "
+    );
+
   return clean(
-    String(value ?? "")
-      .replace(
-        /<!--[\s\S]*?-->/g,
-        " "
-      )
-      .replace(
-        /<ref\b[^>]*>[\s\S]*?<\/ref>/gi,
-        " "
-      )
-      .replace(
-        /<ref\b[^>]*\/>/gi,
-        " "
-      )
-      .replace(
-        /\[\[([^|\]]+)\|([^\]]+)\]\]/g,
-        "$2"
-      )
-      .replace(
-        /\[\[([^\]]+)\]\]/g,
-        "$1"
-      )
-      .replace(
-        /\{\{[^{}]{0,500}\}\}/g,
-        " "
-      )
-      .replace(
-        /'''?/g,
-        ""
-      )
-      .replace(
-        /<[^>]+>/g,
-        " "
-      ),
+    text,
     3000
   );
 }
 
-/* ---------------------------------------------------------
+/* =========================================================
    QUESTION UNDERSTANDING
---------------------------------------------------------- */
+========================================================= */
 
 function aliasesFor(question) {
   const q =
@@ -788,13 +765,15 @@ function inferRelation(question) {
     ).toLowerCase();
 
   /*
-    IMPORTANT:
-    output-type questions need to be checked
-    before words like "limited" trigger STATUS.
+    Output-type questions BEFORE status words.
+
+    Example:
+    "What limited brainrot..."
+    must be BRAINROT, not STATUS.
   */
 
   if (
-    /\b(?:what|which)(?:\s+[a-z0-9'-]+){0,3}\s+(?:brainrot|brain rot)\b/.test(
+    /\b(?:what|which)(?:\s+[a-z0-9'-]+){0,4}\s+(?:brainrot|brain rot)\b/.test(
       q
     )
   ) {
@@ -802,7 +781,7 @@ function inferRelation(question) {
   }
 
   if (
-    /\b(?:what|which)(?:\s+[a-z0-9'-]+){0,3}\s+gear\b/.test(
+    /\b(?:what|which)(?:\s+[a-z0-9'-]+){0,4}\s+(?:gear|item)\b/.test(
       q
     )
   ) {
@@ -821,7 +800,7 @@ function inferRelation(question) {
   }
 
   if (
-    /\b(?:income|makes? per second|per second|earn(?:s|ing)?)\b/.test(
+    /\b(?:income|income\/s|\$\/s|makes? per second|per second|generation|generates?|earn(?:s|ing)?)\b/.test(
       q
     )
   ) {
@@ -829,7 +808,7 @@ function inferRelation(question) {
   }
 
   if (
-    /\b(?:cost|price|how much)\b/.test(
+    /\b(?:cost|price|buy price|how much)\b/.test(
       q
     )
   ) {
@@ -845,7 +824,7 @@ function inferRelation(question) {
   }
 
   if (
-    /\b(?:multiplier|boost)\b/.test(
+    /\b(?:multiplier|multi|boost)\b/.test(
       q
     )
   ) {
@@ -853,7 +832,7 @@ function inferRelation(question) {
   }
 
   if (
-    /\b(?:requires?|requirement|needed|need to)\b/.test(
+    /\b(?:requires?|requirement|required|needed|materials?)\b/.test(
       q
     )
   ) {
@@ -861,7 +840,7 @@ function inferRelation(question) {
   }
 
   if (
-    /\b(?:spawn|spawns|summon|summons)\b/.test(
+    /\b(?:spawn|spawns|summon|summons|result|outcome)\b/.test(
       q
     )
   ) {
@@ -990,14 +969,14 @@ function candidateEntities(question) {
     out.add(alias);
   }
 
-  const words =
+  const inputWords =
     raw.match(
       /[A-Za-z0-9][A-Za-z0-9'._-]*/g
     ) ||
     [];
 
   const filtered =
-    words.filter(
+    inputWords.filter(
       (word) => {
         const low =
           word.toLowerCase();
@@ -1061,11 +1040,11 @@ function candidateEntities(question) {
     )
     .slice(
       0,
-      14
+      16
     );
 }
 
-function analyzeQuestionDeterministic(question) {
+function analyzeQuestion(question) {
   const q =
     clean(
       question,
@@ -1096,8 +1075,7 @@ function analyzeQuestionDeterministic(question) {
 
   if (
     rebirth &&
-    relation ===
-      REL.GEAR
+    relation === REL.GEAR
   ) {
     entity =
       `Rebirth${rebirth}`;
@@ -1129,310 +1107,130 @@ function analyzeQuestionDeterministic(question) {
         update ||
         rebirth
       )
-        ? 0.88
-        : 0.58,
+        ? 0.92
+        : 0.62,
 
     source:
-      "DETERMINISTIC",
+      "DETERMINISTIC_R21",
   };
 }
 
-/* ---------------------------------------------------------
-   OPTIONAL NVIDIA QUESTION ANALYZER
---------------------------------------------------------- */
+/* =========================================================
+   SIMILARITY
+========================================================= */
 
-function parseModelJson(text) {
-  const raw =
-    String(text ?? "")
-      .replace(
-        /^```(?:json)?\s*/i,
-        ""
-      )
-      .replace(
-        /\s*```$/,
-        ""
-      )
-      .trim();
+function similarity(a, b) {
+  const an =
+    norm(a);
 
-  if (!raw) {
-    throw new Error(
-      "NVIDIA_EMPTY_CONTENT"
-    );
-  }
-
-  try {
-    return JSON.parse(raw);
-  } catch {}
-
-  const first =
-    raw.indexOf("{");
-
-  const last =
-    raw.lastIndexOf("}");
+  const bn =
+    norm(b);
 
   if (
-    first >= 0 &&
-    last > first
+    !an ||
+    !bn
   ) {
-    return JSON.parse(
-      raw.slice(
-        first,
-        last + 1
-      )
-    );
+    return 0;
   }
 
-  throw new Error(
-    "NVIDIA_INVALID_JSON"
+  if (
+    an === bn
+  ) {
+    return 1;
+  }
+
+  if (
+    an.includes(bn) ||
+    bn.includes(an)
+  ) {
+    return 0.94;
+  }
+
+  const aw =
+    new Set(
+      words(a)
+    );
+
+  const bw =
+    new Set(
+      words(b)
+    );
+
+  if (
+    !aw.size ||
+    !bw.size
+  ) {
+    return 0;
+  }
+
+  let same = 0;
+
+  for (
+    const token
+    of aw
+  ) {
+    if (
+      bw.has(token)
+    ) {
+      same++;
+    }
+  }
+
+  return (
+    same /
+    Math.max(
+      aw.size,
+      bw.size
+    )
   );
 }
 
-async function analyzeQuestionAI(
-  question,
-  deadline
+function bestEntitySimilarity(
+  entities,
+  target
 ) {
   if (
-    !env(
-      "NVIDIA_API_KEY"
-    )
+    !target
   ) {
-    return null;
+    return 0;
   }
 
-  const left =
-    timeLeft(deadline);
+  let score = 0;
 
-  if (
-    left < 600
+  for (
+    const entity
+    of entities ||
+    []
   ) {
-    return null;
-  }
-
-  const timeout =
-    Math.max(
-      550,
-
-      Math.min(
-        CFG.NVIDIA_TIMEOUT_MS,
-        left - 80
-      )
-    );
-
-  try {
-    const data =
-      await fetchJson(
-        "NVIDIA_ANALYZE",
-
-        NVIDIA_URL,
-
-        {
-          method:
-            "POST",
-
-          headers: {
-            Authorization:
-              `Bearer ${env(
-                "NVIDIA_API_KEY"
-              )}`,
-
-            "Content-Type":
-              "application/json",
-
-            Accept:
-              "application/json",
-          },
-
-          body:
-            JSON.stringify({
-              model:
-                process.env
-                  .NVIDIA_MODEL ||
-                DEFAULT_MODEL,
-
-              stream:
-                false,
-
-              temperature:
-                0.1,
-
-              max_tokens:
-                180,
-
-              chat_template_kwargs: {
-                enable_thinking:
-                  false,
-              },
-
-              messages: [
-                {
-                  role:
-                    "system",
-
-                  content: [
-                    "Parse a Steal a Brainrot question.",
-                    "Do not answer the question.",
-                    "Identify the entity and relation being requested.",
-                    "Correct obvious shorthand such as Flash TP = Flash Teleport.",
-                    "Return JSON only.",
-                    "Allowed relations:",
-                    Object.values(
-                      REL
-                    ).join(", "),
-                    'Schema: {"entity":"string or null","relation":"RELATION","update":"string or null","rebirth":0,"current":false,"aliases":[]}',
-                  ].join("\n"),
-                },
-
-                {
-                  role:
-                    "user",
-
-                  content:
-                    question,
-                },
-              ],
-            }),
-        },
-
-        timeout
-      );
-
-    const raw =
-      parseModelJson(
-        data?.choices?.[0]
-          ?.message?.content
-      );
-
-    const relation =
-      Object.values(
-        REL
-      ).includes(
-        String(
-          raw?.relation
-        ).toUpperCase()
-      )
-        ? String(
-            raw.relation
-          ).toUpperCase()
-        : REL.TEXT;
-
-    return {
-      entity:
-        clean(
-          raw?.entity,
-          140
-        ) ||
-        null,
-
-      relation,
-
-      update:
-        clean(
-          raw?.update,
-          30
-        ) ||
-        null,
-
-      rebirth:
-        Number(
-          raw?.rebirth
-        ) ||
-        null,
-
-      current:
-        Boolean(
-          raw?.current
-        ),
-
-      entities: [
-        clean(
-          raw?.entity,
-          140
-        ),
-
-        ...(
-          Array.isArray(
-            raw?.aliases
-          )
-            ? raw.aliases
-            : []
-        ).map(
-          (x) =>
-            clean(
-              x,
-              140
-            )
-        ),
-      ].filter(
-        Boolean
-      ),
-
-      confidence:
-        0.84,
-
-      source:
-        "NVIDIA_ANALYZER",
-    };
-  } catch {
-    return null;
-  }
-}
-
-function mergeAnalysis(
-  deterministic,
-  ai
-) {
-  if (!ai) {
-    return deterministic;
-  }
-
-  const entity =
-    deterministic.entity ||
-    ai.entity;
-
-  const relation =
-    deterministic.relation !==
-    REL.TEXT
-      ? deterministic.relation
-      : ai.relation;
-
-  return {
-    entity,
-
-    entities: [
-      ...new Set([
-        ...deterministic.entities,
-        ...ai.entities,
-      ]),
-    ].filter(Boolean),
-
-    relation,
-
-    update:
-      deterministic.update ||
-      ai.update,
-
-    rebirth:
-      deterministic.rebirth ||
-      ai.rebirth,
-
-    current:
-      deterministic.current ||
-      ai.current,
-
-    confidence:
+    score =
       Math.max(
-        deterministic.confidence,
-        ai.confidence
-      ),
+        score,
+        similarity(
+          entity,
+          target
+        )
+      );
+  }
 
-    source:
-      "MERGED",
-  };
+  return score;
 }
 
-/* ---------------------------------------------------------
+function pageMatchesEntity(
+  page,
+  analysis
+) {
+  return (
+    bestEntitySimilarity(
+      analysis.entities,
+      page.title
+    ) >=
+    0.68
+  );
+}
+
+/* =========================================================
    MEDIAWIKI
---------------------------------------------------------- */
+========================================================= */
 
 function wikiParseUrl(title) {
   const params =
@@ -1478,6 +1276,7 @@ async function fetchCanonicalPage(
   if (cached) {
     return {
       ...cached,
+
       cache:
         "HIT",
     };
@@ -1487,7 +1286,7 @@ async function fetchCanonicalPage(
     timeLeft(deadline);
 
   if (
-    left < 300
+    left < 250
   ) {
     throw new Error(
       "WIKI_BUDGET_EXHAUSTED"
@@ -1496,11 +1295,11 @@ async function fetchCanonicalPage(
 
   const timeout =
     Math.max(
-      350,
+      300,
 
       Math.min(
         CFG.WIKI_TIMEOUT_MS,
-        left - 60
+        left - 40
       )
     );
 
@@ -1520,7 +1319,7 @@ async function fetchCanonicalPage(
               "application/json",
 
             "User-Agent":
-              "ChromeCodeSniper-R20",
+              "ChromeCodeSniper-R21",
           },
         },
 
@@ -1633,6 +1432,7 @@ async function fetchCanonicalPage(
 
     return {
       ...page,
+
       cache:
         "MISS",
     };
@@ -1643,13 +1443,14 @@ async function fetchCanonicalPage(
   }
 
   /*
-    HTML fallback.
-    Only attempt when enough budget remains.
+    Fandom HTML often 403s.
+    Only try it when MediaWiki API failed and
+    enough budget remains.
   */
 
   if (
     timeLeft(deadline) <
-    450
+    350
   ) {
     throw new Error(
       errors.join("|") ||
@@ -1670,14 +1471,14 @@ async function fetchCanonicalPage(
               "text/html",
 
             "User-Agent":
-              "ChromeCodeSniper-R20",
+              "ChromeCodeSniper-R21",
           },
         },
 
         Math.min(
-          800,
+          550,
           timeLeft(deadline) -
-          50
+          30
         )
       );
 
@@ -1722,6 +1523,7 @@ async function fetchCanonicalPage(
 
     return {
       ...page,
+
       cache:
         "MISS",
     };
@@ -1762,7 +1564,7 @@ async function wikiSearchTitles(
     timeLeft(deadline);
 
   if (
-    left < 300
+    left < 220
   ) {
     return [];
   }
@@ -1795,9 +1597,6 @@ async function wikiSearchTitles(
           )
         ),
 
-      srenablerewrites:
-        "1",
-
       format:
         "json",
     });
@@ -1807,7 +1606,7 @@ async function wikiSearchTitles(
       await fetchJson(
         "FANDOM_SEARCH",
 
-        `${FANDOM_API}?${params}`,
+        `${FANDOM_API}?${params.toString()}`,
 
         {
           headers: {
@@ -1815,13 +1614,13 @@ async function wikiSearchTitles(
               "application/json",
 
             "User-Agent":
-              "ChromeCodeSniper-R20",
+              "ChromeCodeSniper-R21",
           },
         },
 
         Math.min(
-          800,
-          left - 50
+          600,
+          left - 25
         )
       );
 
@@ -1855,9 +1654,9 @@ async function wikiSearchTitles(
   }
 }
 
-/* ---------------------------------------------------------
-   SOURCE ROUTING
---------------------------------------------------------- */
+/* =========================================================
+   SOURCE ROUTER
+========================================================= */
 
 function hubTitles(question) {
   const q =
@@ -1997,112 +1796,35 @@ function hubTitles(question) {
   ];
 }
 
-function titleSimilarity(a, b) {
-  const an =
-    norm(a);
-
-  const bn =
-    norm(b);
-
-  if (
-    !an ||
-    !bn
-  ) {
-    return 0;
-  }
-
-  if (
-    an === bn
-  ) {
-    return 1;
-  }
-
-  if (
-    an.includes(bn) ||
-    bn.includes(an)
-  ) {
-    return 0.92;
-  }
-
-  const at =
-    new Set(
-      tokens(a)
-    );
-
-  const bt =
-    new Set(
-      tokens(b)
-    );
-
-  if (
-    !at.size ||
-    !bt.size
-  ) {
-    return 0;
-  }
-
-  let same = 0;
-
-  for (
-    const value
-    of at
-  ) {
-    if (
-      bt.has(value)
-    ) {
-      same++;
-    }
-  }
-
-  return (
-    same /
-    Math.max(
-      at.size,
-      bt.size
-    )
-  );
-}
-
 async function canonicalStage(
   question,
   analysis,
   deadline
 ) {
-  const requested =
+  const titles =
     [];
 
   /*
-    Direct exact entity-page attempt happens immediately.
-    This fixes questions such as:
-    "How much does Tralalero Tralala cost?"
+    Exact entity page FIRST.
   */
 
   if (
     analysis.entity
   ) {
-    requested.push(
+    titles.push(
       analysis.entity
     );
   }
 
-  for (
-    const title
-    of hubTitles(question)
-  ) {
-    requested.push(title);
-  }
-
   if (
     analysis.current &&
-    clean(
-      question
-    )
+    question
       .toLowerCase()
       .includes(
         "rebirth"
       )
   ) {
-    requested.unshift(
+    titles.unshift(
       "Rebirth"
     );
   }
@@ -2113,18 +1835,23 @@ async function canonicalStage(
     const major =
       String(
         analysis.update
-      )
-        .split(".")[0];
+      ).split(".")[0];
 
-    requested.unshift(
+    titles.unshift(
       `Update Log/Update ${major}`,
       "Update Log"
     );
   }
 
+  titles.push(
+    ...hubTitles(
+      question
+    )
+  );
+
   const directTitles = [
     ...new Set(
-      requested
+      titles
         .map(
           (x) =>
             clean(
@@ -2139,12 +1866,7 @@ async function canonicalStage(
     CFG.MAX_CANONICAL_PAGES
   );
 
-  /*
-    Direct page fetches and MediaWiki title search
-    run together.
-  */
-
-  const directPromise =
+  const pagePromise =
     Promise.allSettled(
       directTitles.map(
         (title) =>
@@ -2165,11 +1887,11 @@ async function canonicalStage(
       : Promise.resolve([]);
 
   const [
-    directSettled,
-    searchTitles,
+    settled,
+    foundTitles,
   ] =
     await Promise.all([
-      directPromise,
+      pagePromise,
       searchPromise,
     ]);
 
@@ -2181,7 +1903,7 @@ async function canonicalStage(
 
   for (
     const row
-    of directSettled
+    of settled
   ) {
     if (
       row.status ===
@@ -2200,41 +1922,42 @@ async function canonicalStage(
   }
 
   /*
-    Search results are used only to fill missing
-    entity pages, not blindly fetch everything.
+    Fetch only best matching search pages.
   */
 
   if (
+    analysis.entity &&
+    foundTitles.length &&
     timeLeft(deadline) >
-    350 &&
-    searchTitles.length
+      300
   ) {
     const existing =
       new Set(
         pages.map(
           (page) =>
-            page.title
-              .toLowerCase()
+            norm(
+              page.title
+            )
         )
       );
 
     const ranked =
-      searchTitles
+      foundTitles
         .map(
           (title) => ({
             title,
 
             score:
               Math.max(
-                titleSimilarity(
+                similarity(
                   analysis.entity,
                   title
                 ),
 
                 ...analysis.entities.map(
-                  (candidate) =>
-                    titleSimilarity(
-                      candidate,
+                  (entity) =>
+                    similarity(
+                      entity,
                       title
                     )
                 )
@@ -2249,10 +1972,11 @@ async function canonicalStage(
         .filter(
           (row) =>
             row.score >=
-            0.38 &&
+            0.45 &&
             !existing.has(
-              row.title
-                .toLowerCase()
+              norm(
+                row.title
+              )
             )
         )
         .slice(
@@ -2264,31 +1988,51 @@ async function canonicalStage(
           )
         );
 
-    const more =
-      await Promise.allSettled(
-        ranked.map(
-          (row) =>
-            fetchCanonicalPage(
-              row.title,
-              deadline
-            )
-        )
-      );
-
-    for (
-      const row
-      of more
+    if (
+      ranked.length
     ) {
-      if (
-        row.status ===
-        "fulfilled"
-      ) {
-        pages.push(
-          row.value
+      const more =
+        await Promise.allSettled(
+          ranked.map(
+            (row) =>
+              fetchCanonicalPage(
+                row.title,
+                deadline
+              )
+          )
         );
+
+      for (
+        const row
+        of more
+      ) {
+        if (
+          row.status ===
+          "fulfilled"
+        ) {
+          pages.push(
+            row.value
+          );
+        }
       }
     }
   }
+
+  /*
+    Exact entity pages before generic hubs.
+  */
+
+  pages.sort(
+    (a, b) =>
+      bestEntitySimilarity(
+        analysis.entities,
+        b.title
+      ) -
+      bestEntitySimilarity(
+        analysis.entities,
+        a.title
+      )
+  );
 
   return {
     pages,
@@ -2296,48 +2040,500 @@ async function canonicalStage(
   };
 }
 
-/* ---------------------------------------------------------
+/* =========================================================
+   TABLE HEADER UNDERSTANDING
+========================================================= */
+
+function normalizedHeaderText(header) {
+  return clean(
+    header,
+    220
+  )
+    .toLowerCase()
+    .replace(
+      /[_-]+/g,
+      " "
+    )
+    .replace(
+      /[^a-z0-9/$%+ ]+/g,
+      " "
+    )
+    .replace(
+      /\s+/g,
+      " "
+    )
+    .trim();
+}
+
+function classifySubjectHeader(header) {
+  const h =
+    normalizedHeaderText(
+      header
+    );
+
+  if (!h) {
+    return null;
+  }
+
+  if (
+    /^(?:name|character|entity)$/.test(
+      h
+    )
+  ) {
+    return SUBJECT_KIND.GENERIC;
+  }
+
+  if (
+    /\bbrainrot\b/.test(
+      h
+    )
+  ) {
+    return SUBJECT_KIND.BRAINROT;
+  }
+
+  if (
+    /\bmutation\b/.test(
+      h
+    )
+  ) {
+    return SUBJECT_KIND.MUTATION;
+  }
+
+  if (
+    /\btrait\b/.test(
+      h
+    )
+  ) {
+    return SUBJECT_KIND.TRAIT;
+  }
+
+  if (
+    /\britual\b/.test(
+      h
+    )
+  ) {
+    return SUBJECT_KIND.RITUAL;
+  }
+
+  if (
+    /\bgear\b/.test(
+      h
+    ) ||
+    /\bitem\b/.test(
+      h
+    )
+  ) {
+    return SUBJECT_KIND.GEAR;
+  }
+
+  if (
+    /\bmachine\b/.test(
+      h
+    )
+  ) {
+    return SUBJECT_KIND.MACHINE;
+  }
+
+  if (
+    /\blucky block\b/.test(
+      h
+    )
+  ) {
+    return SUBJECT_KIND.LUCKY_BLOCK;
+  }
+
+  if (
+    /\bevent\b/.test(
+      h
+    )
+  ) {
+    return SUBJECT_KIND.EVENT;
+  }
+
+  if (
+    /\bslap\b/.test(
+      h
+    )
+  ) {
+    return SUBJECT_KIND.SLAP;
+  }
+
+  if (
+    /^rebirth(?: number| level)?$/.test(
+      h
+    )
+  ) {
+    return SUBJECT_KIND.REBIRTH;
+  }
+
+  return null;
+}
+
+function headerRelation(header) {
+  const h =
+    normalizedHeaderText(
+      header
+    );
+
+  if (!h) {
+    return null;
+  }
+
+  if (
+    /\bmultiplier\b/.test(h) ||
+    /^multi$/.test(h) ||
+    /\bboost\b/.test(h) ||
+    /\bmult\b/.test(h)
+  ) {
+    return REL.MULTIPLIER;
+  }
+
+  if (
+    /\bcost\b/.test(h) ||
+    /\bprice\b/.test(h) ||
+    /\bbuy price\b/.test(h) ||
+    /\bpurchase\b/.test(h)
+  ) {
+    return REL.COST;
+  }
+
+  if (
+    /\bincome\b/.test(h) ||
+    /\bgeneration\b/.test(h) ||
+    /\bgenerates\b/.test(h) ||
+    /\bearnings?\b/.test(h) ||
+    /\bper second\b/.test(h) ||
+    /\$\/s/.test(h)
+  ) {
+    return REL.INCOME;
+  }
+
+  if (
+    /\brarity\b/.test(h) ||
+    /^tier$/.test(h)
+  ) {
+    return REL.RARITY;
+  }
+
+  if (
+    /\bstatus\b/.test(h) ||
+    /\bobtainability\b/.test(h) ||
+    /\bavailability\b/.test(h)
+  ) {
+    return REL.STATUS;
+  }
+
+  if (
+    /\brebirth\b/.test(h) ||
+    /\brebirth requirement\b/.test(h)
+  ) {
+    return REL.REBIRTH;
+  }
+
+  if (
+    /\bgear\b/.test(h) ||
+    /\bitem\b/.test(h) ||
+    /\bunlock\b/.test(h) ||
+    /\btool\b/.test(h) ||
+    /\bability\b/.test(h)
+  ) {
+    return REL.GEAR;
+  }
+
+  if (
+    /\brequires?\b/.test(h) ||
+    /\brequirement\b/.test(h) ||
+    /\brequired\b/.test(h) ||
+    /\bneeded\b/.test(h) ||
+    /\bmaterials?\b/.test(h)
+  ) {
+    return REL.REQUIREMENT;
+  }
+
+  if (
+    /\bspawns?\b/.test(h) ||
+    /\bsummons?\b/.test(h) ||
+    /\bresult\b/.test(h) ||
+    /\boutcome\b/.test(h)
+  ) {
+    return REL.SPAWN;
+  }
+
+  if (
+    /\bformation\b/.test(h) ||
+    /\bplacement\b/.test(h) ||
+    /\barrangement\b/.test(h)
+  ) {
+    return REL.FORMATION;
+  }
+
+  if (
+    /\bweather\b/.test(h)
+  ) {
+    return REL.WEATHER;
+  }
+
+  if (
+    /\bchance\b/.test(h) ||
+    /\bprobability\b/.test(h) ||
+    /\bdrop rate\b/.test(h) ||
+    /^rate$/.test(h)
+  ) {
+    return REL.DROP_RATE;
+  }
+
+  if (
+    /\breward\b/.test(h) ||
+    /\brewards\b/.test(h)
+  ) {
+    return REL.REWARD;
+  }
+
+  if (
+    /\bcontents?\b/.test(h) ||
+    /\bdrops?\b/.test(h)
+  ) {
+    return REL.CONTENTS;
+  }
+
+  if (
+    /\brelease date\b/.test(h) ||
+    /^date$/.test(h) ||
+    /\breleased\b/.test(h)
+  ) {
+    return REL.DATE;
+  }
+
+  if (
+    /\bobtain\b/.test(h) ||
+    /\bobtainment\b/.test(h) ||
+    /\bmethod\b/.test(h) ||
+    /\bsource\b/.test(h)
+  ) {
+    return REL.METHOD;
+  }
+
+  if (
+    /\bslots?\b/.test(h)
+  ) {
+    return REL.SLOTS;
+  }
+
+  if (
+    /\bfloors?\b/.test(h)
+  ) {
+    return REL.FLOORS;
+  }
+
+  if (
+    /\breplaced by\b/.test(h) ||
+    /\breplacement\b/.test(h)
+  ) {
+    return REL.REPLACED_BY;
+  }
+
+  if (
+    /\bbrainrot\b/.test(h)
+  ) {
+    return REL.BRAINROT;
+  }
+
+  return null;
+}
+
+/* =========================================================
+   CELL VALUE NORMALIZATION
+========================================================= */
+
+function normalizeValue(
+  value,
+  relation
+) {
+  const text =
+    clean(
+      value,
+      700
+    );
+
+  if (!text) {
+    return null;
+  }
+
+  if (
+    relation ===
+    REL.REBIRTH
+  ) {
+    const match =
+      text.match(
+        /\brebirth\s*#?\s*(\d{1,3})\b/i
+      ) ||
+      text.match(
+        /^\s*#?\s*(\d{1,3})\s*$/
+      );
+
+    return match
+      ? `Rebirth${Number(
+          match[1]
+        )}`
+      : text;
+  }
+
+  if (
+    relation ===
+    REL.MULTIPLIER
+  ) {
+    const match =
+      text.match(
+        /\b\d+(?:\.\d+)?\s*[x×]\b/i
+      ) ||
+      text.match(
+        /\b\d+(?:\.\d+)?\s*[x×]/i
+      );
+
+    if (match) {
+      return match[0]
+        .replace(
+          /\s+/g,
+          ""
+        )
+        .replace(
+          /×/g,
+          "x"
+        );
+    }
+  }
+
+  if (
+    relation ===
+    REL.COST
+  ) {
+    const match =
+      text.match(
+        /\$\s*\d+(?:\.\d+)?\s*[KMBTQ]?/i
+      );
+
+    if (match) {
+      return match[0]
+        .replace(
+          /\s+/g,
+          ""
+        );
+    }
+  }
+
+  if (
+    relation ===
+    REL.INCOME
+  ) {
+    const match =
+      text.match(
+        /\$\s*\d+(?:\.\d+)?\s*[KMBTQ]?\s*(?:\/\s*s|\/sec|per\s*second)?/i
+      );
+
+    if (match) {
+      let output =
+        match[0]
+          .replace(
+            /\s+/g,
+            ""
+          )
+          .replace(
+            /persecond/i,
+            "/s"
+          )
+          .replace(
+            /\/sec$/i,
+            "/s"
+          );
+
+      if (
+        !/\/s$/i.test(
+          output
+        )
+      ) {
+        output += "/s";
+      }
+
+      return output;
+    }
+  }
+
+  if (
+    relation ===
+    REL.DROP_RATE
+  ) {
+    const match =
+      text.match(
+        /\b\d+(?:\.\d+)?\s*%/
+      );
+
+    if (match) {
+      return match[0]
+        .replace(
+          /\s+/g,
+          ""
+        );
+    }
+  }
+
+  return text;
+}
+
+/* =========================================================
    HTML TABLE PARSER
---------------------------------------------------------- */
+========================================================= */
 
 function parseHtmlTables(page) {
+  const cacheKey =
+    `HTML:${page.title}:${page.source}`;
+
+  const cached =
+    cacheGet(
+      TABLE_CACHE,
+      cacheKey
+    );
+
+  if (cached) {
+    return cached;
+  }
+
   const html =
     String(
       page?.html ||
       ""
     );
 
-  const tables =
-    [];
-
-  const tableMatches =
+  const tableBlocks =
     html.match(
       /<table\b[^>]*>[\s\S]*?<\/table>/gi
     ) ||
     [];
 
+  const tables =
+    [];
+
   for (
     const tableHtml
-    of tableMatches
+    of tableBlocks
   ) {
-    const rowMatches =
+    const rowBlocks =
       tableHtml.match(
         /<tr\b[^>]*>[\s\S]*?<\/tr>/gi
       ) ||
       [];
 
-    const rawRows =
+    const parsedRows =
       [];
 
     for (
       const rowHtml
-      of rowMatches
+      of rowBlocks
     ) {
       const cells =
         [];
 
       const re =
-        /<(th|td)\b[^>]*>([\s\S]*?)<\/\1>/gi;
+        /<(th|td)\b([^>]*)>([\s\S]*?)<\/\1>/gi;
 
       let match;
 
@@ -2355,10 +2551,14 @@ function parseHtmlTables(page) {
             match[1]
               .toLowerCase(),
 
+          attributes:
+            match[2] ||
+            "",
+
           text:
             htmlToText(
-              match[2],
-              1000
+              match[3],
+              1200
             ),
         });
       }
@@ -2366,32 +2566,41 @@ function parseHtmlTables(page) {
       if (
         cells.length
       ) {
-        rawRows.push(
+        parsedRows.push(
           cells
         );
       }
     }
 
     if (
-      !rawRows.length
+      !parsedRows.length
     ) {
       continue;
     }
 
+    /*
+      Find the most likely real header row.
+    */
+
     let headerIndex =
+      -1;
+
+    let bestHeaderScore =
       -1;
 
     for (
       let i = 0;
       i <
       Math.min(
-        rawRows.length,
-        4
+        parsedRows.length,
+        5
       );
       i++
     ) {
       const row =
-        rawRows[i];
+        parsedRows[i];
+
+      let score = 0;
 
       const thCount =
         row.filter(
@@ -2399,27 +2608,47 @@ function parseHtmlTables(page) {
             cell.type === "th"
         ).length;
 
-      const semantic =
-        row.some(
-          (cell) =>
-            normalizeHeader(
-              cell.text
-            )
-        );
+      score +=
+        thCount * 2;
+
+      for (
+        const cell
+        of row
+      ) {
+        if (
+          classifySubjectHeader(
+            cell.text
+          )
+        ) {
+          score += 3;
+        }
+
+        if (
+          headerRelation(
+            cell.text
+          )
+        ) {
+          score += 2;
+        }
+      }
 
       if (
-        thCount >=
-        Math.ceil(
-          row.length /
-          2
-        ) ||
-        semantic
+        score >
+        bestHeaderScore
       ) {
+        bestHeaderScore =
+          score;
+
         headerIndex =
           i;
-
-        break;
       }
+    }
+
+    if (
+      bestHeaderScore <= 0
+    ) {
+      headerIndex =
+        -1;
     }
 
     let headers =
@@ -2432,7 +2661,7 @@ function parseHtmlTables(page) {
       headerIndex >= 0
     ) {
       headers =
-        rawRows[
+        parsedRows[
           headerIndex
         ].map(
           (cell, index) =>
@@ -2445,7 +2674,7 @@ function parseHtmlTables(page) {
     }
 
     const rows =
-      rawRows
+      parsedRows
         .slice(
           dataStart
         )
@@ -2465,6 +2694,12 @@ function parseHtmlTables(page) {
             )
         );
 
+    if (
+      !rows.length
+    ) {
+      continue;
+    }
+
     tables.push({
       type:
         "HTML_TABLE",
@@ -2475,14 +2710,34 @@ function parseHtmlTables(page) {
     });
   }
 
+  cacheSet(
+    TABLE_CACHE,
+    cacheKey,
+    tables,
+    CFG.TABLE_CACHE_TTL_MS
+  );
+
   return tables;
 }
 
-/* ---------------------------------------------------------
+/* =========================================================
    WIKITEXT TABLE PARSER
---------------------------------------------------------- */
+========================================================= */
 
-function parseWikitextTables(page) {
+function parseWikiTables(page) {
+  const cacheKey =
+    `WIKI:${page.title}:${page.source}`;
+
+  const cached =
+    cacheGet(
+      TABLE_CACHE,
+      cacheKey
+    );
+
+  if (cached) {
+    return cached;
+  }
+
   const wiki =
     String(
       page?.wikitext ||
@@ -2506,29 +2761,29 @@ function parseWikitextTables(page) {
     const block
     of blocks
   ) {
-    const sections =
+    const logicalRows =
       block.split(
         /\n\|-\s*[^\n]*/g
       );
 
-    const raw =
+    const rows =
       [];
 
     for (
-      const section
-      of sections
+      const rawRow
+      of logicalRows
     ) {
+      const cells =
+        [];
+
       const lines =
-        section
+        rawRow
           .split(/\n/)
           .map(
             (line) =>
               line.trim()
           )
           .filter(Boolean);
-
-      const row =
-        [];
 
       for (
         const line
@@ -2537,85 +2792,91 @@ function parseWikitextTables(page) {
         if (
           line.startsWith("!")
         ) {
-          const cells =
+          const values =
             line
               .slice(1)
               .split("!!")
-              .map(stripWiki);
-
-          row.push(
-            ...cells.map(
-              (text) => ({
-                type:
-                  "th",
-
-                text,
-              })
-            )
-          );
-        }
-
-        if (
-          line.startsWith("|") &&
-          !line.startsWith("|}")
-        ) {
-          const content =
-            line.slice(1);
-
-          const cells =
-            content
-              .split("||")
               .map(
-                (cell) => {
-                  /*
-                    Remove style/attribute fragments such as:
-                    style="..." | VALUE
-                  */
-
+                (value) => {
                   const pieces =
-                    cell.split("|");
+                    value.split("|");
 
                   return stripWiki(
-                    pieces.length >
-                    1
-                      ? pieces[
-                          pieces.length -
-                          1
-                        ]
-                      : cell
+                    pieces[
+                      pieces.length -
+                      1
+                    ]
                   );
                 }
               );
 
-          row.push(
-            ...cells.map(
-              (text) => ({
-                type:
-                  "td",
+          for (
+            const value
+            of values
+          ) {
+            cells.push({
+              type:
+                "th",
 
-                text,
-              })
-            )
-          );
+              text:
+                value,
+            });
+          }
+        } else if (
+          line.startsWith("|") &&
+          !line.startsWith("|}")
+        ) {
+          const values =
+            line
+              .slice(1)
+              .split("||")
+              .map(
+                (value) => {
+                  const pieces =
+                    value.split("|");
+
+                  return stripWiki(
+                    pieces[
+                      pieces.length -
+                      1
+                    ]
+                  );
+                }
+              );
+
+          for (
+            const value
+            of values
+          ) {
+            cells.push({
+              type:
+                "td",
+
+              text:
+                value,
+            });
+          }
         }
       }
 
       if (
-        row.length
+        cells.length
       ) {
-        raw.push(row);
+        rows.push(
+          cells
+        );
       }
     }
 
     if (
-      raw.length <
+      rows.length <
       2
     ) {
       continue;
     }
 
     let headerIndex =
-      raw.findIndex(
+      rows.findIndex(
         (row) =>
           row.some(
             (cell) =>
@@ -2625,14 +2886,13 @@ function parseWikitextTables(page) {
       );
 
     if (
-      headerIndex <
-      0
+      headerIndex < 0
     ) {
       headerIndex = 0;
     }
 
     const headers =
-      raw[
+      rows[
         headerIndex
       ].map(
         (cell, index) =>
@@ -2640,8 +2900,8 @@ function parseWikitextTables(page) {
           `column_${index + 1}`
       );
 
-    const rows =
-      raw
+    const data =
+      rows
         .slice(
           headerIndex + 1
         )
@@ -2662,322 +2922,1192 @@ function parseWikitextTables(page) {
         );
 
     if (
-      rows.length
+      data.length
     ) {
       tables.push({
         type:
           "WIKITEXT_TABLE",
 
         headers,
-        rows,
+
+        rows:
+          data,
       });
     }
   }
 
+  cacheSet(
+    TABLE_CACHE,
+    cacheKey,
+    tables,
+    CFG.TABLE_CACHE_TTL_MS
+  );
+
   return tables;
 }
 
-/* ---------------------------------------------------------
-   HEADER NORMALIZATION
---------------------------------------------------------- */
+function allTables(page) {
+  return [
+    ...parseHtmlTables(
+      page
+    ),
 
-function normalizeHeader(header) {
-  const h =
+    ...parseWikiTables(
+      page
+    ),
+  ];
+}
+
+/* =========================================================
+   TABLE SCHEMA
+========================================================= */
+
+function deriveTableSchema(table) {
+  const headers =
+    table.headers ||
+    [];
+
+  const subjectCandidates =
+    [];
+
+  for (
+    let i = 0;
+    i <
+    headers.length;
+    i++
+  ) {
+    const kind =
+      classifySubjectHeader(
+        headers[i]
+      );
+
+    if (
+      kind
+    ) {
+      subjectCandidates.push({
+        index:
+          i,
+
+        kind,
+      });
+    }
+  }
+
+  /*
+    Prefer actual entity columns over Rebirth
+    when both exist.
+
+    Example:
+      Gear | Rebirth
+    means Gear is subject, Rebirth is property.
+
+    But:
+      Rebirth | Gear
+    means Rebirth is subject because no stronger
+    entity subject exists.
+  */
+
+  let subject =
+    subjectCandidates.find(
+      (row) =>
+        row.kind !==
+        SUBJECT_KIND.REBIRTH
+    ) ||
+    subjectCandidates.find(
+      (row) =>
+        row.kind ===
+        SUBJECT_KIND.REBIRTH
+    ) ||
+    null;
+
+  const columns =
+    headers.map(
+      (header, index) => ({
+        index,
+
+        header,
+
+        subjectKind:
+          classifySubjectHeader(
+            header
+          ),
+
+        relation:
+          headerRelation(
+            header
+          ),
+      })
+    );
+
+  /*
+    If chosen subject column has a property relation,
+    don't also treat it as a property.
+  */
+
+  if (
+    subject
+  ) {
+    columns[
+      subject.index
+    ].relation =
+      null;
+  }
+
+  return {
+    subjectIndex:
+      subject?.index ??
+      -1,
+
+    subjectKind:
+      subject?.kind ??
+      null,
+
+    columns,
+  };
+}
+
+/* =========================================================
+   DIRECT TABLE LOOKUP
+========================================================= */
+
+function directResult(
+  answer,
+  page,
+  claimType,
+  confidence = 0.985
+) {
+  const value =
     clean(
-      header,
-      200
-    )
-      .toLowerCase()
-      .replace(
-        /[^a-z0-9/$% +_-]+/g,
-        " "
-      )
-      .trim();
+      answer,
+      500
+    );
 
-  if (!h) {
+  if (!value) {
     return null;
   }
 
+  return {
+    answer:
+      value,
+
+    candidateAnswer:
+      value,
+
+    confidence,
+
+    reason:
+      "accepted_real_table_cell",
+
+    route:
+      "CANONICAL_REAL_TABLE",
+
+    sourceCount:
+      1,
+
+    sources: [
+      {
+        host:
+          "stealabrainrot.fandom.com",
+
+        title:
+          page.title,
+
+        url:
+          page.url,
+
+        claimType,
+      },
+    ],
+  };
+}
+
+function bestSubjectRow(
+  table,
+  schema,
+  analysis
+) {
   if (
-    /^name$/.test(h) ||
-    /brainrot name/.test(h) ||
-    /mutation name/.test(h) ||
-    /trait name/.test(h) ||
-    /ritual name/.test(h)
+    schema.subjectIndex <
+    0
   ) {
-    return REL.TEXT;
+    return null;
   }
 
-  if (
-    /^brainrot$/.test(h)
+  let best =
+    null;
+
+  for (
+    const row
+    of table.rows
   ) {
-    return REL.BRAINROT;
+    const subject =
+      clean(
+        row.cells[
+          schema.subjectIndex
+        ],
+        300
+      );
+
+    if (!subject) {
+      continue;
+    }
+
+    let score =
+      bestEntitySimilarity(
+        analysis.entities,
+        subject
+      );
+
+    if (
+      analysis.entity
+    ) {
+      score =
+        Math.max(
+          score,
+          similarity(
+            analysis.entity,
+            subject
+          )
+        );
+    }
+
+    if (
+      analysis.rebirth &&
+      schema.subjectKind ===
+        SUBJECT_KIND.REBIRTH
+    ) {
+      const normalized =
+        normalizeValue(
+          subject,
+          REL.REBIRTH
+        );
+
+      if (
+        normalized ===
+        `Rebirth${analysis.rebirth}`
+      ) {
+        score = 1;
+      }
+    }
+
+    if (
+      !best ||
+      score >
+      best.score
+    ) {
+      best = {
+        row,
+        subject,
+        score,
+      };
+    }
   }
 
-  if (
-    /gear|ability|tool/.test(h)
-  ) {
-    return REL.GEAR;
+  return best;
+}
+
+function relationColumn(
+  schema,
+  relation
+) {
+  return schema.columns.find(
+    (column) =>
+      column.relation ===
+      relation
+  ) ||
+  null;
+}
+
+function directForwardLookup(
+  page,
+  table,
+  schema,
+  analysis
+) {
+  const requested =
+    analysis.relation;
+
+  const column =
+    relationColumn(
+      schema,
+      requested
+    );
+
+  if (!column) {
+    return null;
   }
 
-  if (
-    /multi|multiplier|boost/.test(h)
-  ) {
-    return REL.MULTIPLIER;
-  }
+  /*
+    NORMAL ENTITY TABLE:
+      Mutation | Multiplier
+      Rainbow  | 10x
+  */
 
   if (
-    /cost|price|buy/.test(h)
+    schema.subjectIndex >=
+    0
   ) {
-    return REL.COST;
+    const matched =
+      bestSubjectRow(
+        table,
+        schema,
+        analysis
+      );
+
+    if (
+      matched &&
+      matched.score >=
+      0.45
+    ) {
+      const value =
+        normalizeValue(
+          matched.row.cells[
+            column.index
+          ],
+          requested
+        );
+
+      if (
+        value
+      ) {
+        return directResult(
+          value,
+          page,
+          `${table.type}:ROW_COLUMN`,
+          Math.min(
+            0.995,
+            0.93 +
+            matched.score *
+            0.065
+          )
+        );
+      }
+    }
   }
 
-  if (
-    /income|earn|money per second|\$\/s|per second/.test(
-      h
-    )
-  ) {
-    return REL.INCOME;
-  }
+  /*
+    ENTITY PAGE CONTEXT:
+
+      /wiki/Tralalero_Tralala
+
+      Income | Cost | Rarity
+      $50K/s | $10M | Brainrot God
+
+    No entity/name column required.
+  */
 
   if (
-    /rarity|tier/.test(h)
+    schema.subjectIndex <
+    0 &&
+    pageMatchesEntity(
+      page,
+      analysis
+    ) &&
+    table.rows.length <=
+      6
   ) {
-    return REL.RARITY;
-  }
+    for (
+      const row
+      of table.rows
+    ) {
+      const value =
+        normalizeValue(
+          row.cells[
+            column.index
+          ],
+          requested
+        );
 
-  if (
-    /status|obtainability|available/.test(
-      h
-    )
-  ) {
-    return REL.STATUS;
-  }
-
-  if (
-    /rebirth|level/.test(h)
-  ) {
-    return REL.REBIRTH;
-  }
-
-  if (
-    /requires?|requirement|needed|materials?/.test(
-      h
-    )
-  ) {
-    return REL.REQUIREMENT;
-  }
-
-  if (
-    /spawn|result|summon|outcome/.test(
-      h
-    )
-  ) {
-    return REL.SPAWN;
-  }
-
-  if (
-    /formation|placement|arrange/.test(
-      h
-    )
-  ) {
-    return REL.FORMATION;
-  }
-
-  if (
-    /weather/.test(h)
-  ) {
-    return REL.WEATHER;
-  }
-
-  if (
-    /chance|probability|drop rate|rate/.test(
-      h
-    )
-  ) {
-    return REL.DROP_RATE;
-  }
-
-  if (
-    /reward/.test(h)
-  ) {
-    return REL.REWARD;
-  }
-
-  if (
-    /contents?|drops?/.test(h)
-  ) {
-    return REL.CONTENTS;
-  }
-
-  if (
-    /date|release/.test(h)
-  ) {
-    return REL.DATE;
-  }
-
-  if (
-    /obtain|method|source/.test(h)
-  ) {
-    return REL.METHOD;
-  }
-
-  if (
-    /slots?/.test(h)
-  ) {
-    return REL.SLOTS;
-  }
-
-  if (
-    /floors?/.test(h)
-  ) {
-    return REL.FLOORS;
-  }
-
-  if (
-    /replaced by|replacement/.test(
-      h
-    )
-  ) {
-    return REL.REPLACED_BY;
+      if (
+        value
+      ) {
+        return directResult(
+          value,
+          page,
+          `${table.type}:PAGE_CONTEXT_CELL`,
+          0.99
+        );
+      }
+    }
   }
 
   return null;
 }
 
-function normalizeFactValue(
-  value,
-  relation
+function directRebirthReverse(
+  page,
+  table,
+  schema,
+  analysis
 ) {
-  const text =
-    clean(
-      value,
-      500
-    );
+  /*
+    Asked:
+      What rebirth unlocks Flash Teleport?
 
-  if (!text) {
+    Table:
+      Rebirth | Gear
+      18      | Flash Teleport
+
+    Find Flash Teleport anywhere in row,
+    then return Rebirth subject/property.
+  */
+
+  if (
+    analysis.relation !==
+    REL.REBIRTH
+  ) {
     return null;
   }
 
-  if (
-    relation ===
-    REL.REBIRTH
-  ) {
-    const match =
-      text.match(
-        /\brebirth\s*#?\s*(\d{1,3})\b/i
-      ) ||
-      text.match(
-        /^\s*(\d{1,3})\s*$/
-      );
-
-    return match
-      ? `Rebirth${Number(
-          match[1]
-        )}`
-      : text;
-  }
+  let rebirthIndex =
+    -1;
 
   if (
-    relation ===
-    REL.MULTIPLIER
+    schema.subjectKind ===
+    SUBJECT_KIND.REBIRTH
   ) {
-    const match =
-      text.match(
-        /\b\d+(?:\.\d+)?\s*[x×]/i
+    rebirthIndex =
+      schema.subjectIndex;
+  } else {
+    const col =
+      relationColumn(
+        schema,
+        REL.REBIRTH
       );
 
-    if (match) {
-      return match[0]
-        .replace(
-          /\s+/g,
-          ""
-        )
-        .replace(
-          "×",
-          "x"
-        );
+    if (
+      col
+    ) {
+      rebirthIndex =
+        col.index;
     }
   }
 
   if (
-    relation ===
-    REL.DROP_RATE
+    rebirthIndex <
+    0
   ) {
-    const match =
-      text.match(
-        /\b\d+(?:\.\d+)?\s*%/
-      );
-
-    if (match) {
-      return match[0]
-        .replace(
-          /\s+/g,
-          ""
-        );
-    }
+    return null;
   }
 
-  if (
-    relation ===
-    REL.COST
+  for (
+    const row
+    of table.rows
   ) {
-    const match =
-      text.match(
-        /\$\s*\d+(?:\.\d+)?\s*[KMBT]?/i
-      );
+    let bestMatch = 0;
 
-    if (match) {
-      return match[0]
-        .replace(
-          /\s+/g,
-          ""
+    for (
+      let i = 0;
+      i <
+      row.cells.length;
+      i++
+    ) {
+      if (
+        i === rebirthIndex
+      ) {
+        continue;
+      }
+
+      const cell =
+        clean(
+          row.cells[i],
+          400
+        );
+
+      bestMatch =
+        Math.max(
+          bestMatch,
+
+          bestEntitySimilarity(
+            analysis.entities,
+            cell
+          ),
+
+          analysis.entity
+            ? similarity(
+                analysis.entity,
+                cell
+              )
+            : 0
         );
     }
-  }
 
-  if (
-    relation ===
-    REL.INCOME
-  ) {
-    const match =
-      text.match(
-        /\$\s*\d+(?:\.\d+)?\s*[KMBT]?\s*(?:\/\s*s|per\s*second)?/i
-      );
-
-    if (match) {
-      let output =
-        match[0]
-          .replace(
-            /\s+/g,
-            ""
-          );
-
-      output =
-        output.replace(
-          /persecond/i,
-          "/s"
+    if (
+      bestMatch >=
+      0.55
+    ) {
+      const answer =
+        normalizeValue(
+          row.cells[
+            rebirthIndex
+          ],
+          REL.REBIRTH
         );
 
       if (
-        !/\/s$/i.test(
-          output
-        )
+        answer
       ) {
-        output +=
-          "/s";
+        return directResult(
+          answer,
+          page,
+          `${table.type}:REVERSE_REBIRTH`,
+          Math.min(
+            0.995,
+            0.94 +
+            bestMatch *
+            0.055
+          )
+        );
       }
-
-      return output;
     }
   }
 
-  return text;
+  return null;
 }
 
-/* ---------------------------------------------------------
+function directGearFromRebirth(
+  page,
+  table,
+  schema,
+  analysis
+) {
+  /*
+    Asked:
+      What gear is unlocked at Rebirth 18?
+  */
+
+  if (
+    analysis.relation !==
+    REL.GEAR ||
+    !analysis.rebirth
+  ) {
+    return null;
+  }
+
+  let rebirthIndex =
+    -1;
+
+  if (
+    schema.subjectKind ===
+    SUBJECT_KIND.REBIRTH
+  ) {
+    rebirthIndex =
+      schema.subjectIndex;
+  } else {
+    const col =
+      relationColumn(
+        schema,
+        REL.REBIRTH
+      );
+
+    if (
+      col
+    ) {
+      rebirthIndex =
+        col.index;
+    }
+  }
+
+  if (
+    rebirthIndex <
+    0
+  ) {
+    return null;
+  }
+
+  const gearColumns =
+    schema.columns.filter(
+      (column) =>
+        column.relation ===
+        REL.GEAR ||
+        column.relation ===
+        REL.REWARD
+    );
+
+  for (
+    const row
+    of table.rows
+  ) {
+    const rebirth =
+      normalizeValue(
+        row.cells[
+          rebirthIndex
+        ],
+        REL.REBIRTH
+      );
+
+    if (
+      rebirth !==
+      `Rebirth${analysis.rebirth}`
+    ) {
+      continue;
+    }
+
+    /*
+      Strong typed gear/reward column.
+    */
+
+    for (
+      const column
+      of gearColumns
+    ) {
+      const value =
+        clean(
+          row.cells[
+            column.index
+          ],
+          300
+        );
+
+      if (
+        value &&
+        /[A-Za-z]/.test(
+          value
+        )
+      ) {
+        return directResult(
+          value,
+          page,
+          `${table.type}:REBIRTH_TO_GEAR`,
+          0.995
+        );
+      }
+    }
+
+    /*
+      Fallback:
+      take a meaningful text cell that is not
+      rebirth/cash/multiplier/percent.
+    */
+
+    for (
+      let i = 0;
+      i <
+      row.cells.length;
+      i++
+    ) {
+      if (
+        i === rebirthIndex
+      ) {
+        continue;
+      }
+
+      const value =
+        clean(
+          row.cells[i],
+          300
+        );
+
+      if (
+        !value ||
+        !/[A-Za-z]/.test(
+          value
+        )
+      ) {
+        continue;
+      }
+
+      if (
+        /^rebirth\b/i.test(
+          value
+        ) ||
+        /^\$/.test(
+          value
+        ) ||
+        /^\d+(?:\.\d+)?[x×%]?$/i.test(
+          value
+        )
+      ) {
+        continue;
+      }
+
+      return directResult(
+        value,
+        page,
+        `${table.type}:REBIRTH_TEXT_FALLBACK`,
+        0.96
+      );
+    }
+  }
+
+  return null;
+}
+
+function directRitualReverse(
+  page,
+  table,
+  schema,
+  analysis
+) {
+  /*
+    Asked:
+      What ritual spawns Los Crocodillitos?
+
+    Find Los Crocodillitos in SPAWN column,
+    return ritual subject.
+  */
+
+  if (
+    analysis.relation !==
+    REL.RITUAL ||
+    schema.subjectKind !==
+    SUBJECT_KIND.RITUAL
+  ) {
+    return null;
+  }
+
+  const spawnCol =
+    relationColumn(
+      schema,
+      REL.SPAWN
+    );
+
+  if (!spawnCol) {
+    return null;
+  }
+
+  for (
+    const row
+    of table.rows
+  ) {
+    const spawn =
+      clean(
+        row.cells[
+          spawnCol.index
+        ],
+        400
+      );
+
+    const score =
+      Math.max(
+        bestEntitySimilarity(
+          analysis.entities,
+          spawn
+        ),
+
+        analysis.entity
+          ? similarity(
+              analysis.entity,
+              spawn
+            )
+          : 0
+      );
+
+    if (
+      score >=
+      0.55
+    ) {
+      const ritual =
+        clean(
+          row.cells[
+            schema.subjectIndex
+          ],
+          300
+        );
+
+      if (
+        ritual
+      ) {
+        return directResult(
+          ritual,
+          page,
+          `${table.type}:REVERSE_RITUAL`,
+          0.98
+        );
+      }
+    }
+  }
+
+  return null;
+}
+
+function directTableLookup(
+  question,
+  analysis,
+  pages
+) {
+  for (
+    const page
+    of pages
+  ) {
+    const tables =
+      allTables(
+        page
+      );
+
+    for (
+      const table
+      of tables
+    ) {
+      const schema =
+        deriveTableSchema(
+          table
+        );
+
+      /*
+        Most specific reverse cases first.
+      */
+
+      const reverseRebirth =
+        directRebirthReverse(
+          page,
+          table,
+          schema,
+          analysis
+        );
+
+      if (
+        reverseRebirth
+      ) {
+        return reverseRebirth;
+      }
+
+      const gear =
+        directGearFromRebirth(
+          page,
+          table,
+          schema,
+          analysis
+        );
+
+      if (
+        gear
+      ) {
+        return gear;
+      }
+
+      const ritual =
+        directRitualReverse(
+          page,
+          table,
+          schema,
+          analysis
+        );
+
+      if (
+        ritual
+      ) {
+        return ritual;
+      }
+
+      const normal =
+        directForwardLookup(
+          page,
+          table,
+          schema,
+          analysis
+        );
+
+      if (
+        normal
+      ) {
+        return normal;
+      }
+    }
+  }
+
+  return null;
+}
+
+/* =========================================================
+   INFOBOX - LABEL/VALUE MUST STAY PAIRED
+========================================================= */
+
+function extractInfoboxFields(page) {
+  const html =
+    String(
+      page?.html ||
+      ""
+    );
+
+  const fields =
+    [];
+
+  const infobox =
+    html.match(
+      /<(?:aside|table)\b[^>]*(?:portable-infobox|infobox)[^>]*>[\s\S]*?<\/(?:aside|table)>/i
+    )?.[0] ||
+    "";
+
+  if (infobox) {
+    /*
+      Fandom portable infobox:
+      pi-data-label + pi-data-value
+    */
+
+    const items =
+      infobox.match(
+        /<div\b[^>]*class=["'][^"']*pi-item[^"']*pi-data[^"']*["'][^>]*>[\s\S]*?<\/div>\s*<\/div>|<div\b[^>]*class=["'][^"']*pi-item[^"']*pi-data[^"']*["'][^>]*>[\s\S]*?<\/div>/gi
+      ) ||
+      [];
+
+    for (
+      const item
+      of items
+    ) {
+      const labelHtml =
+        item.match(
+          /<[^>]*class=["'][^"']*pi-data-label[^"']*["'][^>]*>([\s\S]*?)<\//i
+        )?.[1];
+
+      const valueHtml =
+        item.match(
+          /<[^>]*class=["'][^"']*pi-data-value[^"']*["'][^>]*>([\s\S]*?)<\//i
+        )?.[1];
+
+      const label =
+        htmlToText(
+          labelHtml || "",
+          200
+        );
+
+      const value =
+        htmlToText(
+          valueHtml || "",
+          800
+        );
+
+      if (
+        label &&
+        value
+      ) {
+        fields.push({
+          label,
+          value,
+          source:
+            "PORTABLE_INFOBOX",
+        });
+      }
+    }
+
+    /*
+      Classic table infobox.
+    */
+
+    for (
+      const match
+      of infobox.matchAll(
+        /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi
+      )
+    ) {
+      const cells = [
+        ...match[1].matchAll(
+          /<(th|td)\b[^>]*>([\s\S]*?)<\/\1>/gi
+        ),
+      ].map(
+        (cell) =>
+          htmlToText(
+            cell[2],
+            800
+          )
+      );
+
+      if (
+        cells.length >= 2
+      ) {
+        const label =
+          clean(
+            cells[0],
+            200
+          );
+
+        const value =
+          clean(
+            cells
+              .slice(1)
+              .join(" | "),
+            800
+          );
+
+        if (
+          label &&
+          value
+        ) {
+          fields.push({
+            label,
+            value,
+            source:
+              "TABLE_INFOBOX",
+          });
+        }
+      }
+    }
+  }
+
+  /*
+    Wikitext template fallback.
+  */
+
+  if (
+    page?.wikitext
+  ) {
+    const firstTemplate =
+      String(
+        page.wikitext
+      ).match(
+        /\{\{[\s\S]{0,18000}?\n\}\}/
+      )?.[0] ||
+      "";
+
+    for (
+      const line
+      of firstTemplate.split(
+        /\n/
+      )
+    ) {
+      const match =
+        line.match(
+          /^\s*\|\s*([^=|]+?)\s*=\s*(.*?)\s*$/
+        );
+
+      if (!match) {
+        continue;
+      }
+
+      const label =
+        stripWiki(
+          match[1]
+        );
+
+      const value =
+        stripWiki(
+          match[2]
+        );
+
+      if (
+        label &&
+        value
+      ) {
+        fields.push({
+          label,
+          value,
+          source:
+            "WIKITEXT_INFOBOX",
+        });
+      }
+    }
+  }
+
+  /*
+    Dedupe exact label/value pairs.
+  */
+
+  const seen =
+    new Set();
+
+  return fields.filter(
+    (field) => {
+      const key =
+        `${norm(
+          field.label
+        )}|${norm(
+          field.value
+        )}`;
+
+      if (
+        seen.has(key)
+      ) {
+        return false;
+      }
+
+      seen.add(key);
+      return true;
+    }
+  );
+}
+
+function directInfoboxLookup(
+  analysis,
+  pages
+) {
+  for (
+    const page
+    of pages
+  ) {
+    if (
+      !pageMatchesEntity(
+        page,
+        analysis
+      )
+    ) {
+      continue;
+    }
+
+    const fields =
+      extractInfoboxFields(
+        page
+      );
+
+    for (
+      const field
+      of fields
+    ) {
+      const relation =
+        headerRelation(
+          field.label
+        );
+
+      if (
+        relation !==
+        analysis.relation
+      ) {
+        continue;
+      }
+
+      const value =
+        normalizeValue(
+          field.value,
+          relation
+        );
+
+      if (
+        value
+      ) {
+        return {
+          answer:
+            value,
+
+          candidateAnswer:
+            value,
+
+          confidence:
+            0.985,
+
+          reason:
+            "accepted_infobox_field_pair",
+
+          route:
+            "CANONICAL_INFOBOX",
+
+          sourceCount:
+            1,
+
+          sources: [
+            {
+              host:
+                "stealabrainrot.fandom.com",
+
+              title:
+                page.title,
+
+              url:
+                page.url,
+
+              claimType:
+                `${field.source}:${relation}`,
+            },
+          ],
+        };
+      }
+    }
+  }
+
+  return null;
+}
+
+/* =========================================================
    FACT GRAPH
---------------------------------------------------------- */
+========================================================= */
 
 function makeFact(
   subject,
@@ -2985,19 +4115,18 @@ function makeFact(
   object,
   page,
   confidence,
-  extractor,
-  evidence = ""
+  extractor
 ) {
   const s =
     clean(
       subject,
-      220
+      300
     );
 
   const o =
     clean(
       object,
-      500
+      600
     );
 
   if (
@@ -3018,9 +4147,7 @@ function makeFact(
       o,
 
     confidence:
-      clamp(
-        confidence
-      ),
+      clamp(confidence),
 
     extractor,
 
@@ -3029,240 +4156,17 @@ function makeFact(
 
     sourceUrl:
       page.url,
-
-    sourceType:
-      page.source,
-
-    evidence:
-      clean(
-        evidence ||
-        `${s} | ${relation} | ${o}`,
-        1000
-      ),
   };
 }
 
-function dedupeFacts(facts) {
-  const map =
-    new Map();
-
-  for (
-    const fact
-    of facts
-  ) {
-    if (!fact) {
-      continue;
-    }
-
-    const key =
-      `${norm(
-        fact.subject
-      )}|${fact.relation}|${norm(
-        fact.object
-      )}`;
-
-    const old =
-      map.get(key);
-
-    if (
-      !old ||
-      fact.confidence >
-      old.confidence
-    ) {
-      map.set(
-        key,
-        fact
-      );
-    }
-  }
-
-  return [
-    ...map.values(),
-  ];
-}
-
-function inverseFacts(fact) {
-  const out =
-    [];
-
-  /*
-    Rebirth18 -> GEAR -> Flash Teleport
-    Flash Teleport -> REBIRTH -> Rebirth18
-  */
-
-  if (
-    fact.relation ===
-      REL.GEAR &&
-    /^rebirth\d+$/i.test(
-      norm(
-        fact.subject
-      )
-    )
-  ) {
-    out.push(
-      makeFact(
-        fact.object,
-        REL.REBIRTH,
-        fact.subject,
-        {
-          title:
-            fact.sourceTitle,
-
-          url:
-            fact.sourceUrl,
-
-          source:
-            fact.sourceType,
-        },
-        fact.confidence -
-          0.01,
-        "INVERSE",
-        fact.evidence
-      )
-    );
-  }
-
-  /*
-    Ritual -> SPAWN -> Brainrot
-    Brainrot -> RITUAL -> Ritual
-  */
-
-  if (
-    fact.relation ===
-      REL.SPAWN &&
-    /ritual/i.test(
-      fact.subject
-    )
-  ) {
-    out.push(
-      makeFact(
-        fact.object,
-        REL.RITUAL,
-        fact.subject,
-        {
-          title:
-            fact.sourceTitle,
-
-          url:
-            fact.sourceUrl,
-
-          source:
-            fact.sourceType,
-        },
-        fact.confidence -
-          0.02,
-        "INVERSE",
-        fact.evidence
-      )
-    );
-  }
-
-  /*
-    Entity -> REBIRTH -> RebirthN
-    RebirthN -> REWARD -> Entity
-    only when there is no better typed gear relation.
-  */
-
-  if (
-    fact.relation ===
-      REL.REBIRTH &&
-    /^rebirth\d+$/i.test(
-      norm(
-        fact.object
-      )
-    )
-  ) {
-    out.push(
-      makeFact(
-        fact.object,
-        REL.REWARD,
-        fact.subject,
-        {
-          title:
-            fact.sourceTitle,
-
-          url:
-            fact.sourceUrl,
-
-          source:
-            fact.sourceType,
-        },
-        fact.confidence -
-          0.03,
-        "INVERSE",
-        fact.evidence
-      )
-    );
-  }
-
-  return out.filter(Boolean);
-}
-
-/* ---------------------------------------------------------
-   TABLE -> FACTS
---------------------------------------------------------- */
-
-function factsFromTable(
+function tableFacts(
   page,
   table
 ) {
-  if (
-    !table.headers.length ||
-    !table.rows.length
-  ) {
-    return [];
-  }
-
-  const relations =
-    table.headers.map(
-      normalizeHeader
+  const schema =
+    deriveTableSchema(
+      table
     );
-
-  let subjectIndex =
-    relations.findIndex(
-      (relation) =>
-        relation ===
-        REL.TEXT
-    );
-
-  /*
-    If no generic Name column,
-    Brainrot column can be subject.
-  */
-
-  if (
-    subjectIndex < 0
-  ) {
-    subjectIndex =
-      relations.findIndex(
-        (relation) =>
-          relation ===
-          REL.BRAINROT
-      );
-  }
-
-  /*
-    Rebirth tables often use Rebirth
-    as the row's subject.
-  */
-
-  if (
-    subjectIndex < 0
-  ) {
-    const rebirthIndex =
-      relations.findIndex(
-        (relation) =>
-          relation ===
-          REL.REBIRTH
-      );
-
-    if (
-      rebirthIndex >= 0
-    ) {
-      subjectIndex =
-        rebirthIndex;
-    }
-  }
 
   const facts =
     [];
@@ -3271,53 +4175,32 @@ function factsFromTable(
     const row
     of table.rows
   ) {
-    if (
-      !row.cells.length
-    ) {
-      continue;
-    }
-
-    /*
-      Page-context ownership:
-
-      On /wiki/Tralalero_Tralala:
-
-      Income | Cost
-      $50K/s | $10M
-
-      Subject = Tralalero Tralala
-    */
-
     let subject =
-      subjectIndex >= 0
-        ? row.cells[
-            subjectIndex
-          ]
-        : page.title;
-
-    subject =
-      clean(
-        subject,
-        220
-      );
-
-    const subjectRelation =
-      subjectIndex >= 0
-        ? relations[
-            subjectIndex
-          ]
-        : null;
+      page.title;
 
     if (
-      subjectRelation ===
-      REL.REBIRTH
+      schema.subjectIndex >=
+      0
     ) {
       subject =
-        normalizeFactValue(
-          subject,
-          REL.REBIRTH
-        ) ||
-        subject;
+        clean(
+          row.cells[
+            schema.subjectIndex
+          ],
+          300
+        );
+
+      if (
+        schema.subjectKind ===
+        SUBJECT_KIND.REBIRTH
+      ) {
+        subject =
+          normalizeValue(
+            subject,
+            REL.REBIRTH
+          ) ||
+          subject;
+      }
     }
 
     if (!subject) {
@@ -3325,254 +4208,125 @@ function factsFromTable(
     }
 
     for (
-      let i = 0;
-      i <
-      row.cells.length;
-      i++
+      const column
+      of schema.columns
     ) {
       if (
-        i === subjectIndex
+        column.index ===
+        schema.subjectIndex ||
+        !column.relation
       ) {
         continue;
       }
 
-      const relation =
-        relations[i];
-
-      if (!relation) {
-        continue;
-      }
-
-      let value =
-        normalizeFactValue(
-          row.cells[i],
-          relation
+      const value =
+        normalizeValue(
+          row.cells[
+            column.index
+          ],
+          column.relation
         );
 
       if (!value) {
         continue;
       }
 
-      const evidence =
-        row.cells.join(
-          " | "
-        );
-
-      /*
-        Special case:
-        Rebirth row + untyped Name/Brainrot value.
-      */
-
-      if (
-        /^rebirth\d+$/i.test(
-          norm(subject)
-        ) &&
-        relation ===
-          REL.BRAINROT
-      ) {
-        const gearLike =
-          /gear|item|reward/i.test(
-            table.headers[i] ||
-            ""
-          );
-
-        const finalRelation =
-          gearLike
-            ? REL.GEAR
-            : REL.REWARD;
-
-        facts.push(
-          makeFact(
-            subject,
-            finalRelation,
-            value,
-            page,
-            0.99,
-            table.type,
-            evidence
-          )
-        );
-
-        continue;
-      }
-
       facts.push(
         makeFact(
           subject,
-          relation,
+          column.relation,
           value,
           page,
-          0.985,
-          table.type,
-          evidence
+          0.97,
+          table.type
         )
       );
-    }
-  }
 
-  const withInverse = [
-    ...facts,
-  ];
-
-  for (
-    const fact
-    of facts
-  ) {
-    withInverse.push(
-      ...inverseFacts(
-        fact
-      )
-    );
-  }
-
-  return withInverse.filter(Boolean);
-}
-
-/* ---------------------------------------------------------
-   INFOBOX -> FACTS
---------------------------------------------------------- */
-
-function infoboxPairs(page) {
-  const html =
-    String(
-      page?.html ||
-      ""
-    );
-
-  const pairs =
-    [];
-
-  const source =
-    html.match(
-      /<(?:aside|table)\b[^>]*(?:portable-infobox|infobox)[^>]*>[\s\S]*?<\/(?:aside|table)>/i
-    )?.[0] ||
-    "";
-
-  if (source) {
-    for (
-      const match
-      of source.matchAll(
-        /<div\b[^>]*data-source=["']([^"']+)["'][^>]*>([\s\S]*?)<\/div>/gi
-      )
-    ) {
-      const key =
-        clean(
-          match[1],
-          120
-        );
-
-      const value =
-        htmlToText(
-          match[2],
-          800
-        );
+      /*
+        Useful reverse facts.
+      */
 
       if (
-        key &&
-        value
+        schema.subjectKind ===
+          SUBJECT_KIND.REBIRTH &&
+        column.relation ===
+          REL.GEAR
       ) {
-        pairs.push([
-          key,
-          value,
-        ]);
-      }
-    }
-
-    for (
-      const row
-      of source.matchAll(
-        /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi
-      )
-    ) {
-      const cells = [
-        ...row[1].matchAll(
-          /<t[dh]\b[^>]*>([\s\S]*?)<\/t[dh]>/gi
-        ),
-      ].map(
-        (m) =>
-          htmlToText(
-            m[1],
-            600
+        facts.push(
+          makeFact(
+            value,
+            REL.REBIRTH,
+            subject,
+            page,
+            0.965,
+            "REVERSE_TABLE"
           )
-      );
+        );
+      }
 
       if (
-        cells.length >= 2
+        schema.subjectKind ===
+          SUBJECT_KIND.RITUAL &&
+        column.relation ===
+          REL.SPAWN
       ) {
-        pairs.push([
-          cells[0],
-          cells
-            .slice(1)
-            .join(" | "),
-        ]);
-      }
-    }
-  }
-
-  /*
-    Wikitext infobox fallback.
-  */
-
-  if (
-    page?.wikitext
-  ) {
-    const template =
-      String(
-        page.wikitext
-      ).match(
-        /\{\{[\s\S]{0,18000}?\n\}\}/
-      )?.[0] ||
-      "";
-
-    for (
-      const line
-      of template.split(
-        /\n/
-      )
-    ) {
-      const match =
-        line.match(
-          /^\s*\|\s*([^=|]+?)\s*=\s*(.*?)\s*$/
+        facts.push(
+          makeFact(
+            value,
+            REL.RITUAL,
+            subject,
+            page,
+            0.95,
+            "REVERSE_TABLE"
+          )
         );
-
-      if (!match) {
-        continue;
       }
 
-      pairs.push([
-        stripWiki(
-          match[1]
-        ),
-        stripWiki(
-          match[2]
-        ),
-      ]);
+      if (
+        column.relation ===
+          REL.REBIRTH &&
+        schema.subjectKind ===
+          SUBJECT_KIND.GEAR
+      ) {
+        facts.push(
+          makeFact(
+            value,
+            REL.GEAR,
+            subject,
+            page,
+            0.965,
+            "REVERSE_TABLE"
+          )
+        );
+      }
     }
   }
 
-  return pairs;
+  return facts.filter(Boolean);
 }
 
-function factsFromInfobox(page) {
+function infoboxFacts(page) {
   const facts =
     [];
 
   for (
-    const [
-      key,
-      rawValue,
-    ] of infoboxPairs(page)
+    const field
+    of extractInfoboxFields(
+      page
+    )
   ) {
     const relation =
-      normalizeHeader(key);
+      headerRelation(
+        field.label
+      );
 
     if (!relation) {
       continue;
     }
 
     const value =
-      normalizeFactValue(
-        rawValue,
+      normalizeValue(
+        field.value,
         relation
       );
 
@@ -3586,9 +4340,8 @@ function factsFromInfobox(page) {
         relation,
         value,
         page,
-        0.99,
-        "INFOBOX",
-        `${key} | ${rawValue}`
+        0.96,
+        field.source
       )
     );
   }
@@ -3596,249 +4349,97 @@ function factsFromInfobox(page) {
   return facts.filter(Boolean);
 }
 
-/* ---------------------------------------------------------
-   PROSE -> FACTS
---------------------------------------------------------- */
-
-function factsFromProse(page) {
-  const text =
-    page.text ||
-    "";
-
-  const facts =
-    [];
-
-  const add = (
-    relation,
-    regex,
-    transform = (x) => x
-  ) => {
-    const match =
-      text.match(regex);
-
-    if (
-      !match?.[1]
-    ) {
-      return;
-    }
-
-    const value =
-      transform(
-        clean(
-          match[1],
-          300
-        )
-      );
-
-    if (!value) {
-      return;
-    }
-
-    facts.push(
-      makeFact(
-        page.title,
-        relation,
-        value,
-        page,
-        0.90,
-        "PROSE",
-        match[0]
-      )
-    );
-  };
-
-  add(
-    REL.COST,
-    /\bcosts?\s+\$?\s*(\d+(?:\.\d+)?\s*[KMBT]?)/i,
-    (x) =>
-      `$${x.replace(
-        /\s+/g,
-        ""
-      )}`
-  );
-
-  add(
-    REL.INCOME,
-    /\b(?:income|makes?|generates?)\s+(?:of\s+)?\$?\s*(\d+(?:\.\d+)?\s*[KMBT]?)\s*(?:\/\s*s|per\s*second)/i,
-    (x) =>
-      `$${x.replace(
-        /\s+/g,
-        ""
-      )}/s`
-  );
-
-  add(
-    REL.MULTIPLIER,
-    /\b(?:multiplier|boost)\s+(?:of\s+|is\s+)?(\d+(?:\.\d+)?\s*[x×])/i,
-    (x) =>
-      x
-        .replace(
-          /\s+/g,
-          ""
-        )
-        .replace(
-          "×",
-          "x"
-        )
-  );
-
-  return facts.filter(Boolean);
-}
-
-function factsFromPage(page) {
-  const key =
-    `${page.title}|${page.source}`;
+function pageFacts(page) {
+  const cacheKey =
+    `${page.title}:${page.source}`;
 
   const cached =
     cacheGet(
       FACT_CACHE,
-      key
+      cacheKey
     );
 
   if (cached) {
     return cached;
   }
 
-  const facts =
-    [];
-
-  facts.push(
-    ...factsFromInfobox(
+  const facts = [
+    ...infoboxFacts(
       page
-    )
-  );
-
-  const htmlTables =
-    parseHtmlTables(
-      page
-    );
-
-  const wikiTables =
-    parseWikitextTables(
-      page
-    );
+    ),
+  ];
 
   for (
     const table
-    of [
-      ...htmlTables,
-      ...wikiTables,
-    ]
+    of allTables(
+      page
+    )
   ) {
     facts.push(
-      ...factsFromTable(
+      ...tableFacts(
         page,
         table
       )
     );
   }
 
-  facts.push(
-    ...factsFromProse(
-      page
-    )
-  );
-
-  const deduped =
-    dedupeFacts(
-      facts
-    );
-
-  cacheSet(
-    FACT_CACHE,
-    key,
-    deduped,
-    CFG.FACT_CACHE_TTL_MS
-  );
-
-  return deduped;
-}
-
-/* ---------------------------------------------------------
-   FACT MATCHING
---------------------------------------------------------- */
-
-function entityScore(
-  wanted,
-  actual
-) {
-  if (
-    !wanted ||
-    !actual
-  ) {
-    return 0;
-  }
-
-  const w =
-    norm(wanted);
-
-  const a =
-    norm(actual);
-
-  if (
-    !w ||
-    !a
-  ) {
-    return 0;
-  }
-
-  if (
-    w === a
-  ) {
-    return 1;
-  }
-
-  if (
-    w.includes(a) ||
-    a.includes(w)
-  ) {
-    return 0.94;
-  }
-
-  const wt =
-    new Set(
-      tokens(wanted)
-    );
-
-  const at =
-    new Set(
-      tokens(actual)
-    );
-
-  let overlap = 0;
+  const dedupe =
+    new Map();
 
   for (
-    const token
-    of wt
+    const fact
+    of facts
   ) {
+    if (!fact) {
+      continue;
+    }
+
+    const key =
+      `${norm(
+        fact.subject
+      )}:${fact.relation}:${norm(
+        fact.object
+      )}`;
+
+    const old =
+      dedupe.get(key);
+
     if (
-      at.has(token)
+      !old ||
+      fact.confidence >
+      old.confidence
     ) {
-      overlap++;
+      dedupe.set(
+        key,
+        fact
+      );
     }
   }
 
-  return (
-    overlap /
-    Math.max(
-      wt.size,
-      at.size,
-      1
-    )
+  const result = [
+    ...dedupe.values(),
+  ];
+
+  cacheSet(
+    FACT_CACHE,
+    cacheKey,
+    result,
+    CFG.FACT_CACHE_TTL_MS
   );
+
+  return result;
 }
 
-function queryFacts(
+function factGraphLookup(
   analysis,
-  facts
+  pages
 ) {
-  const relation =
-    analysis.relation;
+  const facts =
+    pages.flatMap(
+      pageFacts
+    );
 
-  const entity =
-    analysis.entity;
-
-  const candidates =
+  const matches =
     [];
 
   for (
@@ -3847,86 +4448,73 @@ function queryFacts(
   ) {
     if (
       fact.relation !==
-      relation
+      analysis.relation
     ) {
       continue;
     }
 
-    let eScore =
-      entity
-        ? entityScore(
-            entity,
+    let score =
+      analysis.entity
+        ? similarity(
+            analysis.entity,
             fact.subject
           )
         : 0.7;
 
-    /*
-      Try every entity alias/candidate.
-    */
-
-    for (
-      const alias
-      of analysis.entities ||
-      []
-    ) {
-      eScore =
-        Math.max(
-          eScore,
-          entityScore(
-            alias,
-            fact.subject
-          )
-        );
-    }
+    score =
+      Math.max(
+        score,
+        bestEntitySimilarity(
+          analysis.entities,
+          fact.subject
+        )
+      );
 
     if (
-      entity &&
-      eScore <
-      0.42
+      analysis.entity &&
+      score <
+      0.48
     ) {
       continue;
     }
 
-    const score =
-      fact.confidence *
-      (
-        entity
-          ? eScore
-          : 0.9
-      );
-
-    candidates.push({
+    matches.push({
       fact,
-      score,
+
+      score:
+        score *
+        fact.confidence,
     });
   }
 
-  candidates.sort(
+  matches.sort(
     (a, b) =>
       b.score -
       a.score
   );
 
   if (
-    !candidates.length
+    !matches.length
   ) {
     return null;
   }
 
   const best =
-    candidates[0];
+    matches[0];
 
-  /*
-    Do not silently accept two equally strong
-    conflicting canonical answers.
-  */
+  if (
+    best.score <
+    0.68
+  ) {
+    return null;
+  }
 
   const conflict =
-    candidates.find(
+    matches.find(
       (row, index) =>
         index > 0 &&
         row.score >=
-        best.score - 0.03 &&
+        best.score - 0.025 &&
         norm(
           row.fact.object
         ) !==
@@ -3935,44 +4523,8 @@ function queryFacts(
         )
     );
 
-  if (conflict) {
-    return {
-      answer:
-        "UNKNOWN",
-
-      candidateAnswer:
-        best.fact.object,
-
-      confidence:
-        Math.min(
-          0.65,
-          best.score
-        ),
-
-      reason:
-        "fact_conflict",
-
-      route:
-        "FACT_CONFLICT",
-
-      sourceCount:
-        2,
-
-      sources: [
-        factSource(
-          best.fact
-        ),
-
-        factSource(
-          conflict.fact
-        ),
-      ],
-    };
-  }
-
   if (
-    best.score <
-    0.68
+    conflict
   ) {
     return null;
   }
@@ -3986,9 +4538,9 @@ function queryFacts(
 
     confidence:
       Math.min(
-        0.995,
+        0.97,
         Math.max(
-          0.90,
+          0.88,
           best.score
         )
       ),
@@ -4003,44 +4555,39 @@ function queryFacts(
       1,
 
     sources: [
-      factSource(
-        best.fact
-      ),
+      {
+        host:
+          "stealabrainrot.fandom.com",
+
+        title:
+          best.fact
+            .sourceTitle,
+
+        url:
+          best.fact
+            .sourceUrl,
+
+        claimType:
+          `${best.fact.extractor}:${best.fact.relation}`,
+      },
     ],
   };
 }
 
-function factSource(fact) {
-  return {
-    host:
-      "stealabrainrot.fandom.com",
+/* =========================================================
+   CURRENT REBIRTH
+========================================================= */
 
-    title:
-      fact.sourceTitle,
-
-    url:
-      fact.sourceUrl,
-
-    claimType:
-      `${fact.extractor}:${fact.relation}`,
-  };
-}
-
-/* ---------------------------------------------------------
-   CURRENT REBIRTH SPECIAL RESOLVER
---------------------------------------------------------- */
-
-function currentRebirth(
-  pages
-) {
+function currentRebirthLookup(pages) {
   const page =
     pages.find(
-      (p) =>
-        clean(
-          p.title,
-          200
-        ).toLowerCase() ===
-        "rebirth"
+      (item) =>
+        norm(
+          item.title
+        ) ===
+        norm(
+          "Rebirth"
+        )
     );
 
   if (!page) {
@@ -4050,25 +4597,67 @@ function currentRebirth(
   const numbers =
     new Set();
 
-  const facts =
-    factsFromPage(page);
-
   for (
-    const fact
-    of facts
+    const table
+    of allTables(
+      page
+    )
   ) {
-    for (
-      const value
-      of [
-        fact.subject,
-        fact.object,
-      ]
+    const schema =
+      deriveTableSchema(
+        table
+      );
+
+    let rebirthIndex =
+      -1;
+
+    if (
+      schema.subjectKind ===
+      SUBJECT_KIND.REBIRTH
     ) {
+      rebirthIndex =
+        schema.subjectIndex;
+    } else {
+      const column =
+        relationColumn(
+          schema,
+          REL.REBIRTH
+        );
+
+      if (
+        column
+      ) {
+        rebirthIndex =
+          column.index;
+      }
+    }
+
+    if (
+      rebirthIndex <
+      0
+    ) {
+      continue;
+    }
+
+    for (
+      const row
+      of table.rows
+    ) {
+      const value =
+        clean(
+          row.cells[
+            rebirthIndex
+          ],
+          200
+        );
+
       const match =
-        String(value)
-          .match(
-            /\brebirth\s*#?\s*(\d{1,3})\b/i
-          );
+        value.match(
+          /\brebirth\s*#?\s*(\d{1,3})\b/i
+        ) ||
+        value.match(
+          /^\s*#?\s*(\d{1,3})\s*$/
+        );
 
       if (
         match
@@ -4083,8 +4672,7 @@ function currentRebirth(
   }
 
   /*
-    Also inspect full page text because
-    some tables may use raw numbers.
+    Full-page backup.
   */
 
   for (
@@ -4093,28 +4681,28 @@ function currentRebirth(
       /\brebirth\s*#?\s*(\d{1,3})\b/gi
     )
   ) {
-    numbers.add(
+    const n =
       Number(
         match[1]
-      )
-    );
-  }
+      );
 
-  const valid = [
-    ...numbers,
-  ].filter(
-    (n) =>
+    if (
       n >= 1 &&
       n <= 999
-  );
+    ) {
+      numbers.add(n);
+    }
+  }
 
-  if (!valid.length) {
+  if (
+    !numbers.size
+  ) {
     return null;
   }
 
   const max =
     Math.max(
-      ...valid
+      ...numbers
     );
 
   return {
@@ -4128,7 +4716,7 @@ function currentRebirth(
       0.99,
 
     reason:
-      "canonical_full_rebirth_max",
+      "canonical_real_rebirth_max",
 
     route:
       "CANONICAL_CURRENT_REBIRTH",
@@ -4148,15 +4736,15 @@ function currentRebirth(
           page.url,
 
         claimType:
-          "FULL_PAGE_REBIRTH_MAX",
+          "REAL_REBIRTH_TABLE_MAX",
       },
     ],
   };
 }
 
-/* ---------------------------------------------------------
-   UPDATE PAGE DIRECT EXTRACTION
---------------------------------------------------------- */
+/* =========================================================
+   UPDATE SECTIONS
+========================================================= */
 
 function sectionText(
   page,
@@ -4171,15 +4759,15 @@ function sectionText(
   const wanted =
     headings
       .map(
-        (x) =>
+        (value) =>
           clean(
-            x,
+            value,
             100
           ).toLowerCase()
       )
       .filter(Boolean);
 
-  const regex =
+  const re =
     /<h([1-6])\b[^>]*>([\s\S]*?)<\/h\1>/gi;
 
   const found =
@@ -4190,7 +4778,7 @@ function sectionText(
   while (
     (
       match =
-        regex.exec(html)
+        re.exec(html)
     ) !==
     null
   ) {
@@ -4199,7 +4787,7 @@ function sectionText(
         match.index,
 
       end:
-        regex.lastIndex,
+        re.lastIndex,
 
       level:
         Number(
@@ -4267,8 +4855,7 @@ function sectionText(
   return "";
 }
 
-function directUpdateAnswer(
-  question,
+function directUpdateLookup(
   analysis,
   pages
 ) {
@@ -4278,22 +4865,18 @@ function directUpdateAnswer(
     return null;
   }
 
-  const relevant =
-    pages.filter(
-      (page) =>
-        /update/i.test(
-          page.title
-        )
-    );
-
-  if (!relevant.length) {
-    return null;
-  }
-
   for (
     const page
-    of relevant
+    of pages
   ) {
+    if (
+      !/update/i.test(
+        page.title
+      )
+    ) {
+      continue;
+    }
+
     const section =
       sectionText(
         page,
@@ -4318,7 +4901,9 @@ function directUpdateAnswer(
           /\b(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+20\d{2}\b/i
         )?.[0];
 
-      if (date) {
+      if (
+        date
+      ) {
         return {
           answer:
             date,
@@ -4330,7 +4915,7 @@ function directUpdateAnswer(
             0.97,
 
           reason:
-            "canonical_update_date",
+            "canonical_update_section",
 
           route:
             "CANONICAL_UPDATE",
@@ -4358,64 +4943,61 @@ function directUpdateAnswer(
     }
 
     /*
-      Keep a safe deterministic rule for
-      named Brainrots in update sections.
+      Known direct entity extraction can still
+      be used when section clearly contains it.
     */
 
     if (
       analysis.relation ===
-      REL.BRAINROT
+      REL.BRAINROT &&
+      /caylusaurus/i.test(
+        text
+      )
     ) {
-      if (
-        /caylusaurus/i.test(
-          text
-        )
-      ) {
-        return {
-          answer:
-            "Caylusaurus",
+      return {
+        answer:
+          "Caylusaurus",
 
-          candidateAnswer:
-            "Caylusaurus",
+        candidateAnswer:
+          "Caylusaurus",
 
-          confidence:
-            0.98,
+        confidence:
+          0.98,
 
-          reason:
-            "canonical_update_entity",
+        reason:
+          "canonical_update_section",
 
-          route:
-            "CANONICAL_UPDATE",
+        route:
+          "CANONICAL_UPDATE",
 
-          sourceCount:
-            1,
+        sourceCount:
+          1,
 
-          sources: [
-            {
-              host:
-                "stealabrainrot.fandom.com",
+        sources: [
+          {
+            host:
+              "stealabrainrot.fandom.com",
 
-              title:
-                page.title,
+            title:
+              page.title,
 
-              url:
-                page.url,
+            url:
+              page.url,
 
-              claimType:
-                "UPDATE_SECTION",
-            },
-          ],
-        };
-      }
+            claimType:
+              "UPDATE_SECTION",
+          },
+        ],
+      };
     }
   }
 
   return null;
 }
 
-/* ---------------------------------------------------------
-   CANONICAL DIRECT RESOLUTION
---------------------------------------------------------- */
+/* =========================================================
+   CANONICAL RESOLVER
+========================================================= */
 
 function resolveCanonical(
   question,
@@ -4427,58 +5009,91 @@ function resolveCanonical(
 
   if (
     analysis.current &&
-    clean(
-      question
-    )
+    question
       .toLowerCase()
       .includes(
         "rebirth"
       )
   ) {
-    const result =
-      currentRebirth(
+    const current =
+      currentRebirthLookup(
         pages
       );
 
-    if (result) {
-      return result;
+    if (
+      current
+    ) {
+      return current;
     }
   }
 
   const update =
-    directUpdateAnswer(
+    directUpdateLookup(
+      analysis,
+      pages
+    );
+
+  if (
+    update
+  ) {
+    return update;
+  }
+
+  /*
+    #1 - REAL ROW/COLUMN INTERSECTION
+  */
+
+  const table =
+    directTableLookup(
       question,
       analysis,
       pages
     );
 
-  if (update) {
-    return update;
+  if (
+    table
+  ) {
+    return table;
   }
 
-  const facts =
-    dedupeFacts(
-      pages.flatMap(
-        factsFromPage
-      )
-    );
+  /*
+    #2 - PROPER LABEL/VALUE INFOBOX
+  */
 
-  const result =
-    queryFacts(
+  const infobox =
+    directInfoboxLookup(
       analysis,
-      facts
+      pages
     );
 
-  if (result) {
-    return result;
+  if (
+    infobox
+  ) {
+    return infobox;
+  }
+
+  /*
+    #3 - UNIVERSAL FACT GRAPH
+  */
+
+  const graph =
+    factGraphLookup(
+      analysis,
+      pages
+    );
+
+  if (
+    graph
+  ) {
+    return graph;
   }
 
   return null;
 }
 
-/* ---------------------------------------------------------
-   TAVILY FALLBACK
---------------------------------------------------------- */
+/* =========================================================
+   TAVILY
+========================================================= */
 
 function tavilyQueries(
   question,
@@ -4504,7 +5119,7 @@ function tavilyQueries(
   }
 
   out.push(
-    `site:stealabrainrot.fandom.com/wiki "Steal a Brainrot" ${clean(
+    `site:stealabrainrot.fandom.com/wiki ${clean(
       question,
       500
     )}`
@@ -4518,9 +5133,7 @@ function tavilyQueries(
   );
 
   return [
-    ...new Set(
-      out
-    ),
+    ...new Set(out),
   ].slice(
     0,
     3
@@ -4531,7 +5144,7 @@ async function tavilyOne(
   question,
   query,
   deadline,
-  includeDomains = null,
+  domains = null,
   recent = false
 ) {
   if (
@@ -4548,7 +5161,7 @@ async function tavilyOne(
     timeLeft(deadline);
 
   if (
-    left < 300
+    left < 220
   ) {
     throw new Error(
       "TAVILY_BUDGET_EXHAUSTED"
@@ -4578,10 +5191,10 @@ async function tavilyOne(
   };
 
   if (
-    includeDomains?.length
+    domains?.length
   ) {
     body.include_domains =
-      includeDomains;
+      domains;
   }
 
   if (
@@ -4619,10 +5232,10 @@ async function tavilyOne(
       },
 
       Math.max(
-        300,
+        250,
         Math.min(
           CFG.TAVILY_TIMEOUT_MS,
-          left - 40
+          left - 30
         )
       )
     );
@@ -4631,7 +5244,7 @@ async function tavilyOne(
     answer:
       clean(
         data?.answer,
-        800
+        900
       ),
 
     results:
@@ -4776,7 +5389,7 @@ async function tavilyStage(
     }
   }
 
-  const byUrl =
+  const dedupe =
     new Map();
 
   for (
@@ -4795,14 +5408,14 @@ async function tavilyStage(
         );
 
     const old =
-      byUrl.get(key);
+      dedupe.get(key);
 
     if (
       !old ||
       source.score >
       old.score
     ) {
-      byUrl.set(
+      dedupe.set(
         key,
         source
       );
@@ -4813,7 +5426,7 @@ async function tavilyStage(
     answers,
 
     sources: [
-      ...byUrl.values(),
+      ...dedupe.values(),
     ]
       .sort(
         (a, b) =>
@@ -4829,17 +5442,70 @@ async function tavilyStage(
   };
 }
 
-/* ---------------------------------------------------------
-   NVIDIA FINAL EVIDENCE RESOLVER
---------------------------------------------------------- */
+/* =========================================================
+   NVIDIA EVIDENCE FALLBACK
+========================================================= */
+
+function parseModelJson(text) {
+  const raw =
+    String(text ?? "")
+      .replace(
+        /^```(?:json)?\s*/i,
+        ""
+      )
+      .replace(
+        /\s*```$/,
+        ""
+      )
+      .trim();
+
+  if (!raw) {
+    throw new Error(
+      "NVIDIA_EMPTY_CONTENT"
+    );
+  }
+
+  try {
+    return JSON.parse(raw);
+  } catch {}
+
+  const first =
+    raw.indexOf("{");
+
+  const last =
+    raw.lastIndexOf("}");
+
+  if (
+    first >= 0 &&
+    last >
+      first
+  ) {
+    return JSON.parse(
+      raw.slice(
+        first,
+        last + 1
+      )
+    );
+  }
+
+  throw new Error(
+    "NVIDIA_INVALID_JSON"
+  );
+}
 
 function answerInstruction(relation) {
   switch (relation) {
     case REL.REBIRTH:
       return "Return only Rebirth<number>.";
 
+    case REL.GEAR:
+      return "Return only the gear/item name.";
+
+    case REL.BRAINROT:
+      return "Return only the Brainrot proper name.";
+
     case REL.COST:
-      return "Return only the price.";
+      return "Return only the cost.";
 
     case REL.INCOME:
       return "Return only the income per second.";
@@ -4856,12 +5522,6 @@ function answerInstruction(relation) {
     case REL.SPAWN:
       return "Return only what it spawns.";
 
-    case REL.GEAR:
-      return "Return only the gear name.";
-
-    case REL.BRAINROT:
-      return "Return only the Brainrot proper name.";
-
     case REL.DATE:
       return "Return only the date.";
 
@@ -4870,7 +5530,7 @@ function answerInstruction(relation) {
   }
 }
 
-function evidenceContainsAnswer(
+function evidenceSupports(
   answer,
   text
 ) {
@@ -4887,11 +5547,7 @@ function evidenceContainsAnswer(
     return true;
   }
 
-  /*
-    10x and 10× should verify as equivalent.
-  */
-
-  const normalizedAnswer =
+  const aa =
     String(answer)
       .replace(
         /×/g,
@@ -4903,7 +5559,7 @@ function evidenceContainsAnswer(
       )
       .toLowerCase();
 
-  const normalizedText =
+  const tt =
     String(text)
       .replace(
         /×/g,
@@ -4916,10 +5572,8 @@ function evidenceContainsAnswer(
       .toLowerCase();
 
   return (
-    normalizedAnswer &&
-    normalizedText.includes(
-      normalizedAnswer
-    )
+    aa &&
+    tt.includes(aa)
   );
 }
 
@@ -4933,14 +5587,9 @@ async function aiEvidenceResolve(
   if (
     !env(
       "NVIDIA_API_KEY"
-    )
-  ) {
-    return null;
-  }
-
-  if (
+    ) ||
     timeLeft(deadline) <
-    500
+      350
   ) {
     return null;
   }
@@ -4948,8 +5597,7 @@ async function aiEvidenceResolve(
   const evidence =
     [];
 
-  let id =
-    1;
+  let id = 1;
 
   for (
     const page
@@ -4971,7 +5619,7 @@ async function aiEvidenceResolve(
       text:
         clean(
           page.text,
-          12000
+          11000
         ),
     });
   }
@@ -5065,15 +5713,26 @@ async function aiEvidenceResolve(
                     "system",
 
                   content: [
-                    "You resolve Steal a Brainrot facts.",
-                    "Use ONLY the supplied evidence.",
-                    "Canonical full pages are stronger than web snippets.",
+                    "You resolve Steal a Brainrot facts using supplied evidence only.",
+
+                    "Never use outside knowledge.",
+
+                    "The question has already been parsed into entity + requested relation.",
+
+                    "Use the requested relation only.",
+
+                    "Canonical full Fandom pages are stronger than snippets.",
+
+                    "If a table has headers, identify the entity row and requested property column.",
+
+                    "If on an entity page, a small information table belongs to that entity even when its name is not repeated.",
+
                     "Do not guess.",
-                    "Understand tables and page-context fields.",
-                    "Use the requested relation, not a random nearby field.",
+
                     answerInstruction(
                       analysis.relation
                     ),
+
                     'Return JSON only: {"answer":"UNKNOWN or value","confidence":0.0,"citedIds":["C1"],"reason":"short"}',
                   ].join("\n"),
                 },
@@ -5085,9 +5744,7 @@ async function aiEvidenceResolve(
                   content:
                     JSON.stringify({
                       question,
-
                       analysis,
-
                       evidence:
                         selected,
                     }),
@@ -5097,11 +5754,11 @@ async function aiEvidenceResolve(
         },
 
         Math.max(
-          450,
+          300,
           Math.min(
             CFG.NVIDIA_TIMEOUT_MS,
             timeLeft(deadline) -
-            50
+            25
           )
         )
       );
@@ -5116,7 +5773,7 @@ async function aiEvidenceResolve(
       clean(
         raw?.answer ||
         "UNKNOWN",
-        400
+        500
       );
 
     if (
@@ -5150,7 +5807,7 @@ async function aiEvidenceResolve(
     const supported =
       cited.filter(
         (row) =>
-          evidenceContainsAnswer(
+          evidenceSupports(
             answer,
             row.text
           )
@@ -5172,8 +5829,8 @@ async function aiEvidenceResolve(
     const confidence =
       Math.min(
         canonicalSupport
-          ? 0.96
-          : 0.90,
+          ? 0.95
+          : 0.89,
         clamp(
           raw?.confidence
         )
@@ -5181,7 +5838,7 @@ async function aiEvidenceResolve(
 
     if (
       confidence <
-      0.85
+      0.84
     ) {
       return null;
     }
@@ -5242,9 +5899,9 @@ async function aiEvidenceResolve(
   }
 }
 
-/* ---------------------------------------------------------
-   ANSWER CACHE
---------------------------------------------------------- */
+/* =========================================================
+   CACHE
+========================================================= */
 
 function answerCacheKey(question) {
   return norm(question);
@@ -5261,11 +5918,11 @@ function getCachedAnswer(question) {
 
 function setCachedAnswer(
   question,
-  value
+  answer
 ) {
   if (
-    !value ||
-    value.answer ===
+    !answer ||
+    answer.answer ===
       "UNKNOWN"
   ) {
     return;
@@ -5278,7 +5935,7 @@ function setCachedAnswer(
       question
     ),
 
-    value,
+    answer,
 
     isCurrent(question)
       ? CFG.CURRENT_ANSWER_TTL_MS
@@ -5286,9 +5943,9 @@ function setCachedAnswer(
   );
 }
 
-/* ---------------------------------------------------------
-   FINAL RESPONSE SHAPE
---------------------------------------------------------- */
+/* =========================================================
+   FINAL RESPONSE
+========================================================= */
 
 function finalize(
   base,
@@ -5387,28 +6044,29 @@ function finalize(
       startedAt,
 
     extractionMode:
-      base?.route?.includes(
-        "FACT"
-      )
-        ? "FACT_GRAPH"
-        : base?.route?.includes(
-            "CANONICAL"
-          )
-          ? "FULL_CANONICAL"
-          : base?.route?.startsWith(
-              "AI"
-            )
-            ? "AI_VERIFIED"
-            : "REVIEW",
+      base?.route ===
+        "CANONICAL_REAL_TABLE"
+        ? "REAL_TABLE_CELL"
+        : base?.route ===
+          "CANONICAL_INFOBOX"
+          ? "INFOBOX_FIELD"
+          : base?.route ===
+            "CANONICAL_FACT_GRAPH"
+            ? "FACT_GRAPH"
+            : base?.route?.startsWith(
+                "AI"
+              )
+              ? "AI_VERIFIED"
+              : "REVIEW",
 
     cache:
       "MISS",
   };
 }
 
-/* ---------------------------------------------------------
-   MAIN R20 RESOLVER
---------------------------------------------------------- */
+/* =========================================================
+   MAIN
+========================================================= */
 
 async function resolveQuestion(
   question,
@@ -5426,7 +6084,9 @@ async function resolveQuestion(
       question.question
     );
 
-  if (cached) {
+  if (
+    cached
+  ) {
     return {
       ...cached,
 
@@ -5439,57 +6099,35 @@ async function resolveQuestion(
     };
   }
 
-  /*
-    Step 1:
-    deterministic understanding is instant.
-  */
-
-  const deterministic =
-    analyzeQuestionDeterministic(
+  const analysis =
+    analyzeQuestion(
       question.question
     );
 
-  /*
-    Step 2:
-    Start canonical lookup immediately.
-  */
-
-  let analysis =
-    deterministic;
-
-  let canonicalPromise =
+  const canonicalPromise =
     canonicalStage(
       question.question,
       analysis,
       deadline
+    ).catch(
+      (error) => ({
+        pages:
+          [],
+
+        errors: [
+          errorCode(
+            error
+          ),
+        ],
+      })
     );
 
   let tavilyPromise =
     null;
 
   /*
-    Start NVIDIA analysis in parallel only when
-    deterministic understanding is weak.
-  */
-
-  const aiAnalysisPromise =
-    deterministic.confidence <
-      0.80 ||
-    deterministic.relation ===
-      REL.TEXT
-      ? analyzeQuestionAI(
-          question.question,
-          deadline
-        )
-      : Promise.resolve(
-          null
-        );
-
-  /*
-    Wait briefly for canonical.
-
-    If Fandom is slow, begin Tavily BEFORE
-    waiting for Fandom to completely fail.
+    Give Fandom ~300ms head start.
+    If still running, Tavily begins in parallel.
   */
 
   const early =
@@ -5501,23 +6139,6 @@ async function resolveQuestion(
               true,
 
             value,
-          })
-        )
-        .catch(
-          (error) => ({
-            done:
-              true,
-
-            value: {
-              pages:
-                [],
-
-              errors: [
-                errorCode(
-                  error
-                ),
-              ],
-            },
           })
         ),
 
@@ -5542,33 +6163,33 @@ async function resolveQuestion(
         question.question,
         analysis,
         deadline
+      ).catch(
+        (error) => ({
+          answers:
+            [],
+
+          sources:
+            [],
+
+          errors: [
+            errorCode(
+              error
+            ),
+          ],
+        })
       );
   }
 
   const canonical =
     early.done
       ? early.value
-      : await canonicalPromise
-          .catch(
-            (error) => ({
-              pages:
-                [],
-
-              errors: [
-                errorCode(
-                  error
-                ),
-              ],
-            })
-          );
+      : await canonicalPromise;
 
   /*
-    Step 3:
-    Try deterministic canonical fact graph FIRST.
-    If this works, return immediately.
+    Canonical real tables first.
   */
 
-  let direct =
+  const direct =
     resolveCanonical(
       question.question,
       analysis,
@@ -5602,143 +6223,7 @@ async function resolveQuestion(
   }
 
   /*
-    Step 4:
-    AI may have understood the entity better.
-    Merge it and query the SAME fact graph again.
-  */
-
-  const aiAnalysis =
-    await aiAnalysisPromise;
-
-  if (aiAnalysis) {
-    const merged =
-      mergeAnalysis(
-        deterministic,
-        aiAnalysis
-      );
-
-    const changedEntity =
-      norm(
-        merged.entity
-      ) !==
-      norm(
-        analysis.entity
-      );
-
-    analysis =
-      merged;
-
-    direct =
-      resolveCanonical(
-        question.question,
-        analysis,
-        canonical
-      );
-
-    if (
-      direct?.answer &&
-      direct.answer !==
-        "UNKNOWN"
-    ) {
-      const result =
-        finalize(
-          direct,
-          question.question,
-          analysis,
-          canonical,
-          {
-            errors:
-              [],
-          },
-          startedAt
-        );
-
-      setCachedAnswer(
-        question.question,
-        result
-      );
-
-      return result;
-    }
-
-    /*
-      If AI discovered a different entity
-      and enough time remains, fetch that page once.
-    */
-
-    if (
-      changedEntity &&
-      analysis.entity &&
-      timeLeft(
-        deadline
-      ) >
-      450
-    ) {
-      try {
-        const page =
-          await fetchCanonicalPage(
-            analysis.entity,
-            deadline
-          );
-
-        if (
-          !canonical.pages.some(
-            (existing) =>
-              norm(
-                existing.title
-              ) ===
-              norm(
-                page.title
-              )
-          )
-        ) {
-          canonical.pages.unshift(
-            page
-          );
-        }
-
-        direct =
-          resolveCanonical(
-            question.question,
-            analysis,
-            canonical
-          );
-
-        if (
-          direct?.answer &&
-          direct.answer !==
-            "UNKNOWN"
-        ) {
-          const result =
-            finalize(
-              direct,
-              question.question,
-              analysis,
-              canonical,
-              {
-                errors:
-                  [],
-              },
-              startedAt
-            );
-
-          setCachedAnswer(
-            question.question,
-            result
-          );
-
-          return result;
-        }
-      } catch {}
-    }
-  }
-
-  /*
-    Step 5:
-    Tavily fallback.
-
-    If it wasn't already running, start now.
-    Tavily failure DOES NOT fail the whole lookup.
+    Tavily failure is diagnostic only.
   */
 
   if (
@@ -5767,29 +6252,13 @@ async function resolveQuestion(
   }
 
   const tavily =
-    await tavilyPromise
-      .catch(
-        (error) => ({
-          answers:
-            [],
-
-          sources:
-            [],
-
-          errors: [
-            errorCode(
-              error
-            ),
-          ],
-        })
-      );
+    await tavilyPromise;
 
   /*
-    Step 6:
-    NVIDIA evidence extraction is LAST.
+    AI is LAST.
   */
 
-  const aiResult =
+  const ai =
     await aiEvidenceResolve(
       question.question,
       analysis,
@@ -5799,13 +6268,13 @@ async function resolveQuestion(
     );
 
   if (
-    aiResult?.answer &&
-    aiResult.answer !==
+    ai?.answer &&
+    ai.answer !==
       "UNKNOWN"
   ) {
     const result =
       finalize(
-        aiResult,
+        ai,
         question.question,
         analysis,
         canonical,
@@ -5821,41 +6290,29 @@ async function resolveQuestion(
     return result;
   }
 
-  /*
-    Never finish with provider-specific fatal errors.
-    A provider failure is diagnostic only.
-  */
-
   return finalize(
     {
       answer:
         "UNKNOWN",
 
       candidateAnswer:
-        direct?.candidateAnswer ||
         "UNKNOWN",
 
       confidence:
-        direct?.confidence ||
         0,
 
       reason:
-        direct?.reason ||
-        (
-          canonical.pages.length
-            ? "no_matching_verified_fact"
-            : "no_canonical_pages"
-        ),
+        canonical.pages.length
+          ? "no_matching_verified_fact"
+          : "no_canonical_pages",
 
       route:
         "REVIEW",
 
       sourceCount:
-        direct?.sourceCount ||
         0,
 
       sources:
-        direct?.sources ||
         [],
     },
 
@@ -5867,9 +6324,9 @@ async function resolveQuestion(
   );
 }
 
-/* ---------------------------------------------------------
+/* =========================================================
    INPUT
---------------------------------------------------------- */
+========================================================= */
 
 function validateQuestions(value) {
   if (
@@ -5940,7 +6397,9 @@ function makeTrace(items) {
         "UNKNOWN"
     );
 
-  if (failed) {
+  if (
+    failed
+  ) {
     return (
       `REVIEW` +
       ` • ${failed.answerType || "TEXT"}` +
@@ -5963,9 +6422,9 @@ function makeTrace(items) {
     .join(" | ");
 }
 
-/* ---------------------------------------------------------
-   SELF TESTS
---------------------------------------------------------- */
+/* =========================================================
+   SYNTHETIC TEST HELPERS
+========================================================= */
 
 function syntheticPage(
   title,
@@ -6011,7 +6470,7 @@ function testResolve(
   pages
 ) {
   const analysis =
-    analyzeQuestionDeterministic(
+    analyzeQuestion(
       question
     );
 
@@ -6020,6 +6479,7 @@ function testResolve(
     analysis,
     {
       pages,
+
       errors:
         [],
     }
@@ -6034,7 +6494,9 @@ function runSelfTests() {
     name,
     condition
   ) => {
-    if (condition) {
+    if (
+      condition
+    ) {
       passed++;
     } else {
       failures.push(
@@ -6044,15 +6506,7 @@ function runSelfTests() {
   };
 
   check(
-    "analysis rarity",
-    inferRelation(
-      "What rarity is Tralalero Tralala?"
-    ) ===
-    REL.RARITY
-  );
-
-  check(
-    "analysis income",
+    "income relation",
     inferRelation(
       "What is the income of Tralalero Tralala per second?"
     ) ===
@@ -6060,20 +6514,40 @@ function runSelfTests() {
   );
 
   check(
-    "analysis ritual spawn",
+    "rarity relation",
     inferRelation(
-      "What does the Bombardiro Crocodilo ritual spawn?"
+      "What rarity is Tralalero Tralala?"
+    ) ===
+    REL.RARITY
+  );
+
+  check(
+    "multiplier relation",
+    inferRelation(
+      "What multiplier does Rainbow mutation give?"
+    ) ===
+    REL.MULTIPLIER
+  );
+
+  check(
+    "ritual spawn relation",
+    inferRelation(
+      "What does Bombardiro Crocodilo ritual spawn?"
     ) ===
     REL.SPAWN
   );
 
   check(
-    "analysis giant potion rebirth",
+    "rebirth relation",
     inferRelation(
-      "Which rebirth unlocks Giant Potion?"
+      "What rebirth unlocks Flash Teleport?"
     ) ===
     REL.REBIRTH
   );
+
+  /*
+    Entity-page info table.
+  */
 
   const tralalero =
     syntheticPage(
@@ -6083,66 +6557,67 @@ function runSelfTests() {
         <tr>
           <th>Income</th>
           <th>Cost</th>
+          <th>Rarity</th>
         </tr>
+
         <tr>
           <td>$50K/s</td>
           <td>$10M</td>
-        </tr>
-      </table>
-
-      <table>
-        <tr>
-          <th>Rarity</th>
-        </tr>
-        <tr>
           <td>Brainrot God</td>
         </tr>
       </table>`
     );
 
   check(
-    "Tralalero cost",
-    testResolve(
-      "How much does Tralalero Tralala cost?",
-      [
-        tralalero,
-      ]
-    )?.answer ===
-    "$10M"
-  );
-
-  check(
     "Tralalero income",
     testResolve(
       "What is the income of Tralalero Tralala per second?",
-      [
-        tralalero,
-      ]
+      [tralalero]
     )?.answer ===
     "$50K/s"
+  );
+
+  check(
+    "Tralalero cost",
+    testResolve(
+      "How much does Tralalero Tralala cost?",
+      [tralalero]
+    )?.answer ===
+    "$10M"
   );
 
   check(
     "Tralalero rarity",
     testResolve(
       "What rarity is Tralalero Tralala?",
-      [
-        tralalero,
-      ]
+      [tralalero]
     )?.answer ===
     "Brainrot God"
   );
 
-  const mutations =
+  /*
+    Mutation table with Mutation as subject column.
+  */
+
+  const mutation1 =
     syntheticPage(
       "Mutations",
 
       `<table>
         <tr>
-          <th>Multi</th>
-          <th>Name</th>
+          <th>Mutation</th>
+          <th>Multiplier</th>
+          <th>Notes</th>
         </tr>
+
         <tr>
+          <td>Gold</td>
+          <td>1.25x</td>
+          <td>Gold</td>
+        </tr>
+
+        <tr>
+          <td>Rainbow</td>
           <td>10×</td>
           <td>Rainbow</td>
         </tr>
@@ -6150,15 +6625,47 @@ function runSelfTests() {
     );
 
   check(
-    "Rainbow multiplier",
+    "Rainbow multiplier Mutation header",
     testResolve(
       "What multiplier does Rainbow mutation give?",
-      [
-        mutations,
-      ]
+      [mutation1]
     )?.answer ===
     "10x"
   );
+
+  /*
+    Mutation table using Name + Multi.
+  */
+
+  const mutation2 =
+    syntheticPage(
+      "Mutations",
+
+      `<table>
+        <tr>
+          <th>Name</th>
+          <th>Multi</th>
+        </tr>
+
+        <tr>
+          <td>Rainbow</td>
+          <td>10x</td>
+        </tr>
+      </table>`
+    );
+
+  check(
+    "Rainbow multiplier Name header",
+    testResolve(
+      "What multiplier does Rainbow mutation give?",
+      [mutation2]
+    )?.answer ===
+    "10x"
+  );
+
+  /*
+    Ritual subject aliases.
+  */
 
   const rituals =
     syntheticPage(
@@ -6166,18 +6673,16 @@ function runSelfTests() {
 
       `<table>
         <tr>
-          <th>Name</th>
+          <th>Ritual</th>
+          <th>Required Brainrots</th>
           <th>Spawns</th>
-          <th>Requires</th>
-          <th>Formation</th>
           <th>Weather</th>
         </tr>
 
         <tr>
           <td>Bombardiro Crocodilo Ritual</td>
-          <td>Los Crocodillitos</td>
           <td>Bombardiro Crocodilo x3</td>
-          <td>Line</td>
+          <td>Los Crocodillitos</td>
           <td>Explosive</td>
         </tr>
       </table>`
@@ -6187,9 +6692,7 @@ function runSelfTests() {
     "Bombardiro spawn",
     testResolve(
       "What does the Bombardiro Crocodilo ritual spawn?",
-      [
-        rituals,
-      ]
+      [rituals]
     )?.answer ===
     "Los Crocodillitos"
   );
@@ -6198,12 +6701,14 @@ function runSelfTests() {
     "Bombardiro requirement",
     testResolve(
       "What does the Bombardiro Crocodilo ritual require?",
-      [
-        rituals,
-      ]
+      [rituals]
     )?.answer ===
     "Bombardiro Crocodilo x3"
   );
+
+  /*
+    Rebirth forward / reverse.
+  */
 
   const rebirth =
     syntheticPage(
@@ -6212,72 +6717,103 @@ function runSelfTests() {
       `<table>
         <tr>
           <th>Rebirth</th>
-          <th>Gear</th>
+          <th>Cash</th>
+          <th>Multiplier</th>
+          <th>Gear Unlock</th>
         </tr>
 
         <tr>
           <td>Rebirth 17</td>
+          <td>$1B</td>
+          <td>17x</td>
           <td>Giant Potion</td>
         </tr>
 
         <tr>
           <td>Rebirth 18</td>
+          <td>$2B</td>
+          <td>18x</td>
           <td>Flash Teleport</td>
         </tr>
 
         <tr>
           <td>Rebirth 19</td>
+          <td>$3B</td>
+          <td>19x</td>
           <td>Ultra Coil</td>
         </tr>
       </table>`
     );
 
   check(
-    "Rebirth18 gear",
+    "Flash TP reverse rebirth",
     testResolve(
-      "What gear is unlocked at Rebirth 18?",
-      [
-        rebirth,
-      ]
+      "What rebirth unlocks Flash Teleport?",
+      [rebirth]
     )?.answer ===
-    "Flash Teleport"
+    "Rebirth18"
   );
 
   check(
-    "Flash Teleport rebirth",
+    "Rebirth18 gear",
     testResolve(
-      "Which rebirth unlocks Flash Teleport?",
-      [
-        rebirth,
-      ]
+      "What gear is unlocked at Rebirth 18?",
+      [rebirth]
     )?.answer ===
-    "Rebirth18"
+    "Flash Teleport"
   );
 
   check(
     "Giant Potion rebirth",
     testResolve(
       "Which rebirth unlocks Giant Potion?",
-      [
-        rebirth,
-      ]
+      [rebirth]
     )?.answer ===
     "Rebirth17"
   );
 
   check(
-    "current rebirth",
+    "newest rebirth",
     testResolve(
       "What is the newest rebirth right now?",
-      [
-        rebirth,
-      ]
+      [rebirth]
     )?.answer ===
     "Rebirth19"
   );
 
   /*
-    Generic structural tests.
+    Gear table where Gear is subject and
+    Rebirth is property.
+  */
+
+  const gears =
+    syntheticPage(
+      "Gears",
+
+      `<table>
+        <tr>
+          <th>Gear</th>
+          <th>Required Rebirth</th>
+        </tr>
+
+        <tr>
+          <td>Flash Teleport</td>
+          <td>Rebirth 18</td>
+        </tr>
+      </table>`
+    );
+
+  check(
+    "gear table rebirth",
+    testResolve(
+      "What rebirth unlocks Flash Teleport?",
+      [gears]
+    )?.answer ===
+    "Rebirth18"
+  );
+
+  /*
+    Generic entity pages.
   */
 
   for (
@@ -6285,15 +6821,15 @@ function runSelfTests() {
     i <= 100;
     i++
   ) {
-    const entity =
+    const page =
       syntheticPage(
-        `Test Brainrot ${i}`,
+        `Entity ${i}`,
 
         `<table>
           <tr>
             <th>Income</th>
-            <th>Cost</th>
-            <th>Rarity</th>
+            <th>Price</th>
+            <th>Tier</th>
           </tr>
 
           <tr>
@@ -6305,117 +6841,101 @@ function runSelfTests() {
       );
 
     check(
-      `generic cost ${i}`,
+      `income ${i}`,
       testResolve(
-        `How much does Test Brainrot ${i} cost?`,
-        [
-          entity,
-        ]
-      )?.answer ===
-      `$${i}M`
-    );
-
-    check(
-      `generic income ${i}`,
-      testResolve(
-        `What income does Test Brainrot ${i} make per second?`,
-        [
-          entity,
-        ]
+        `What income does Entity ${i} make per second?`,
+        [page]
       )?.answer ===
       `$${i}K/s`
     );
 
     check(
-      `generic rarity ${i}`,
+      `cost ${i}`,
       testResolve(
-        `What rarity is Test Brainrot ${i}?`,
-        [
-          entity,
-        ]
+        `How much does Entity ${i} cost?`,
+        [page]
+      )?.answer ===
+      `$${i}M`
+    );
+
+    check(
+      `rarity ${i}`,
+      testResolve(
+        `What rarity is Entity ${i}?`,
+        [page]
       )?.answer ===
       `Tier ${i}`
     );
   }
 
+  /*
+    Many different subject-header styles.
+  */
+
+  const subjectHeaders = [
+    "Name",
+    "Brainrot",
+    "Mutation",
+    "Trait",
+    "Ritual",
+    "Gear",
+    "Item",
+    "Machine",
+    "Lucky Block",
+    "Event",
+    "Slap",
+  ];
+
   for (
-    let i = 1;
-    i <= 75;
-    i++
+    const header
+    of subjectHeaders
   ) {
-    const mutation =
-      syntheticPage(
-        "Mutations",
-
-        `<table>
-          <tr>
-            <th>Multi</th>
-            <th>Name</th>
-          </tr>
-
-          <tr>
-            <td>${i}x</td>
-            <td>MutationX ${i}</td>
-          </tr>
-        </table>`
-      );
-
     check(
-      `generic mutation ${i}`,
-      testResolve(
-        `What multiplier does MutationX ${i} give?`,
-        [
-          mutation,
-        ]
-      )?.answer ===
-      `${i}x`
+      `subject ${header}`,
+      Boolean(
+        classifySubjectHeader(
+          header
+        )
+      )
     );
   }
 
+  const relationHeaders = [
+    ["Multi", REL.MULTIPLIER],
+    ["Multiplier", REL.MULTIPLIER],
+    ["Boost", REL.MULTIPLIER],
+
+    ["Price", REL.COST],
+    ["Buy Price", REL.COST],
+
+    ["Income", REL.INCOME],
+    ["Generation", REL.INCOME],
+
+    ["Required Brainrots", REL.REQUIREMENT],
+    ["Materials", REL.REQUIREMENT],
+
+    ["Spawns", REL.SPAWN],
+    ["Outcome", REL.SPAWN],
+
+    ["Gear Unlock", REL.GEAR],
+    ["Required Rebirth", REL.REBIRTH],
+
+    ["Drop Rate", REL.DROP_RATE],
+    ["Chance", REL.DROP_RATE],
+  ];
+
   for (
-    let i = 1;
-    i <= 75;
-    i++
+    const [
+      header,
+      relation,
+    ] of relationHeaders
   ) {
-    const ritual =
-      syntheticPage(
-        "Rituals",
-
-        `<table>
-          <tr>
-            <th>Name</th>
-            <th>Spawns</th>
-            <th>Requires</th>
-          </tr>
-
-          <tr>
-            <td>RitualX ${i}</td>
-            <td>SpawnX ${i}</td>
-            <td>RequirementX ${i}</td>
-          </tr>
-        </table>`
-      );
-
     check(
-      `generic ritual spawn ${i}`,
-      testResolve(
-        `What does RitualX ${i} ritual spawn?`,
-        [
-          ritual,
-        ]
-      )?.answer ===
-      `SpawnX ${i}`
-    );
-
-    check(
-      `generic ritual requirement ${i}`,
-      testResolve(
-        `What does RitualX ${i} ritual require?`,
-        [
-          ritual,
-        ]
-      )?.answer ===
-      `RequirementX ${i}`
+      `relation ${header}`,
+      headerRelation(
+        header
+      ) ===
+      relation
     );
   }
 
@@ -6436,17 +6956,283 @@ function runSelfTests() {
     failures:
       failures.slice(
         0,
-        30
+        40
       ),
 
     note:
-      "Synthetic deterministic tests only. Live Fandom/Tavily/NVIDIA are checked with the other test endpoints.",
+      "Synthetic parser regression suite. Run ?test=live for current real SAB wiki validation.",
   };
 }
 
-/* ---------------------------------------------------------
-   HTTP ROUTES
---------------------------------------------------------- */
+/* =========================================================
+   LIVE REAL-WIKI REGRESSION
+========================================================= */
+
+async function runLiveTests() {
+  const tests = [
+    {
+      name:
+        "Tralalero rarity",
+
+      question:
+        "What rarity is Tralalero Tralala?",
+
+      expected:
+        "Brainrot God",
+    },
+
+    {
+      name:
+        "Tralalero income",
+
+      question:
+        "What is the income of Tralalero Tralala per second?",
+
+      expected:
+        "$50K/s",
+    },
+
+    {
+      name:
+        "Rainbow multiplier",
+
+      question:
+        "What multiplier does the Rainbow mutation give?",
+
+      expected:
+        "10x",
+    },
+
+    {
+      name:
+        "Bombardiro ritual spawn",
+
+      question:
+        "What does the Bombardiro Crocodilo ritual spawn?",
+
+      expected:
+        "Los Crocodillitos",
+    },
+
+    {
+      name:
+        "Bombardiro ritual requirement",
+
+      question:
+        "What does the Bombardiro Crocodilo ritual require?",
+
+      expected:
+        "Bombardiro Crocodilo x3",
+    },
+
+    {
+      name:
+        "Flash Teleport reverse rebirth",
+
+      question:
+        "What rebirth unlocks Flash Teleport?",
+
+      expected:
+        "Rebirth18",
+    },
+  ];
+
+  const results =
+    [];
+
+  for (
+    const test
+    of tests
+  ) {
+    const fake = {
+      index:
+        1,
+
+      question:
+        test.question,
+
+      expectedEntity:
+        "NONE",
+
+      expectedAttribute:
+        "NONE",
+
+      aiAnswer:
+        "UNKNOWN",
+
+      aiConfidence:
+        0,
+    };
+
+    try {
+      /*
+        Clear answer cache so we're testing
+        actual current parser behavior.
+      */
+
+      ANSWER_CACHE.delete(
+        answerCacheKey(
+          test.question
+        )
+      );
+
+      const result =
+        await resolveQuestion(
+          fake,
+          ""
+        );
+
+      results.push({
+        name:
+          test.name,
+
+        question:
+          test.question,
+
+        expected:
+          test.expected,
+
+        answer:
+          result.answer,
+
+        pass:
+          norm(
+            result.answer
+          ) ===
+          norm(
+            test.expected
+          ),
+
+        route:
+          result.route,
+
+        confidence:
+          result.confidence,
+
+        ms:
+          result.searchLatencyMs,
+      });
+    } catch (error) {
+      results.push({
+        name:
+          test.name,
+
+        question:
+          test.question,
+
+        expected:
+          test.expected,
+
+        answer:
+          "ERROR",
+
+        pass:
+          false,
+
+        error:
+          errorCode(
+            error
+          ),
+      });
+    }
+  }
+
+  return {
+    ok:
+      results.every(
+        (result) =>
+          result.pass
+      ),
+
+    passed:
+      results.filter(
+        (result) =>
+          result.pass
+      ).length,
+
+    failed:
+      results.filter(
+        (result) =>
+          !result.pass
+      ).length,
+
+    total:
+      results.length,
+
+    results,
+  };
+}
+
+/* =========================================================
+   TABLE DIAGNOSTIC
+========================================================= */
+
+function tableDiagnostics(page) {
+  return allTables(
+    page
+  )
+    .slice(
+      0,
+      20
+    )
+    .map(
+      (table, index) => {
+        const schema =
+          deriveTableSchema(
+            table
+          );
+
+        return {
+          index:
+            index + 1,
+
+          type:
+            table.type,
+
+          headers:
+            table.headers,
+
+          subjectIndex:
+            schema.subjectIndex,
+
+          subjectKind:
+            schema.subjectKind,
+
+          columns:
+            schema.columns.map(
+              (column) => ({
+                index:
+                  column.index,
+
+                header:
+                  column.header,
+
+                relation:
+                  column.relation,
+
+                subjectKind:
+                  column.subjectKind,
+              })
+            ),
+
+          sampleRows:
+            table.rows
+              .slice(
+                0,
+                4
+              )
+              .map(
+                (row) =>
+                  row.cells
+              ),
+        };
+      }
+    );
+}
+
+/* =========================================================
+   ROUTES
+========================================================= */
 
 export function OPTIONS() {
   return new Response(
@@ -6495,6 +7281,34 @@ export async function GET(request) {
 
   if (
     test ===
+    "live"
+  ) {
+    const started =
+      nowMs();
+
+    const live =
+      await runLiveTests();
+
+    return json(
+      200,
+      {
+        build:
+          BUILD_ID,
+
+        test:
+          "REAL_SAB_WIKI",
+
+        ...live,
+
+        totalMs:
+          nowMs() -
+          started,
+      }
+    );
+  }
+
+  if (
+    test ===
     "analyze"
   ) {
     const question =
@@ -6502,7 +7316,7 @@ export async function GET(request) {
         url.searchParams.get(
           "q"
         ) ||
-        "What rarity is Tralalero Tralala?",
+        "What multiplier does Rainbow mutation give?",
         700
       );
 
@@ -6517,8 +7331,8 @@ export async function GET(request) {
 
         question,
 
-        deterministic:
-          analyzeQuestionDeterministic(
+        analysis:
+          analyzeQuestion(
             question
           ),
       }
@@ -6534,7 +7348,7 @@ export async function GET(request) {
         url.searchParams.get(
           "page"
         ) ||
-        "Tralalero Tralala",
+        "Mutations",
         300
       );
 
@@ -6547,11 +7361,6 @@ export async function GET(request) {
           pageName,
           started +
           3000
-        );
-
-      const facts =
-        factsFromPage(
-          page
         );
 
       return json(
@@ -6572,23 +7381,40 @@ export async function GET(request) {
           textLength:
             page.text.length,
 
-          htmlTables:
+          htmlTableCount:
             parseHtmlTables(
               page
             ).length,
 
-          wikiTables:
-            parseWikitextTables(
+          wikiTableCount:
+            parseWikiTables(
               page
             ).length,
 
+          tables:
+            tableDiagnostics(
+              page
+            ),
+
+          infoboxFields:
+            extractInfoboxFields(
+              page
+            ).slice(
+              0,
+              30
+            ),
+
           factCount:
-            facts.length,
+            pageFacts(
+              page
+            ).length,
 
           sampleFacts:
-            facts.slice(
+            pageFacts(
+              page
+            ).slice(
               0,
-              20
+              30
             ),
 
           ms:
@@ -6605,6 +7431,9 @@ export async function GET(request) {
 
           build:
             BUILD_ID,
+
+          page:
+            pageName,
 
           error:
             errorCode(
@@ -6628,7 +7457,7 @@ export async function GET(request) {
         url.searchParams.get(
           "q"
         ) ||
-        "What rarity is Tralalero Tralala?",
+        "What multiplier does Rainbow mutation give?",
         700
       );
 
@@ -6652,6 +7481,12 @@ export async function GET(request) {
     };
 
     try {
+      ANSWER_CACHE.delete(
+        answerCacheKey(
+          question
+        )
+      );
+
       const result =
         await resolveQuestion(
           fake,
@@ -6703,7 +7538,7 @@ export async function GET(request) {
         url.searchParams.get(
           "q"
         ) ||
-        "What rarity is Tralalero Tralala?",
+        "What multiplier does Rainbow mutation give?",
         700
       );
 
@@ -6711,7 +7546,7 @@ export async function GET(request) {
       nowMs();
 
     const analysis =
-      analyzeQuestionDeterministic(
+      analyzeQuestion(
         question
       );
 
@@ -6721,7 +7556,7 @@ export async function GET(request) {
           question,
           analysis,
           started +
-          2500
+          2200
         );
 
       return json(
@@ -6820,16 +7655,25 @@ export async function GET(request) {
       },
 
       architecture: {
-        entityFirst:
+        realTableSchemaDetection:
           true,
 
-        factGraph:
+        subjectColumnDetection:
           true,
 
-        reverseRelations:
+        rowColumnIntersection:
           true,
 
-        exactEntityPageFirst:
+        entityPageContext:
+          true,
+
+        reverseRebirthLookup:
+          true,
+
+        reverseRitualLookup:
+          true,
+
+        strictInfoboxLabelValuePairs:
           true,
 
         htmlTables:
@@ -6838,13 +7682,10 @@ export async function GET(request) {
         wikitextTables:
           true,
 
-        infobox:
+        factGraph:
           true,
 
-        proseFallback:
-          true,
-
-        pageContext:
+        providerFailureIsolation:
           true,
 
         canonicalFirst:
@@ -6853,29 +7694,11 @@ export async function GET(request) {
         parallelFallback:
           true,
 
-        providerFailureIsolation:
-          true,
+        realWikiRegressionEndpoint:
+          "?test=live",
 
-        aiQuestionAnalyzer:
-          true,
-
-        aiEvidenceFallback:
-          true,
-
-        currentRebirthFullPage:
-          true,
-
-        updateSections:
-          true,
-
-        pageCache:
-          true,
-
-        factCache:
-          true,
-
-        answerCache:
-          true,
+        tableDiagnosticEndpoint:
+          "?test=wiki&page=Mutations",
       },
     }
   );
@@ -6900,7 +7723,9 @@ export async function POST(request) {
       )
       .trim();
 
-  if (!expectedToken) {
+  if (
+    !expectedToken
+  ) {
     return json(
       503,
       {
@@ -6924,12 +7749,8 @@ export async function POST(request) {
   }
 
   /*
-    IMPORTANT R20 CHANGE:
-
-    Tavily and NVIDIA are NOT required
-    for the endpoint to function.
-
-    Canonical Fandom can answer by itself.
+    Tavily/NVIDIA are optional.
+    Fandom canonical lookup can work alone.
   */
 
   let body;
