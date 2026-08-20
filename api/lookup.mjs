@@ -1,4 +1,4 @@
-const BUILD_ID = "SAB_KNOWLEDGE_LOOKUP_R18_2026_08_18";
+const BUILD_ID = "SAB_KNOWLEDGE_LOOKUP_R19_2026_08_19";
 
 const FANDOM_API = "https://stealabrainrot.fandom.com/api.php";
 const FANDOM_BASE = "https://stealabrainrot.fandom.com/wiki/";
@@ -7,82 +7,31 @@ const NVIDIA_URL = "https://integrate.api.nvidia.com/v1/chat/completions";
 const DEFAULT_MODEL = "nvidia/nemotron-3-super-120b-a12b";
 
 const CFG = Object.freeze({
-  GLOBAL_BUDGET_MS: 6500,
-  WIKI_TIMEOUT_MS: 2200,
+  GLOBAL_BUDGET_MS: 7000,
+  WIKI_TIMEOUT_MS: 2300,
   TAVILY_TIMEOUT_MS: 2200,
-  NVIDIA_TIMEOUT_MS: 1700,
+  NVIDIA_TIMEOUT_MS: 1800,
   SEARCH_DEPTH: "fast",
   SEARCH_MAX_RESULTS: 7,
-  MAX_CANONICAL_PAGES: 6,
-  MAX_WEB_SOURCES: 12,
+  MAX_CANONICAL_PAGES: 7,
+  MAX_WEB_SOURCES: 14,
   MAX_AI_EVIDENCE: 10,
   CURRENT_CACHE_TTL_MS: 3 * 60 * 1000,
   STABLE_CACHE_TTL_MS: 12 * 60 * 60 * 1000,
   PAGE_CACHE_TTL_MS: 5 * 60 * 1000,
+  TITLE_CACHE_TTL_MS: 5 * 60 * 1000,
 });
 
 const INTENT = Object.freeze({
   CURRENT_REBIRTH: "CURRENT_REBIRTH",
-  REBIRTH_UNLOCK: "REBIRTH_UNLOCK",
-  REBIRTH_REWARD: "REBIRTH_REWARD",
-
-  GEAR_INFO: "GEAR_INFO",
-  GEAR_UNLOCK: "GEAR_UNLOCK",
-  GEAR_COST: "GEAR_COST",
-
-  SLAP_INFO: "SLAP_INFO",
-  SLAP_REBIRTH: "SLAP_REBIRTH",
-  SLAP_COST: "SLAP_COST",
-
-  MUTATION_INFO: "MUTATION_INFO",
-  MUTATION_MULTIPLIER: "MUTATION_MULTIPLIER",
-  MUTATION_OBTAIN: "MUTATION_OBTAIN",
-
-  TRAIT_INFO: "TRAIT_INFO",
-  TRAIT_MULTIPLIER: "TRAIT_MULTIPLIER",
-  TRAIT_EVENT: "TRAIT_EVENT",
-
-  EVENT_INFO: "EVENT_INFO",
-  EVENT_DATE: "EVENT_DATE",
-  EVENT_REWARD: "EVENT_REWARD",
-
-  ADMIN_ABUSE: "ADMIN_ABUSE",
-
-  UPDATE_INFO: "UPDATE_INFO",
-  UPDATE_DATE: "UPDATE_DATE",
-  UPDATE_ADDED: "UPDATE_ADDED",
-  UPDATE_REMOVED: "UPDATE_REMOVED",
-
-  MACHINE_INFO: "MACHINE_INFO",
-  MACHINE_CONTENTS: "MACHINE_CONTENTS",
-  MACHINE_REPLACED_BY: "MACHINE_REPLACED_BY",
-
-  LUCKY_BLOCK_INFO: "LUCKY_BLOCK_INFO",
-  LUCKY_BLOCK_CONTENTS: "LUCKY_BLOCK_CONTENTS",
-  LUCKY_BLOCK_DROP_RATE: "LUCKY_BLOCK_DROP_RATE",
-
-  RITUAL_INFO: "RITUAL_INFO",
-  RITUAL_REQUIREMENT: "RITUAL_REQUIREMENT",
-  RITUAL_SPAWN: "RITUAL_SPAWN",
-  RITUAL_FORMATION: "RITUAL_FORMATION",
-
-  RARITY_INFO: "RARITY_INFO",
-
-  BASE_INFO: "BASE_INFO",
-  BASE_SLOTS: "BASE_SLOTS",
-  BASE_FLOORS: "BASE_FLOORS",
-
-  BRAINROT_INFO: "BRAINROT_INFO",
-  BRAINROT_RARITY: "BRAINROT_RARITY",
-  BRAINROT_COST: "BRAINROT_COST",
-  BRAINROT_INCOME: "BRAINROT_INCOME",
-  BRAINROT_OBTAIN: "BRAINROT_OBTAIN",
-  BRAINROT_STATUS: "BRAINROT_STATUS",
-
+  UPDATE: "UPDATE",
+  ENTITY_PROPERTY: "ENTITY_PROPERTY",
   GENERIC: "GENERIC",
 });
 
-const ANSWER_TYPE = Object.freeze({
+const ATTR = Object.freeze({
+  NAME: "NAME",
+  TEXT: "TEXT",
   REBIRTH: "REBIRTH",
   GEAR: "GEAR",
   BRAINROT: "BRAINROT",
@@ -90,139 +39,58 @@ const ANSWER_TYPE = Object.freeze({
   TRAIT: "TRAIT",
   EVENT: "EVENT",
   MACHINE: "MACHINE",
-  LUCKY_BLOCK: "LUCKY_BLOCK",
   RITUAL: "RITUAL",
   RARITY: "RARITY",
-  DATE: "DATE",
   COST: "COST",
   INCOME: "INCOME",
+  STATUS: "STATUS",
   MULTIPLIER: "MULTIPLIER",
+  REQUIREMENT: "REQUIREMENT",
+  SPAWN: "SPAWN",
+  FORMATION: "FORMATION",
+  WEATHER: "WEATHER",
   DROP_RATE: "DROP_RATE",
-  COUNT: "COUNT",
+  REWARD: "REWARD",
+  CONTENTS: "CONTENTS",
+  DATE: "DATE",
   METHOD: "METHOD",
-  ENTITY: "ENTITY",
-  TEXT: "TEXT",
+  SLOTS: "SLOTS",
+  FLOORS: "FLOORS",
+  REPLACED_BY: "REPLACED_BY",
+});
+
+const HUBS = Object.freeze({
+  REBIRTH: ["Rebirth", "Gears"],
+  GEAR: ["Gears", "Rebirth"],
+  SLAP: ["Slap", "Rebirth"],
+  MUTATION: ["Mutations"],
+  TRAIT: ["Traits", "Events"],
+  RITUAL: ["Rituals"],
+  MACHINE: ["Machines", "Update Log"],
+  LUCKY_BLOCK: ["Lucky Blocks"],
+  UPDATE: ["Update Log"],
+  EVENT: ["Events", "Admin Abuse", "Update Log"],
+  BASE: ["Base"],
+  RARITY: ["Rarities", "Category:Brainrots"],
 });
 
 const STATIC_ALIASES = Object.freeze({
-  "flash tp": [
-    "flash tp",
-    "flash teleport",
-  ],
-
-  "flash teleport": [
-    "flash teleport",
-    "flash tp",
-  ],
-
-  "admin abuse": [
-    "admin abuse",
-    "admin event",
-  ],
-
-  "lucky block": [
-    "lucky block",
-    "lucky blocks",
-  ],
-
-  "brain rot": [
-    "brain rot",
-    "brainrot",
-  ],
-
-  "brainrot": [
-    "brainrot",
-    "brain rot",
-  ],
+  "flash tp": ["flash tp", "flash teleport"],
+  "flash teleport": ["flash teleport", "flash tp"],
+  "brain rot": ["brain rot", "brainrot"],
+  "brainrot": ["brainrot", "brain rot"],
+  "admin abuse": ["admin abuse", "admin event"],
+  "lucky block": ["lucky block", "lucky blocks"],
 });
 
 const STOPWORDS = new Set([
-  "what",
-  "which",
-  "who",
-  "when",
-  "where",
-  "why",
-  "how",
-  "much",
-  "does",
-  "did",
-  "do",
-  "is",
-  "are",
-  "was",
-  "were",
-
-  "the",
-  "a",
-  "an",
-  "in",
-  "at",
-  "on",
-  "for",
-  "from",
-  "to",
-  "of",
-  "with",
-  "and",
-  "or",
-  "that",
-  "this",
-
-  "steal",
-  "brainrot",
-  "brain",
-  "rot",
-  "sab",
-  "roblox",
-  "game",
-  "right",
-  "now",
-  "current",
-  "currently",
-  "latest",
-
-  "newest",
-  "new",
-  "added",
-  "introduced",
-  "unlock",
-  "unlocks",
-  "unlocked",
-  "get",
-  "gets",
-  "got",
-  "give",
-  "gives",
-  "gave",
-  "come",
-  "came",
-
-  "out",
-  "during",
-  "update",
-  "event",
-  "rebirth",
-  "gear",
-  "mutation",
-  "trait",
-  "machine",
-  "ritual",
-  "rarity",
-  "base",
-
-  "slap",
-  "lucky",
-  "block",
-  "cost",
-  "income",
-  "multiplier",
-  "rate",
-  "drop",
-  "requires",
-  "require",
-  "spawn",
-  "spawns",
+  "what","which","who","when","where","why","how","much","many","does","did","do","is","are","was","were",
+  "the","a","an","in","at","on","for","from","to","of","with","and","or","that","this","it","its",
+  "steal","brainrot","brain","rot","sab","roblox","game","right","now","current","currently","latest","newest","new",
+  "added","introduced","unlock","unlocks","unlocked","get","gets","got","give","gives","gave","make","makes","per","second",
+  "come","came","out","during","update","event","rebirth","gear","item","mutation","trait","machine","ritual","rarity","base",
+  "slap","lucky","block","cost","price","income","multiplier","rate","drop","requires","require","required","spawn","spawns","reward",
+  "available","obtain","obtained","obtainable","method","status","chance","what's","whats","tell","me","about","thing","stuff"
 ]);
 
 const ANSWER_CACHE = new Map();
@@ -231,68 +99,29 @@ const TITLE_SEARCH_CACHE = new Map();
 
 function clean(value, limit = 2000) {
   return String(value ?? "")
-    .replace(
-      /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g,
-      " "
-    )
-    .replace(
-      /\s+/g,
-      " "
-    )
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, " ")
+    .replace(/\s+/g, " ")
     .trim()
-    .slice(
-      0,
-      limit
-    );
+    .slice(0, limit);
 }
 
 function norm(value) {
-  return clean(
-    value,
-    2000
-  )
+  return clean(value, 2000)
     .toLowerCase()
-    .replace(
-      /[^a-z0-9]+/g,
-      ""
-    );
+    .replace(/[^a-z0-9]+/g, "");
 }
 
-function clamp(
-  value,
-  min = 0,
-  max = 1
-) {
-  const n =
-    Number(
-      value
-    );
-
-  return Number.isFinite(
-    n
-  )
-    ? Math.max(
-        min,
-        Math.min(
-          max,
-          n
-        )
-      )
+function clamp(value, min = 0, max = 1) {
+  const n = Number(value);
+  return Number.isFinite(n)
+    ? Math.max(min, Math.min(max, n))
     : min;
 }
 
 function env(name) {
-  return String(
-    process.env[
-      name
-    ] ||
-      ""
-  )
+  return String(process.env[name] || "")
     .trim()
-    .replace(
-      /^Bearer\s+/i,
-      ""
-    )
+    .replace(/^Bearer\s+/i, "")
     .trim();
 }
 
@@ -300,36 +129,23 @@ function nowMs() {
   return Date.now();
 }
 
-function timeLeft(
-  deadline
-) {
-  return Math.max(
-    0,
-    deadline -
-      nowMs()
-  );
+function timeLeft(deadline) {
+  return Math.max(0, deadline - nowMs());
 }
 
-function errorCode(
-  error
-) {
+function errorCode(error) {
   return clean(
     error?.code ||
-      error?.message ||
-      error ||
-      "UNKNOWN_ERROR",
+    error?.message ||
+    error ||
+    "UNKNOWN_ERROR",
     320
   );
 }
 
-function json(
-  status,
-  payload
-) {
+function json(status, payload) {
   return new Response(
-    JSON.stringify(
-      payload
-    ),
+    JSON.stringify(payload),
     {
       status,
 
@@ -537,7 +353,8 @@ function decodeHtmlEntities(
 }
 
 function htmlToText(
-  html
+  html,
+  limit = 140000
 ) {
   return clean(
     decodeHtmlEntities(
@@ -566,7 +383,7 @@ function htmlToText(
           " "
         )
     ),
-    140000
+    limit
   );
 }
 
@@ -728,7 +545,7 @@ async function fetchCanonicalPage(
               "application/json",
 
             "User-Agent":
-              "ChromeCodeSniperLookup-R18",
+              "ChromeCodeSniperLookup-R19",
           },
         },
 
@@ -742,8 +559,8 @@ async function fetchCanonicalPage(
         `FANDOM_PARSE_API:${clean(
           data.error
             ?.code ||
-            data.error
-              ?.info,
+          data.error
+            ?.info,
           180
         )}`
       );
@@ -757,7 +574,8 @@ async function fetchCanonicalPage(
       typeof parsed
         ?.wikitext ===
       "string"
-        ? parsed.wikitext
+        ? parsed
+            .wikitext
         : String(
             parsed
               ?.wikitext
@@ -797,21 +615,22 @@ async function fetchCanonicalPage(
       title:
         clean(
           parsed?.title ||
-            title,
+          title,
           300
         ),
 
       displayTitle:
         htmlToText(
           parsed?.displaytitle ||
-            parsed?.title ||
-            title
+          parsed?.title ||
+          title,
+          300
         ),
 
       url:
         articleUrl(
           parsed?.title ||
-            title
+          title
         ),
 
       wikitext,
@@ -821,7 +640,7 @@ async function fetchCanonicalPage(
       text:
         htmlToText(
           html ||
-            wikitext
+          wikitext
         ),
 
       sections:
@@ -878,7 +697,7 @@ async function fetchCanonicalPage(
               "text/html,application/xhtml+xml",
 
             "User-Agent":
-              "ChromeCodeSniperLookup-R18",
+              "ChromeCodeSniperLookup-R19",
           },
         },
 
@@ -1045,6 +864,7 @@ async function wikiSearchTitles(
         String(
           Math.max(
             1,
+
             Math.min(
               10,
               limit
@@ -1069,7 +889,7 @@ async function wikiSearchTitles(
               "application/json",
 
             "User-Agent":
-              "ChromeCodeSniperLookup-R18",
+              "ChromeCodeSniperLookup-R19",
           },
         },
 
@@ -1082,9 +902,7 @@ async function wikiSearchTitles(
           data?.query
             ?.search
         )
-          ? data
-              .query
-              .search
+          ? data.query.search
           : []
       )
         .map(
@@ -1104,7 +922,7 @@ async function wikiSearchTitles(
       TITLE_SEARCH_CACHE,
       cacheKey,
       titles,
-      CFG.PAGE_CACHE_TTL_MS
+      CFG.TITLE_CACHE_TTL_MS
     );
 
     return titles;
@@ -1218,7 +1036,7 @@ function isCurrent(
   );
 }
 
-function inferAnswerType(
+function inferAttribute(
   question
 ) {
   const q =
@@ -1228,11 +1046,19 @@ function inferAnswerType(
     ).toLowerCase();
 
   if (
-    /\b(?:when|what date|which date|what year|what month)\b/.test(
+    /\b(?:when|what date|which date|what year|what month|release date)\b/.test(
       q
     )
   ) {
-    return ANSWER_TYPE.DATE;
+    return ATTR.DATE;
+  }
+
+  if (
+    /\b(?:income|makes? per second|per second|earn(?:s|ing)?)\b/.test(
+      q
+    )
+  ) {
+    return ATTR.INCOME;
   }
 
   if (
@@ -1240,23 +1066,15 @@ function inferAnswerType(
       q
     )
   ) {
-    return ANSWER_TYPE.COST;
+    return ATTR.COST;
   }
 
   if (
-    /\b(?:income|makes? per second|per second|earn)\b/.test(
+    /\bmultiplier\b|\bboost\b/.test(
       q
     )
   ) {
-    return ANSWER_TYPE.INCOME;
-  }
-
-  if (
-    /\bmultiplier\b|\b\d+(?:\.\d+)?x\b/.test(
-      q
-    )
-  ) {
-    return ANSWER_TYPE.MULTIPLIER;
+    return ATTR.MULTIPLIER;
   }
 
   if (
@@ -1264,23 +1082,103 @@ function inferAnswerType(
       q
     )
   ) {
-    return ANSWER_TYPE.DROP_RATE;
+    return ATTR.DROP_RATE;
   }
 
   if (
-    /\b(?:how many|number of|count)\b/.test(
+    /\b(?:rarity|tier)\b/.test(
       q
     )
   ) {
-    return ANSWER_TYPE.COUNT;
+    return ATTR.RARITY;
   }
 
   if (
-    /\b(?:how do|how can|obtain|obtained|get|get it|acquire|method)\b/.test(
+    /\b(?:status|obtainable|limited|removed|available)\b/.test(
       q
     )
   ) {
-    return ANSWER_TYPE.METHOD;
+    return ATTR.STATUS;
+  }
+
+  if (
+    /\b(?:how do|how can|obtain|obtained|get it|acquire|method)\b/.test(
+      q
+    )
+  ) {
+    return ATTR.METHOD;
+  }
+
+  if (
+    /\b(?:requires?|requirement|needed|need to)\b/.test(
+      q
+    )
+  ) {
+    return ATTR.REQUIREMENT;
+  }
+
+  if (
+    /\b(?:spawn|spawns|summon|summons)\b/.test(
+      q
+    )
+  ) {
+    return ATTR.SPAWN;
+  }
+
+  if (
+    /\b(?:formation|arrange|arrangement|placement)\b/.test(
+      q
+    )
+  ) {
+    return ATTR.FORMATION;
+  }
+
+  if (
+    /\bweather\b/.test(
+      q
+    )
+  ) {
+    return ATTR.WEATHER;
+  }
+
+  if (
+    /\b(?:replaced by|replacement|replace it)\b/.test(
+      q
+    )
+  ) {
+    return ATTR.REPLACED_BY;
+  }
+
+  if (
+    /\b(?:slots?|slot count)\b/.test(
+      q
+    )
+  ) {
+    return ATTR.SLOTS;
+  }
+
+  if (
+    /\b(?:floors?|floor count)\b/.test(
+      q
+    )
+  ) {
+    return ATTR.FLOORS;
+  }
+
+  if (
+    /\b(?:contents?|inside|contains?|drops?)\b/.test(
+      q
+    )
+  ) {
+    return ATTR.CONTENTS;
+  }
+
+  if (
+    /\b(?:reward|rewards|gives|gave)\b/.test(
+      q
+    )
+  ) {
+    return ATTR.REWARD;
   }
 
   if (
@@ -1291,82 +1189,66 @@ function inferAnswerType(
       q
     )
   ) {
-    return ANSWER_TYPE.REBIRTH;
+    return ATTR.REBIRTH;
   }
 
   if (
-    /\b(?:what|which)(?:\s+[a-z-]+){0,2}\s+(?:gear|item)\b/.test(
+    /\b(?:what|which)(?:\s+[a-z0-9'-]+){0,3}\s+(?:gear|item)\b/.test(
       q
     )
   ) {
-    return ANSWER_TYPE.GEAR;
+    return ATTR.GEAR;
   }
 
   if (
-    /\b(?:what|which)(?:\s+[a-z-]+){0,2}\s+(?:brainrot|brain rot)\b/.test(
+    /\b(?:what|which)(?:\s+[a-z0-9'-]+){0,3}\s+(?:brainrot|brain rot)\b/.test(
       q
     )
   ) {
-    return ANSWER_TYPE.BRAINROT;
+    return ATTR.BRAINROT;
   }
 
   if (
-    /\b(?:what|which)(?:\s+[a-z-]+){0,2}\s+mutation\b/.test(
+    /\b(?:what|which)(?:\s+[a-z0-9'-]+){0,3}\s+mutation\b/.test(
       q
     )
   ) {
-    return ANSWER_TYPE.MUTATION;
+    return ATTR.MUTATION;
   }
 
   if (
-    /\b(?:what|which)(?:\s+[a-z-]+){0,2}\s+trait\b/.test(
+    /\b(?:what|which)(?:\s+[a-z0-9'-]+){0,3}\s+trait\b/.test(
       q
     )
   ) {
-    return ANSWER_TYPE.TRAIT;
+    return ATTR.TRAIT;
   }
 
   if (
-    /\b(?:what|which)(?:\s+[a-z-]+){0,2}\s+event\b/.test(
+    /\b(?:what|which)(?:\s+[a-z0-9'-]+){0,3}\s+event\b/.test(
       q
     )
   ) {
-    return ANSWER_TYPE.EVENT;
+    return ATTR.EVENT;
   }
 
   if (
-    /\b(?:what|which)(?:\s+[a-z-]+){0,2}\s+machine\b/.test(
+    /\b(?:what|which)(?:\s+[a-z0-9'-]+){0,3}\s+machine\b/.test(
       q
     )
   ) {
-    return ANSWER_TYPE.MACHINE;
+    return ATTR.MACHINE;
   }
 
   if (
-    /\b(?:what|which)(?:\s+[a-z-]+){0,2}\s+(?:lucky block|lucky blocks)\b/.test(
+    /\b(?:what|which)(?:\s+[a-z0-9'-]+){0,3}\s+ritual\b/.test(
       q
     )
   ) {
-    return ANSWER_TYPE.LUCKY_BLOCK;
+    return ATTR.RITUAL;
   }
 
-  if (
-    /\b(?:what|which)(?:\s+[a-z-]+){0,2}\s+ritual\b/.test(
-      q
-    )
-  ) {
-    return ANSWER_TYPE.RITUAL;
-  }
-
-  if (
-    /\b(?:what|which)(?:\s+[a-z-]+){0,2}\s+rarity\b/.test(
-      q
-    )
-  ) {
-    return ANSWER_TYPE.RARITY;
-  }
-
-  return ANSWER_TYPE.TEXT;
+  return ATTR.TEXT;
 }
 
 function inferIntent(
@@ -1377,11 +1259,6 @@ function inferIntent(
       question,
       700
     ).toLowerCase();
-
-  const answerType =
-    inferAnswerType(
-      q
-    );
 
   if (
     /\b(?:newest|latest|current|highest)\s+rebirth\b/.test(
@@ -1400,339 +1277,26 @@ function inferIntent(
   }
 
   if (
-    q.includes(
-      "rebirth"
-    ) &&
-    answerType ===
-      ANSWER_TYPE.GEAR
-  ) {
-    return INTENT.REBIRTH_REWARD;
-  }
-
-  if (
-    (
-      q.includes(
-        "rebirth"
-      ) ||
-      q.includes(
-        "unlock"
-      )
-    ) &&
-    answerType ===
-      ANSWER_TYPE.REBIRTH
-  ) {
-    return INTENT.REBIRTH_UNLOCK;
-  }
-
-  if (
-    q.includes(
-      "slap"
-    )
-  ) {
-    if (
-      answerType ===
-      ANSWER_TYPE.COST
-    ) {
-      return INTENT.SLAP_COST;
-    }
-
-    if (
-      answerType ===
-      ANSWER_TYPE.REBIRTH
-    ) {
-      return INTENT.SLAP_REBIRTH;
-    }
-
-    return INTENT.SLAP_INFO;
-  }
-
-  if (
-    q.includes(
-      "mutation"
-    )
-  ) {
-    if (
-      answerType ===
-      ANSWER_TYPE.MULTIPLIER
-    ) {
-      return INTENT.MUTATION_MULTIPLIER;
-    }
-
-    if (
-      answerType ===
-      ANSWER_TYPE.METHOD
-    ) {
-      return INTENT.MUTATION_OBTAIN;
-    }
-
-    return INTENT.MUTATION_INFO;
-  }
-
-  if (
-    q.includes(
-      "trait"
-    )
-  ) {
-    if (
-      answerType ===
-      ANSWER_TYPE.MULTIPLIER
-    ) {
-      return INTENT.TRAIT_MULTIPLIER;
-    }
-
-    if (
-      answerType ===
-      ANSWER_TYPE.EVENT
-    ) {
-      return INTENT.TRAIT_EVENT;
-    }
-
-    return INTENT.TRAIT_INFO;
-  }
-
-  if (
-    q.includes(
-      "lucky block"
-    )
-  ) {
-    if (
-      answerType ===
-      ANSWER_TYPE.DROP_RATE
-    ) {
-      return INTENT.LUCKY_BLOCK_DROP_RATE;
-    }
-
-    if (
-      /\b(?:inside|contains?|contents?|drops?|from)\b/.test(
-        q
-      )
-    ) {
-      return INTENT.LUCKY_BLOCK_CONTENTS;
-    }
-
-    return INTENT.LUCKY_BLOCK_INFO;
-  }
-
-  if (
-    q.includes(
-      "ritual"
-    )
-  ) {
-    if (
-      /\b(?:require|requires|needed|need)\b/.test(
-        q
-      )
-    ) {
-      return INTENT.RITUAL_REQUIREMENT;
-    }
-
-    if (
-      /\b(?:spawn|spawns|gives|reward)\b/.test(
-        q
-      )
-    ) {
-      return INTENT.RITUAL_SPAWN;
-    }
-
-    if (
-      /\b(?:formation|form|arrange|placement)\b/.test(
-        q
-      )
-    ) {
-      return INTENT.RITUAL_FORMATION;
-    }
-
-    return INTENT.RITUAL_INFO;
-  }
-
-  if (
-    q.includes(
-      "machine"
-    )
-  ) {
-    if (
-      /\b(?:inside|contains?|contents?|drops?|rewards?)\b/.test(
-        q
-      )
-    ) {
-      return INTENT.MACHINE_CONTENTS;
-    }
-
-    if (
-      /\b(?:replaced by|replace|replacement)\b/.test(
-        q
-      )
-    ) {
-      return INTENT.MACHINE_REPLACED_BY;
-    }
-
-    return INTENT.MACHINE_INFO;
-  }
-
-  if (
-    q.includes(
-      "base"
-    )
-  ) {
-    if (
-      /\bslots?\b/.test(
-        q
-      )
-    ) {
-      return INTENT.BASE_SLOTS;
-    }
-
-    if (
-      /\bfloors?\b/.test(
-        q
-      )
-    ) {
-      return INTENT.BASE_FLOORS;
-    }
-
-    return INTENT.BASE_INFO;
-  }
-
-  if (
-    q.includes(
-      "admin abuse"
-    )
-  ) {
-    return INTENT.ADMIN_ABUSE;
-  }
-
-  if (
     /\bupdate\s*\d+(?:\.\d+)?\b/.test(
       q
     ) ||
     q.includes(
-      "update"
+      "update "
     )
   ) {
-    if (
-      answerType ===
-      ANSWER_TYPE.DATE
-    ) {
-      return INTENT.UPDATE_DATE;
-    }
-
-    if (
-      /\b(?:added|introduced|new)\b/.test(
-        q
-      )
-    ) {
-      return INTENT.UPDATE_ADDED;
-    }
-
-    if (
-      /\b(?:removed|deleted)\b/.test(
-        q
-      )
-    ) {
-      return INTENT.UPDATE_REMOVED;
-    }
-
-    return INTENT.UPDATE_INFO;
+    return INTENT.UPDATE;
   }
 
   if (
-    q.includes(
-      "event"
-    )
+    inferAttribute(
+      q
+    ) !==
+      ATTR.TEXT ||
+    candidateEntities(
+      q
+    ).length
   ) {
-    if (
-      answerType ===
-      ANSWER_TYPE.DATE
-    ) {
-      return INTENT.EVENT_DATE;
-    }
-
-    if (
-      /\b(?:reward|gives|gave|added)\b/.test(
-        q
-      )
-    ) {
-      return INTENT.EVENT_REWARD;
-    }
-
-    return INTENT.EVENT_INFO;
-  }
-
-  if (
-    q.includes(
-      "gear"
-    )
-  ) {
-    if (
-      answerType ===
-      ANSWER_TYPE.COST
-    ) {
-      return INTENT.GEAR_COST;
-    }
-
-    if (
-      answerType ===
-      ANSWER_TYPE.REBIRTH
-    ) {
-      return INTENT.GEAR_UNLOCK;
-    }
-
-    return INTENT.GEAR_INFO;
-  }
-
-  if (
-    q.includes(
-      "rarity"
-    )
-  ) {
-    return INTENT.RARITY_INFO;
-  }
-
-  if (
-    q.includes(
-      "brainrot"
-    ) ||
-    q.includes(
-      "brain rot"
-    )
-  ) {
-    if (
-      answerType ===
-      ANSWER_TYPE.RARITY
-    ) {
-      return INTENT.BRAINROT_RARITY;
-    }
-
-    if (
-      answerType ===
-      ANSWER_TYPE.COST
-    ) {
-      return INTENT.BRAINROT_COST;
-    }
-
-    if (
-      answerType ===
-      ANSWER_TYPE.INCOME
-    ) {
-      return INTENT.BRAINROT_INCOME;
-    }
-
-    if (
-      answerType ===
-      ANSWER_TYPE.METHOD
-    ) {
-      return INTENT.BRAINROT_OBTAIN;
-    }
-
-    if (
-      /\b(?:obtainable|limited|removed|status|available)\b/.test(
-        q
-      )
-    ) {
-      return INTENT.BRAINROT_STATUS;
-    }
-
-    return INTENT.BRAINROT_INFO;
+    return INTENT.ENTITY_PROPERTY;
   }
 
   return INTENT.GENERIC;
@@ -1797,7 +1361,7 @@ function extractUpdateNumber(
     : null;
 }
 
-function extractRebirthNumberFromQuestion(
+function extractRebirthNumber(
   question
 ) {
   const match =
@@ -1828,7 +1392,7 @@ function candidateEntities(
 
   const quoted = [
     ...raw.matchAll(
-      /["“”']([^"“”']{2,80})["“”']/g
+      /["“”']([^"“”']{2,90})["“”']/g
     ),
   ].map(
     (
@@ -1842,7 +1406,7 @@ function candidateEntities(
       )
   );
 
-  const aliases =
+  const aliasValues =
     aliasesFor(
       raw
     );
@@ -1909,1385 +1473,292 @@ function candidateEntities(
     }
   }
 
-  return [
+  const out = [
     ...new Set([
       ...quoted,
-      ...aliases,
+      ...aliasValues,
       ...spans,
     ]),
-  ].slice(
-    0,
-    10
-  );
-}
+  ];
 
-function extractTableRowsFromHtml(
-  html
-) {
-  const rows =
-    [];
+  return out
+    .sort(
+      (
+        a,
+        b
+      ) => {
+        const ac =
+          a.split(
+            /\s+/
+          ).length;
 
-  const rowMatches =
-    String(
-      html ??
-        ""
-    ).match(
-      /<tr\b[^>]*>[\s\S]*?<\/tr>/gi
-    ) ||
-    [];
+        const bc =
+          b.split(
+            /\s+/
+          ).length;
 
-  for (
-    const rowHtml
-    of rowMatches
-  ) {
-    const cellMatches =
-      rowHtml.match(
-        /<t[dh]\b[^>]*>[\s\S]*?<\/t[dh]>/gi
-      ) ||
-      [];
-
-    const cells =
-      cellMatches
-        .map(
-          (
-            cell
-          ) =>
-            htmlToText(
-              cell
-            )
-        )
-        .filter(
-          Boolean
+        return (
+          bc -
+            ac ||
+          b.length -
+            a.length
         );
-
-    if (
-      cells.length
-    ) {
-      rows.push(
-        cells
-      );
-    }
-  }
-
-  return rows;
+      }
+    )
+    .slice(
+      0,
+      16
+    );
 }
 
-function parseInfobox(
-  page
+function titleSimilarity(
+  a,
+  b
 ) {
-  const html =
-    String(
-      page?.html ||
-        ""
+  const an =
+    norm(
+      a
     );
 
-  const result =
-    {};
+  const bn =
+    norm(
+      b
+    );
 
-  const infobox =
-    html.match(
-      /<(?:aside|table)\b[^>]*(?:portable-infobox|infobox)[^>]*>[\s\S]*?<\/(?:aside|table)>/i
-    )?.[
-      0
-    ] ||
-    "";
-
-  const source =
-    infobox ||
-    html;
-
-  const dataRows = [
-    ...source.matchAll(
-      /<(?:div|tr)\b[^>]*>([\s\S]*?)<\/(?:div|tr)>/gi
-    ),
-  ].slice(
-    0,
-    400
-  );
-
-  for (
-    const match
-    of dataRows
+  if (
+    !an ||
+    !bn
   ) {
-    const rowHtml =
-      match[
-        1
-      ];
-
-    const labelMatch =
-      rowHtml.match(
-        /(?:data-source=["']([^"']+)["']|class=["'][^"']*(?:pi-data-label|infobox-label)[^"']*["'][^>]*>([\s\S]*?)<\/)/i
-      );
-
-    const valueMatch =
-      rowHtml.match(
-        /class=["'][^"']*(?:pi-data-value|infobox-data)[^"']*["'][^>]*>([\s\S]*?)<\//i
-      );
-
-    if (
-      !labelMatch ||
-      !valueMatch
-    ) {
-      continue;
-    }
-
-    const label =
-      clean(
-        htmlToText(
-          labelMatch[
-            1
-          ] ||
-          labelMatch[
-            2
-          ]
-        ),
-        100
-      ).toLowerCase();
-
-    const value =
-      clean(
-        htmlToText(
-          valueMatch[
-            1
-          ]
-        ),
-        500
-      );
-
-    if (
-      label &&
-      value
-    ) {
-      result[
-        label
-      ] =
-        value;
-    }
+    return 0;
   }
 
   if (
-    !Object.keys(
-      result
-    ).length &&
-    page?.wikitext
+    an ===
+    bn
   ) {
-    const template =
-      String(
-        page.wikitext
-      ).match(
-        /\{\{[\s\S]{0,12000}?\n\}\}/
-      )?.[
-        0
-      ] ||
-      "";
+    return 1;
+  }
 
-    for (
-      const line
-      of template.split(
-        /\n/
+  if (
+    an.includes(
+      bn
+    ) ||
+    bn.includes(
+      an
+    )
+  ) {
+    return 0.9;
+  }
+
+  const aw =
+    new Set(
+      clean(
+        a,
+        300
       )
-    ) {
-      const m =
-        line.match(
-          /^\s*\|\s*([^=|]+?)\s*=\s*(.*?)\s*$/
-        );
+        .toLowerCase()
+        .match(
+          /[a-z0-9]+/g
+        ) ||
+        []
+    );
 
-      if (
-        !m
-      ) {
-        continue;
-      }
+  const bw =
+    new Set(
+      clean(
+        b,
+        300
+      )
+        .toLowerCase()
+        .match(
+          /[a-z0-9]+/g
+        ) ||
+        []
+    );
 
-      const key =
-        clean(
-          m[
-            1
-          ],
-          100
-        ).toLowerCase();
-
-      const value =
-        clean(
-          m[
-            2
-          ].replace(
-            /\[\[|\]\]/g,
-            ""
-          ),
-          500
-        );
-
-      if (
-        key &&
-        value
-      ) {
-        result[
-          key
-        ] =
-          value;
-      }
-    }
+  if (
+    !aw.size ||
+    !bw.size
+  ) {
+    return 0;
   }
 
-  return result;
+  const overlap = [
+    ...aw,
+  ].filter(
+    (
+      x
+    ) =>
+      bw.has(
+        x
+      )
+  ).length;
+
+  return (
+    overlap /
+    Math.max(
+      aw.size,
+      bw.size
+    )
+  );
 }
 
-function getInfoboxValue(
-  info,
-  keys
+function bestEntitySearchQuery(
+  question
 ) {
-  for (
-    const key
-    of keys
-  ) {
-    const exact =
-      Object.entries(
-        info
-      ).find(
-        ([
-          k,
-        ]) =>
-          k ===
-          key.toLowerCase()
-      );
-
-    if (
-      exact?.[
-        1
-      ]
-    ) {
-      return exact[
-        1
-      ];
-    }
-  }
-
-  for (
-    const key
-    of keys
-  ) {
-    const partial =
-      Object.entries(
-        info
-      ).find(
-        ([
-          k,
-        ]) =>
-          k.includes(
-            key.toLowerCase()
-          )
-      );
-
-    if (
-      partial?.[
-        1
-      ]
-    ) {
-      return partial[
-        1
-      ];
-    }
-  }
-
-  return null;
+  return (
+    candidateEntities(
+      question
+    )[
+      0
+    ] ||
+    clean(
+      question,
+      450
+    )
+  );
 }
 
-function extractRebirthRows(
-  page
+function hubTitlesForQuestion(
+  question
 ) {
+  const q =
+    clean(
+      question,
+      700
+    ).toLowerCase();
+
   const out =
     [];
 
-  for (
-    const cells
-    of extractTableRowsFromHtml(
-      page?.html ||
-        ""
+  if (
+    q.includes(
+      "rebirth"
     )
   ) {
-    const text =
-      clean(
-        cells.join(
-          " | "
-        ),
-        3000
-      );
-
-    const match =
-      text.match(
-        /\brebirth\s*#?\s*(\d{1,3})\b/i
-      ) ||
-      clean(
-        cells[
-          0
-        ],
-        120
-      ).match(
-        /^#?\s*(\d{1,3})$/
-      );
-
-    if (
-      !match
-    ) {
-      continue;
-    }
-
-    const number =
-      Number(
-        match[
-          1
-        ]
-      );
-
-    if (
-      !(
-        number >=
-          1 &&
-        number <=
-          999
-      )
-    ) {
-      continue;
-    }
-
-    out.push({
-      number,
-
-      rebirth:
-        `Rebirth${number}`,
-
-      cells,
-
-      text,
-    });
+    out.push(
+      ...HUBS.REBIRTH
+    );
   }
 
   if (
-    !out.length
+    q.includes(
+      "mutation"
+    )
   ) {
-    const text =
-      page?.text ||
-      "";
-
-    for (
-      const match
-      of text.matchAll(
-        /\brebirth\s*#?\s*(\d{1,3})\b/gi
-      )
-    ) {
-      const number =
-        Number(
-          match[
-            1
-          ]
-        );
-
-      if (
-        !(
-          number >=
-            1 &&
-          number <=
-            999
-        )
-      ) {
-        continue;
-      }
-
-      out.push({
-        number,
-
-        rebirth:
-          `Rebirth${number}`,
-
-        cells:
-          [],
-
-        text:
-          clean(
-            text.slice(
-              Math.max(
-                0,
-                match.index -
-                  180
-              ),
-
-              match.index +
-                480
-            ),
-            800
-          ),
-
-        fallback:
-          true,
-      });
-    }
+    out.push(
+      ...HUBS.MUTATION
+    );
   }
 
-  const best =
-    new Map();
-
-  for (
-    const row
-    of out
+  if (
+    q.includes(
+      "trait"
+    )
   ) {
-    const old =
-      best.get(
-        row.number
-      );
+    out.push(
+      ...HUBS.TRAIT
+    );
+  }
 
-    if (
-      !old ||
-      (
-        old.fallback &&
-        !row.fallback
-      )
-    ) {
-      best.set(
-        row.number,
-        row
-      );
-    }
+  if (
+    q.includes(
+      "ritual"
+    )
+  ) {
+    out.push(
+      ...HUBS.RITUAL
+    );
+  }
+
+  if (
+    q.includes(
+      "machine"
+    )
+  ) {
+    out.push(
+      ...HUBS.MACHINE
+    );
+  }
+
+  if (
+    q.includes(
+      "lucky block"
+    )
+  ) {
+    out.push(
+      ...HUBS.LUCKY_BLOCK
+    );
+  }
+
+  if (
+    q.includes(
+      "update"
+    )
+  ) {
+    out.push(
+      ...HUBS.UPDATE
+    );
+  }
+
+  if (
+    q.includes(
+      "event"
+    ) ||
+    q.includes(
+      "admin abuse"
+    )
+  ) {
+    out.push(
+      ...HUBS.EVENT
+    );
+  }
+
+  if (
+    q.includes(
+      "base"
+    )
+  ) {
+    out.push(
+      ...HUBS.BASE
+    );
+  }
+
+  if (
+    q.includes(
+      "rarity"
+    )
+  ) {
+    out.push(
+      ...HUBS.RARITY
+    );
+  }
+
+  if (
+    q.includes(
+      "gear"
+    )
+  ) {
+    out.push(
+      ...HUBS.GEAR
+    );
+  }
+
+  if (
+    q.includes(
+      "slap"
+    )
+  ) {
+    out.push(
+      ...HUBS.SLAP
+    );
   }
 
   return [
-    ...best.values(),
-  ].sort(
-    (
-      a,
-      b
-    ) =>
-      a.number -
-      b.number
-  );
-}
-
-function findRowContaining(
-  page,
-  phrases
-) {
-  const lows =
-    phrases.map(
-      (
-        p
-      ) =>
-        p.toLowerCase()
-    );
-
-  for (
-    const cells
-    of extractTableRowsFromHtml(
-      page?.html ||
-        ""
-    )
-  ) {
-    const text =
-      clean(
-        cells.join(
-          " | "
-        ),
-        3000
-      );
-
-    const low =
-      text.toLowerCase();
-
-    if (
-      lows.some(
-        (
-          p
-        ) =>
-          low.includes(
-            p
-          )
-      )
-    ) {
-      return {
-        cells,
-        text,
-      };
-    }
-  }
-
-  return null;
-}
-
-function findRebirthForEntity(
-  page,
-  entityPhrases
-) {
-  const phrases =
-    entityPhrases.map(
-      (
-        p
-      ) =>
-        p.toLowerCase()
-    );
-
-  const rows =
-    extractRebirthRows(
-      page
-    );
-
-  for (
-    const row
-    of rows
-  ) {
-    const low =
-      row.text
-        .toLowerCase();
-
-    if (
-      phrases.some(
-        (
-          p
-        ) =>
-          low.includes(
-            p
-          )
-      )
-    ) {
-      return row.rebirth;
-    }
-  }
-
-  return null;
-}
-
-function findRewardForRebirth(
-  page,
-  number
-) {
-  const tableRows =
-    extractTableRowsFromHtml(
-      page?.html ||
-        ""
-    );
-
-  if (
-    tableRows.length >=
-    2
-  ) {
-    const headers =
-      tableRows[
-        0
-      ].map(
-        (
-          v
-        ) =>
-          clean(
-            v,
-            120
-          ).toLowerCase()
-      );
-
-    const rebirthColumn =
-      headers.findIndex(
-        (
-          h
-        ) =>
-          /rebirth|level|requirement/.test(
-            h
-          )
-      );
-
-    const preferredColumns =
-      headers
-        .map(
-          (
-            h,
-            i
-          ) => ({
-            h,
-            i,
-          })
-        )
-        .filter(
-          ({
-            h,
-          }) =>
-            /gear|item|reward|unlock|ability|tool/.test(
-              h
-            )
-        )
-        .map(
-          ({
-            i,
-          }) =>
-            i
-        );
-
-    for (
-      const cells
-      of tableRows.slice(
-        1
-      )
-    ) {
-      const text =
-        clean(
-          cells.join(
-            " | "
-          ),
-          3000
-        );
-
-      const explicit =
-        text.match(
-          /\brebirth\s*#?\s*(\d{1,3})\b/i
-        );
-
-      const firstNumber =
-        clean(
-          cells[
-            rebirthColumn >=
-            0
-              ? rebirthColumn
-              : 0
-          ],
-          120
-        ).match(
-          /(?:rebirth\s*)?#?\s*(\d{1,3})/i
-        );
-
-      const rowNumber =
-        Number(
-          explicit?.[
-            1
-          ] ||
-          firstNumber?.[
-            1
-          ] ||
-          0
-        );
-
-      if (
-        rowNumber !==
-        number
-      ) {
-        continue;
-      }
-
-      for (
-        const idx
-        of preferredColumns
-      ) {
-        const value =
-          clean(
-            cells[
-              idx
-            ],
-            300
-          );
-
-        if (
-          value &&
-          /[A-Za-z]/.test(
-            value
-          ) &&
-          !/^rebirth\b/i.test(
-            value
-          )
-        ) {
-          return value;
-        }
-      }
-
-      const candidates =
-        cells
-          .map(
-            (
-              v,
-              i
-            ) => ({
-              value:
-                clean(
-                  v,
-                  300
-                ),
-
-              i,
-            })
-          )
-          .filter(
-            ({
-              value,
-              i,
-            }) => {
-              if (
-                !value ||
-                i ===
-                  rebirthColumn
-              ) {
-                return false;
-              }
-
-              if (
-                /^rebirth\b/i.test(
-                  value
-                )
-              ) {
-                return false;
-              }
-
-              if (
-                /^\$?[\d.,]+[KMBT]?$/i.test(
-                  value
-                )
-              ) {
-                return false;
-              }
-
-              if (
-                /^\d+(?:\.\d+)?x$/i.test(
-                  value
-                )
-              ) {
-                return false;
-              }
-
-              if (
-                /^\d+(?:\.\d+)?%$/.test(
-                  value
-                )
-              ) {
-                return false;
-              }
-
-              return /[A-Za-z]/.test(
-                value
-              );
-            }
-          );
-
-      if (
-        candidates[
-          0
-        ]
-      ) {
-        return candidates[
-          0
-        ].value;
-      }
-    }
-  }
-
-  const rows =
-    extractRebirthRows(
-      page
-    );
-
-  const row =
-    rows.find(
-      (
-        r
-      ) =>
-        r.number ===
-        number
-    );
-
-  if (
-    !row
-  ) {
-    return null;
-  }
-
-  if (
-    row.cells.length >=
-    2
-  ) {
-    const candidates =
-      row.cells
-        .slice(
-          1
-        )
-        .map(
-          (
-            v
-          ) =>
-            clean(
-              v,
-              300
-            )
-        )
-        .filter(
-          (
-            v
-          ) =>
-            v &&
-            /[A-Za-z]/.test(
-              v
-            ) &&
-            !/^rebirth\b/i.test(
-              v
-            )
-        );
-
-    return candidates[
-      0
-    ] ||
-    null;
-  }
-
-  const text =
-    row.text.replace(
-      new RegExp(
-        `rebirth\\s*#?\\s*${number}`,
-        "i"
-      ),
-      " "
-    );
-
-  const named =
-    text.match(
-      /\b[A-Z][A-Za-z0-9' -]{2,80}\b/
-    );
-
-  return named
-    ? clean(
-        named[
-          0
-        ],
-        160
-      )
-    : null;
-}
-
-function parseGenericTableRelations(
-  page
-) {
-  const relations =
-    [];
-
-  const rows =
-    extractTableRowsFromHtml(
-      page?.html ||
-        ""
-    );
-
-  if (
-    rows.length <
-    2
-  ) {
-    return relations;
-  }
-
-  let headers =
-    rows[
-      0
-    ].map(
-      (
-        x
-      ) =>
-        clean(
-          x,
-          120
-        ).toLowerCase()
-    );
-
-  const headerLike =
-    headers.some(
-      (
-        h
-      ) =>
-        /name|cost|price|income|multiplier|rebirth|rarity|chance|rate|reward|require|spawn|trait|mutation|gear|item/.test(
-          h
-        )
-    );
-
-  const dataRows =
-    headerLike
-      ? rows.slice(
-          1
-        )
-      : rows;
-
-  if (
-    !headerLike
-  ) {
-    headers =
-      [];
-  }
-
-  for (
-    const cells
-    of dataRows
-  ) {
-    const values =
-      cells.map(
-        (
-          v
-        ) =>
-          clean(
-            v,
-            500
-          )
-      );
-
-    if (
-      !values.filter(
-        Boolean
-      ).length
-    ) {
-      continue;
-    }
-
-    if (
-      headers.length ===
-      values.length
-    ) {
-      const obj =
-        {};
-
-      for (
-        let i =
-          0;
-        i <
-        headers.length;
-        i++
-      ) {
-        obj[
-          headers[
-            i
-          ]
-        ] =
-          values[
-            i
-          ];
-      }
-
-      relations.push({
-        cells:
-          values,
-
-        obj,
-
-        text:
-          clean(
-            values.join(
-              " | "
-            ),
-            2500
-          ),
-      });
-    } else {
-      relations.push({
-        cells:
-          values,
-
-        obj:
-          {},
-
-        text:
-          clean(
-            values.join(
-              " | "
-            ),
-            2500
-          ),
-      });
-    }
-  }
-
-  return relations;
-}
-
-function sectionText(
-  page,
-  headingNeedles
-) {
-  const html =
-    String(
-      page?.html ||
-        ""
-    );
-
-  const needles =
-    headingNeedles.map(
-      (
-        x
-      ) =>
-        x.toLowerCase()
-    );
-
-  const hRegex =
-    /<h([1-6])\b[^>]*>([\s\S]*?)<\/h\1>/gi;
-
-  const headings =
-    [];
-
-  let m;
-
-  while (
-    (
-      m =
-        hRegex.exec(
-          html
-        )
-    ) !==
-    null
-  ) {
-    headings.push({
-      index:
-        m.index,
-
-      end:
-        hRegex.lastIndex,
-
-      level:
-        Number(
-          m[
-            1
-          ]
-        ),
-
-      title:
-        htmlToText(
-          m[
-            2
-          ]
-        ),
-    });
-  }
-
-  for (
-    let i =
-      0;
-    i <
-    headings.length;
-    i++
-  ) {
-    const h =
-      headings[
-        i
-      ];
-
-    if (
-      !needles.some(
-        (
-          n
-        ) =>
-          h.title
-            .toLowerCase()
-            .includes(
-              n
-            )
-      )
-    ) {
-      continue;
-    }
-
-    let end =
-      html.length;
-
-    for (
-      let j =
-        i +
-        1;
-      j <
-      headings.length;
-      j++
-    ) {
-      if (
-        headings[
-          j
-        ].level <=
-        h.level
-      ) {
-        end =
-          headings[
-            j
-          ].index;
-
-        break;
-      }
-    }
-
-    return htmlToText(
-      html.slice(
-        h.end,
-        end
-      )
-    );
-  }
-
-  return "";
-}
-
-function formatValue(
-  value,
-  answerType
-) {
-  const text =
-    clean(
-      value,
-      400
-    );
-
-  if (
-    !text
-  ) {
-    return null;
-  }
-
-  if (
-    answerType ===
-    ANSWER_TYPE.REBIRTH
-  ) {
-    const m =
-      text.match(
-        /\brebirth\s*#?\s*(\d{1,3})\b/i
-      ) ||
-      text.match(
-        /^\s*(\d{1,3})\s*$/
-      );
-
-    return m
-      ? `Rebirth${Number(
-          m[
-            1
-          ]
-        )}`
-      : null;
-  }
-
-  if (
-    answerType ===
-    ANSWER_TYPE.MULTIPLIER
-  ) {
-    const m =
-      text.match(
-        /\b\d+(?:\.\d+)?\s*x\b/i
-      );
-
-    return m
-      ? m[
-          0
-        ].replace(
-          /\s+/g,
-          ""
-        )
-      : text;
-  }
-
-  if (
-    answerType ===
-    ANSWER_TYPE.DROP_RATE
-  ) {
-    const m =
-      text.match(
-        /\b\d+(?:\.\d+)?\s*%\b/
-      );
-
-    return m
-      ? m[
-          0
-        ].replace(
-          /\s+/g,
-          ""
-        )
-      : text;
-  }
-
-  return text;
-}
-
-function entityFromQuestion(
-  question
-) {
-  const aliases =
-    aliasesFor(
-      question
-    );
-
-  if (
-    aliases.includes(
-      "flash teleport"
-    )
-  ) {
-    return "Flash Teleport";
-  }
-
-  const candidates =
-    candidateEntities(
-      question
-    );
-
-  return candidates[
-    0
-  ] ||
-  null;
-}
-
-function knownPageTitles(
-  intent
-) {
-  switch (
-    intent
-  ) {
-    case INTENT.CURRENT_REBIRTH:
-    case INTENT.REBIRTH_UNLOCK:
-    case INTENT.REBIRTH_REWARD:
-    case INTENT.GEAR_UNLOCK:
-      return [
-        "Rebirth",
-        "Gears",
-      ];
-
-    case INTENT.GEAR_INFO:
-    case INTENT.GEAR_COST:
-      return [
-        "Gears",
-        "Rebirth",
-      ];
-
-    case INTENT.SLAP_INFO:
-    case INTENT.SLAP_REBIRTH:
-    case INTENT.SLAP_COST:
-      return [
-        "Slap",
-        "Rebirth",
-      ];
-
-    case INTENT.MUTATION_INFO:
-    case INTENT.MUTATION_MULTIPLIER:
-    case INTENT.MUTATION_OBTAIN:
-      return [
-        "Mutations",
-      ];
-
-    case INTENT.TRAIT_INFO:
-    case INTENT.TRAIT_MULTIPLIER:
-    case INTENT.TRAIT_EVENT:
-      return [
-        "Traits",
-        "Events",
-      ];
-
-    case INTENT.EVENT_INFO:
-    case INTENT.EVENT_DATE:
-    case INTENT.EVENT_REWARD:
-    case INTENT.ADMIN_ABUSE:
-      return [
-        "Events",
-        "Admin Abuse",
-        "Update Log",
-      ];
-
-    case INTENT.UPDATE_INFO:
-    case INTENT.UPDATE_DATE:
-    case INTENT.UPDATE_ADDED:
-    case INTENT.UPDATE_REMOVED:
-      return [
-        "Update Log",
-      ];
-
-    case INTENT.MACHINE_INFO:
-    case INTENT.MACHINE_CONTENTS:
-    case INTENT.MACHINE_REPLACED_BY:
-      return [
-        "Machines",
-        "Update Log",
-      ];
-
-    case INTENT.LUCKY_BLOCK_INFO:
-    case INTENT.LUCKY_BLOCK_CONTENTS:
-    case INTENT.LUCKY_BLOCK_DROP_RATE:
-      return [
-        "Lucky Blocks",
-      ];
-
-    case INTENT.RITUAL_INFO:
-    case INTENT.RITUAL_REQUIREMENT:
-    case INTENT.RITUAL_SPAWN:
-    case INTENT.RITUAL_FORMATION:
-      return [
-        "Rituals",
-      ];
-
-    case INTENT.RARITY_INFO:
-    case INTENT.BRAINROT_RARITY:
-      return [
-        "Rarities",
-        "Category:Brainrots",
-      ];
-
-    case INTENT.BASE_INFO:
-    case INTENT.BASE_SLOTS:
-    case INTENT.BASE_FLOORS:
-      return [
-        "Base",
-      ];
-
-    default:
-      return [];
-  }
-}
-
-function wikiQueryForQuestion(
-  question,
-  intent
-) {
-  const entity =
-    entityFromQuestion(
-      question
-    );
-
-  const update =
-    extractUpdateNumber(
-      question
-    );
-
-  if (
-    update
-  ) {
-    return (
-      `Update ${update}`
-    );
-  }
-
-  if (
-    entity
-  ) {
-    return entity;
-  }
-
-  switch (
-    intent
-  ) {
-    case INTENT.CURRENT_REBIRTH:
-      return "Rebirth current";
-
-    case INTENT.MUTATION_INFO:
-    case INTENT.MUTATION_MULTIPLIER:
-    case INTENT.MUTATION_OBTAIN:
-      return "Mutations";
-
-    case INTENT.TRAIT_INFO:
-    case INTENT.TRAIT_MULTIPLIER:
-    case INTENT.TRAIT_EVENT:
-      return "Traits";
-
-    case INTENT.RITUAL_INFO:
-    case INTENT.RITUAL_REQUIREMENT:
-    case INTENT.RITUAL_SPAWN:
-    case INTENT.RITUAL_FORMATION:
-      return "Rituals";
-
-    case INTENT.LUCKY_BLOCK_INFO:
-    case INTENT.LUCKY_BLOCK_CONTENTS:
-    case INTENT.LUCKY_BLOCK_DROP_RATE:
-      return "Lucky Blocks";
-
-    case INTENT.MACHINE_INFO:
-    case INTENT.MACHINE_CONTENTS:
-    case INTENT.MACHINE_REPLACED_BY:
-      return "Machines";
-
-    default:
-      return clean(
-        question,
-        450
-      );
-  }
+    ...new Set(
+      out
+    ),
+  ];
 }
 
 async function canonicalPagesForQuestion(
@@ -3299,14 +1770,11 @@ async function canonicalPagesForQuestion(
       question
     );
 
-  const titles = [
-    ...knownPageTitles(
-      intent
-    ),
-  ];
+  const titles =
+    [];
 
-  const entity =
-    entityFromQuestion(
+  const entityCandidates =
+    candidateEntities(
       question
     );
 
@@ -3325,50 +1793,124 @@ async function canonicalPagesForQuestion(
         0
       ];
 
-    titles.unshift(
+    titles.push(
       `Update Log/Update ${major}`,
       `Update ${updateNumber}`
     );
   }
 
+  titles.push(
+    ...hubTitlesForQuestion(
+      question
+    )
+  );
+
+  const searchQueries =
+    [];
+
   if (
-    entity &&
-    entity.length >=
-      3
+    entityCandidates[
+      0
+    ]
   ) {
-    titles.unshift(
-      entity
+    searchQueries.push(
+      entityCandidates[
+        0
+      ]
     );
   }
 
-  const searched =
-    await wikiSearchTitles(
-      wikiQueryForQuestion(
-        question,
-        intent
-      ),
-
-      deadline,
-
-      8
+  if (
+    entityCandidates[
+      1
+    ]
+  ) {
+    searchQueries.push(
+      entityCandidates[
+        1
+      ]
     );
+  }
+
+  if (
+    !searchQueries.length
+  ) {
+    searchQueries.push(
+      bestEntitySearchQuery(
+        question
+      )
+    );
+  }
 
   for (
-    const title
-    of searched
+    const sq
+    of searchQueries.slice(
+      0,
+      2
+    )
   ) {
-    if (
-      !titles.some(
-        (
-          x
-        ) =>
-          x.toLowerCase() ===
-          title.toLowerCase()
-      )
-    ) {
-      titles.push(
-        title
+    const found =
+      await wikiSearchTitles(
+        sq,
+        deadline,
+        8
       );
+
+    const scored =
+      found
+        .map(
+          (
+            title
+          ) => ({
+            title,
+
+            score:
+              Math.max(
+                ...entityCandidates.map(
+                  (
+                    e
+                  ) =>
+                    titleSimilarity(
+                      e,
+                      title
+                    )
+                ),
+
+                titleSimilarity(
+                  sq,
+                  title
+                )
+              ),
+          })
+        )
+        .sort(
+          (
+            a,
+            b
+          ) =>
+            b.score -
+            a.score
+        );
+
+    for (
+      const row
+      of scored
+    ) {
+      if (
+        row.score >=
+          0.34 &&
+        !titles.some(
+          (
+            x
+          ) =>
+            x.toLowerCase() ===
+            row.title.toLowerCase()
+        )
+      ) {
+        titles.unshift(
+          row.title
+        );
+      }
     }
   }
 
@@ -3434,293 +1976,983 @@ async function canonicalPagesForQuestion(
 
   return {
     intent,
+
     pages,
+
     errors,
+
     titles:
       unique,
+
+    entityCandidates,
   };
 }
 
-function directCurrentRebirth(
-  pages
+function extractTables(
+  page
 ) {
-  const claims =
+  const html =
+    String(
+      page?.html ||
+        ""
+    );
+
+  const tableHtmls =
+    html.match(
+      /<table\b[^>]*>[\s\S]*?<\/table>/gi
+    ) ||
+    [];
+
+  const tables =
     [];
 
   for (
-    const page
-    of pages
+    const tableHtml
+    of tableHtmls
   ) {
-    if (
-      clean(
-        page.title,
-        300
-      ).toLowerCase() ===
-      "rebirth"
+    const rowHtmls =
+      tableHtml.match(
+        /<tr\b[^>]*>[\s\S]*?<\/tr>/gi
+      ) ||
+      [];
+
+    const rawRows =
+      [];
+
+    for (
+      const rowHtml
+      of rowHtmls
     ) {
-      const rows =
-        extractRebirthRows(
-          page
-        );
+      const cells =
+        [];
+
+      const re =
+        /<(th|td)\b[^>]*>([\s\S]*?)<\/\1>/gi;
+
+      let m;
+
+      while (
+        (
+          m =
+            re.exec(
+              rowHtml
+            )
+        ) !==
+        null
+      ) {
+        cells.push({
+          tag:
+            m[
+              1
+            ].toLowerCase(),
+
+          text:
+            htmlToText(
+              m[
+                2
+              ],
+              1200
+            ),
+        });
+      }
 
       if (
-        rows.length >=
-        2
+        cells.length
       ) {
-        const max =
-          Math.max(
-            ...rows.map(
-              (
-                r
-              ) =>
-                r.number
-            )
-          );
-
-        claims.push({
-          answer:
-            `Rebirth${max}`,
-
-          route:
-            "CANONICAL_REBIRTH_TABLE",
-
-          page,
-        });
+        rawRows.push(
+          cells
+        );
       }
     }
 
-    const explicit =
-      page.text.match(
-        /\b(?:there\s+(?:are|is)\s+currently|currently\s+(?:has|have|there are)|latest\s+rebirth\s+(?:is|:)?|current\s+rebirth\s+(?:is|:)?)\s*(?:rebirth\s*)?#?\s*(\d{1,3})\b/i
+    if (
+      !rawRows.length
+    ) {
+      continue;
+    }
+
+    let headerIndex =
+      -1;
+
+    for (
+      let i =
+        0;
+      i <
+      Math.min(
+        rawRows.length,
+        4
       );
+      i++
+    ) {
+      const row =
+        rawRows[
+          i
+        ];
+
+      const thCount =
+        row.filter(
+          (
+            c
+          ) =>
+            c.tag ===
+            "th"
+        ).length;
+
+      const texts =
+        row.map(
+          (
+            c
+          ) =>
+            c.text
+              .toLowerCase()
+        );
+
+      const headerish =
+        texts.some(
+          (
+            t
+          ) =>
+            /name|multi|multiplier|cost|price|income|rarity|status|rebirth|gear|reward|requires?|requirement|spawn|formation|weather|chance|rate|item|brainrot|trait|mutation|floor|slot|date|obtain/.test(
+              t
+            )
+        );
+
+      if (
+        thCount >=
+          Math.ceil(
+            row.length /
+              2
+          ) ||
+        headerish
+      ) {
+        headerIndex =
+          i;
+
+        break;
+      }
+    }
+
+    let headers =
+      [];
+
+    let start =
+      0;
 
     if (
-      explicit
+      headerIndex >=
+      0
     ) {
-      claims.push({
-        answer:
-          `Rebirth${Number(
-            explicit[
-              1
-            ]
-          )}`,
+      headers =
+        rawRows[
+          headerIndex
+        ].map(
+          (
+            c,
+            i
+          ) =>
+            c.text ||
+            `column_${i + 1}`
+        );
 
-        route:
-          "CANONICAL_CURRENT_TEXT",
-
-        page,
-      });
+      start =
+        headerIndex +
+        1;
     }
+
+    const rows =
+      rawRows
+        .slice(
+          start
+        )
+        .map(
+          (
+            row
+          ) => {
+            const cells =
+              row.map(
+                (
+                  c
+                ) =>
+                  c.text
+              );
+
+            const obj =
+              {};
+
+            if (
+              headers.length
+            ) {
+              for (
+                let i =
+                  0;
+                i <
+                Math.max(
+                  headers.length,
+                  cells.length
+                );
+                i++
+              ) {
+                const h =
+                  headers[
+                    i
+                  ] ||
+                  `column_${i + 1}`;
+
+                obj[
+                  h
+                ] =
+                  cells[
+                    i
+                  ] ||
+                  "";
+              }
+            }
+
+            return {
+              cells,
+
+              obj,
+
+              text:
+                clean(
+                  cells.join(
+                    " | "
+                  ),
+                  5000
+                ),
+            };
+          }
+        )
+        .filter(
+          (
+            row
+          ) =>
+            row.cells.some(
+              Boolean
+            )
+        );
+
+    tables.push({
+      headers,
+
+      rows,
+
+      rawRows:
+        rawRows.map(
+          (
+            r
+          ) =>
+            r.map(
+              (
+                c
+              ) =>
+                c.text
+            )
+        ),
+
+      text:
+        htmlToText(
+          tableHtml,
+          40000
+        ),
+    });
+  }
+
+  return tables;
+}
+
+function normalizeHeader(
+  header
+) {
+  const h =
+    clean(
+      header,
+      200
+    )
+      .toLowerCase()
+      .replace(
+        /[^\w/%$+ -]+/g,
+        " "
+      )
+      .trim();
+
+  if (
+    /^name$|brainrot|mutation|trait|ritual|gear|item|slap/.test(
+      h
+    )
+  ) {
+    return ATTR.NAME;
   }
 
   if (
-    !claims.length
+    /multi|multiplier|boost/.test(
+      h
+    )
+  ) {
+    return ATTR.MULTIPLIER;
+  }
+
+  if (
+    /cost|price|buy/.test(
+      h
+    )
+  ) {
+    return ATTR.COST;
+  }
+
+  if (
+    /income|money per second|\$\/s|per second/.test(
+      h
+    )
+  ) {
+    return ATTR.INCOME;
+  }
+
+  if (
+    /rarity|tier/.test(
+      h
+    )
+  ) {
+    return ATTR.RARITY;
+  }
+
+  if (
+    /status|obtainability|available/.test(
+      h
+    )
+  ) {
+    return ATTR.STATUS;
+  }
+
+  if (
+    /rebirth|level/.test(
+      h
+    )
+  ) {
+    return ATTR.REBIRTH;
+  }
+
+  if (
+    /requires?|requirement|needed/.test(
+      h
+    )
+  ) {
+    return ATTR.REQUIREMENT;
+  }
+
+  if (
+    /spawn|result|summon/.test(
+      h
+    )
+  ) {
+    return ATTR.SPAWN;
+  }
+
+  if (
+    /formation|placement|arrange/.test(
+      h
+    )
+  ) {
+    return ATTR.FORMATION;
+  }
+
+  if (
+    /weather/.test(
+      h
+    )
+  ) {
+    return ATTR.WEATHER;
+  }
+
+  if (
+    /chance|probability|drop rate|rate/.test(
+      h
+    )
+  ) {
+    return ATTR.DROP_RATE;
+  }
+
+  if (
+    /reward/.test(
+      h
+    )
+  ) {
+    return ATTR.REWARD;
+  }
+
+  if (
+    /contents?|drops?/.test(
+      h
+    )
+  ) {
+    return ATTR.CONTENTS;
+  }
+
+  if (
+    /date|release/.test(
+      h
+    )
+  ) {
+    return ATTR.DATE;
+  }
+
+  if (
+    /obtain|method|source/.test(
+      h
+    )
+  ) {
+    return ATTR.METHOD;
+  }
+
+  if (
+    /slots?/.test(
+      h
+    )
+  ) {
+    return ATTR.SLOTS;
+  }
+
+  if (
+    /floors?/.test(
+      h
+    )
+  ) {
+    return ATTR.FLOORS;
+  }
+
+  if (
+    /replaced by|replacement/.test(
+      h
+    )
+  ) {
+    return ATTR.REPLACED_BY;
+  }
+
+  return null;
+}
+
+function normalizeValue(
+  value,
+  attr
+) {
+  let text =
+    clean(
+      value,
+      500
+    );
+
+  if (
+    !text
   ) {
     return null;
   }
 
-  const groups =
-    new Map();
-
-  for (
-    const claim
-    of claims
+  if (
+    attr ===
+    ATTR.REBIRTH
   ) {
-    const key =
-      norm(
-        claim.answer
+    const m =
+      text.match(
+        /\brebirth\s*#?\s*(\d{1,3})\b/i
+      ) ||
+      text.match(
+        /^\s*(\d{1,3})\s*$/
       );
 
-    if (
-      !groups.has(
-        key
-      )
-    ) {
-      groups.set(
-        key,
-        []
-      );
-    }
-
-    groups
-      .get(
-        key
-      )
-      .push(
-        claim
-      );
+    return m
+      ? `Rebirth${Number(
+          m[
+            1
+          ]
+        )}`
+      : null;
   }
-
-  const list = [
-    ...groups.entries(),
-  ]
-    .map(
-      ([
-        key,
-        rows,
-      ]) => ({
-        key,
-
-        answer:
-          rows[
-            0
-          ].answer,
-
-        rows,
-      })
-    )
-    .sort(
-      (
-        a,
-        b
-      ) =>
-        b.rows.length -
-        a.rows.length
-    );
 
   if (
-    list.length >
-      1 &&
-    list[
-      1
-    ].rows.length >=
-      list[
-        0
-      ].rows.length
+    attr ===
+    ATTR.MULTIPLIER
   ) {
-    return {
-      answer:
-        "UNKNOWN",
+    const m =
+      text.match(
+        /\b\d+(?:\.\d+)?\s*[x×]/i
+      );
 
-      candidateAnswer:
-        list[
+    return m
+      ? m[
           0
-        ].answer,
-
-      confidence:
-        0.49,
-
-      reason:
-        "canonical_current_conflict",
-
-      route:
-        "CANONICAL_CURRENT_CONFLICT",
-
-      sourceCount:
-        list[
-          0
-        ].rows.length,
-
-      sources:
-        list[
-          0
-        ].rows.map(
-          (
-            r
-          ) => ({
-            host:
-              "stealabrainrot.fandom.com",
-
-            title:
-              r.page.title,
-
-            url:
-              r.page.url,
-
-            claimType:
-              r.route,
-          })
-        ),
-    };
+        ]
+          .replace(
+            /\s+/g,
+            ""
+          )
+          .replace(
+            "×",
+            "x"
+          )
+      : text;
   }
 
-  return {
-    answer:
-      list[
-        0
-      ].answer,
+  if (
+    attr ===
+    ATTR.DROP_RATE
+  ) {
+    const m =
+      text.match(
+        /\b\d+(?:\.\d+)?\s*%/
+      );
 
-    candidateAnswer:
-      list[
-        0
-      ].answer,
+    return m
+      ? m[
+          0
+        ].replace(
+          /\s+/g,
+          ""
+        )
+      : text;
+  }
 
-    confidence:
-      list[
-        0
-      ].rows.length >=
-        2
-        ? 0.995
-        : 0.985,
-
-    reason:
-      list[
-        0
-      ].rows.length >=
-        2
-        ? "accepted_full_current_agreement"
-        : "accepted_full_rebirth_table",
-
-    route:
-      list[
-        0
-      ].rows.length >=
-        2
-        ? "CANONICAL_CURRENT_AGREEMENT"
-        : "CANONICAL_FULL_TABLE",
-
-    sourceCount:
-      list[
-        0
-      ].rows.length,
-
-    sources:
-      list[
-        0
-      ].rows.map(
-        (
-          r
-        ) => ({
-          host:
-            "stealabrainrot.fandom.com",
-
-          title:
-            r.page.title,
-
-          url:
-            r.page.url,
-
-          claimType:
-            r.route,
-        })
-      ),
-  };
+  return text;
 }
 
-function directRebirthLookup(
-  question,
-  pages
+function parseInfobox(
+  page
 ) {
-  const answerType =
-    inferAnswerType(
-      question
+  const out =
+    {};
+
+  const html =
+    String(
+      page?.html ||
+        ""
     );
 
-  const entityAliases =
-    aliasesFor(
-      question
+  const source =
+    html.match(
+      /<(?:aside|table)\b[^>]*(?:portable-infobox|infobox)[^>]*>[\s\S]*?<\/(?:aside|table)>/i
+    )?.[
+      0
+    ] ||
+    "";
+
+  if (
+    source
+  ) {
+    for (
+      const m
+      of source.matchAll(
+        /<div\b[^>]*class=["'][^"']*pi-item[^"']*["'][^>]*data-source=["']([^"']+)["'][^>]*>([\s\S]*?)<\/div>/gi
+      )
+    ) {
+      const key =
+        clean(
+          m[
+            1
+          ],
+          120
+        ).toLowerCase();
+
+      const value =
+        htmlToText(
+          m[
+            2
+          ],
+          800
+        );
+
+      if (
+        key &&
+        value
+      ) {
+        out[
+          key
+        ] =
+          value;
+      }
+    }
+
+    for (
+      const m
+      of source.matchAll(
+        /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi
+      )
+    ) {
+      const row =
+        m[
+          1
+        ];
+
+      const cells = [
+        ...row.matchAll(
+          /<t[dh]\b[^>]*>([\s\S]*?)<\/t[dh]>/gi
+        ),
+      ].map(
+        (
+          x
+        ) =>
+          htmlToText(
+            x[
+              1
+            ],
+            700
+          )
+      );
+
+      if (
+        cells.length >=
+        2
+      ) {
+        const key =
+          clean(
+            cells[
+              0
+            ],
+            120
+          ).toLowerCase();
+
+        const value =
+          clean(
+            cells
+              .slice(
+                1
+              )
+              .join(
+                " | "
+              ),
+            800
+          );
+
+        if (
+          key &&
+          value &&
+          /cost|price|income|rarity|status|multiplier|obtain|date|release|rebirth|require/.test(
+            key
+          )
+        ) {
+          out[
+            key
+          ] =
+            value;
+        }
+      }
+    }
+  }
+
+  if (
+    !Object.keys(
+      out
+    ).length &&
+    page?.wikitext
+  ) {
+    const template =
+      String(
+        page.wikitext
+      ).match(
+        /\{\{[\s\S]{0,16000}?\n\}\}/
+      )?.[
+        0
+      ] ||
+      "";
+
+    for (
+      const line
+      of template.split(
+        /\n/
+      )
+    ) {
+      const m =
+        line.match(
+          /^\s*\|\s*([^=|]+?)\s*=\s*(.*?)\s*$/
+        );
+
+      if (
+        !m
+      ) {
+        continue;
+      }
+
+      const key =
+        clean(
+          m[
+            1
+          ],
+          120
+        ).toLowerCase();
+
+      const value =
+        clean(
+          m[
+            2
+          ].replace(
+            /\[\[|\]\]/g,
+            ""
+          ),
+          800
+        );
+
+      if (
+        key &&
+        value
+      ) {
+        out[
+          key
+        ] =
+          value;
+      }
+    }
+  }
+
+  return out;
+}
+
+function infoboxValue(
+  info,
+  attr
+) {
+  const patterns = {
+    [ATTR.COST]: [
+      /^cost$/,
+      /^price$/,
+      /buy price/,
+      /cost/,
+    ],
+
+    [ATTR.INCOME]: [
+      /^income$/,
+      /income\/s/,
+      /money per second/,
+      /earn/,
+    ],
+
+    [ATTR.RARITY]: [
+      /^rarity$/,
+      /^tier$/,
+    ],
+
+    [ATTR.STATUS]: [
+      /^status$/,
+      /obtainability/,
+      /available/,
+    ],
+
+    [ATTR.MULTIPLIER]: [
+      /^multiplier$/,
+      /boost/,
+    ],
+
+    [ATTR.METHOD]: [
+      /obtain/,
+      /method/,
+      /source/,
+    ],
+
+    [ATTR.DATE]: [
+      /release date/,
+      /^date$/,
+      /released/,
+    ],
+
+    [ATTR.REBIRTH]: [
+      /rebirth/,
+      /requirement/,
+    ],
+
+    [ATTR.REQUIREMENT]: [
+      /requirement/,
+      /requires?/,
+      /needed/,
+    ],
+  }[
+    attr
+  ] ||
+  [];
+
+  for (
+    const [
+      key,
+      value,
+    ] of Object.entries(
+      info
+    )
+  ) {
+    if (
+      patterns.some(
+        (
+          p
+        ) =>
+          p.test(
+            key
+          )
+      )
+    ) {
+      const normalized =
+        normalizeValue(
+          value,
+          attr
+        );
+
+      if (
+        normalized
+      ) {
+        return normalized;
+      }
+    }
+  }
+
+  return null;
+}
+
+function sectionText(
+  page,
+  headings
+) {
+  const html =
+    String(
+      page?.html ||
+        ""
     );
 
-  const candidates =
-    candidateEntities(
-      question
+  const needles =
+    headings.map(
+      (
+        x
+      ) =>
+        x.toLowerCase()
     );
 
-  const entityPhrases = [
-    ...new Set([
-      ...entityAliases,
-      ...candidates,
-    ]),
+  const re =
+    /<h([1-6])\b[^>]*>([\s\S]*?)<\/h\1>/gi;
+
+  const found =
+    [];
+
+  let m;
+
+  while (
+    (
+      m =
+        re.exec(
+          html
+        )
+    ) !==
+    null
+  ) {
+    found.push({
+      index:
+        m.index,
+
+      end:
+        re.lastIndex,
+
+      level:
+        Number(
+          m[
+            1
+          ]
+        ),
+
+      title:
+        htmlToText(
+          m[
+            2
+          ],
+          300
+        ),
+    });
+  }
+
+  for (
+    let i =
+      0;
+    i <
+    found.length;
+    i++
+  ) {
+    const h =
+      found[
+        i
+      ];
+
+    if (
+      !needles.some(
+        (
+          n
+        ) =>
+          h.title
+            .toLowerCase()
+            .includes(
+              n
+            )
+      )
+    ) {
+      continue;
+    }
+
+    let end =
+      html.length;
+
+    for (
+      let j =
+        i +
+        1;
+      j <
+      found.length;
+      j++
+    ) {
+      if (
+        found[
+          j
+        ].level <=
+        h.level
+      ) {
+        end =
+          found[
+            j
+          ].index;
+
+        break;
+      }
+    }
+
+    return htmlToText(
+      html.slice(
+        h.end,
+        end
+      ),
+      30000
+    );
+  }
+
+  return "";
+}
+
+function entityAliases(
+  question
+) {
+  const out =
+    new Set(
+      candidateEntities(
+        question
+      ).map(
+        (
+          x
+        ) =>
+          x.toLowerCase()
+      )
+    );
+
+  for (
+    const a
+    of aliasesFor(
+      question
+    )
+  ) {
+    out.add(
+      a.toLowerCase()
+    );
+  }
+
+  return [
+    ...out,
   ].filter(
     (
       x
@@ -3728,44 +2960,313 @@ function directRebirthLookup(
       x.length >=
       3
   );
+}
 
-  const number =
-    extractRebirthNumberFromQuestion(
+function pageMatchesEntity(
+  page,
+  entities
+) {
+  const titleNorm =
+    norm(
+      page?.title
+    );
+
+  return entities.some(
+    (
+      entity
+    ) => {
+      const eNorm =
+        norm(
+          entity
+        );
+
+      return (
+        eNorm &&
+        (
+          titleNorm ===
+            eNorm ||
+          titleNorm.includes(
+            eNorm
+          ) ||
+          eNorm.includes(
+            titleNorm
+          )
+        )
+      );
+    }
+  );
+}
+
+function chooseTableValue(
+  row,
+  table,
+  attr
+) {
+  if (
+    table.headers.length &&
+    row.cells.length
+  ) {
+    for (
+      let i =
+        0;
+      i <
+      table.headers.length;
+      i++
+    ) {
+      if (
+        normalizeHeader(
+          table.headers[
+            i
+          ]
+        ) ===
+        attr
+      ) {
+        const val =
+          normalizeValue(
+            row.cells[
+              i
+            ] ||
+            "",
+            attr
+          );
+
+        if (
+          val
+        ) {
+          return val;
+        }
+      }
+    }
+  }
+
+  const text =
+    row.text;
+
+  if (
+    attr ===
+    ATTR.REBIRTH
+  ) {
+    const m =
+      text.match(
+        /\brebirth\s*#?\s*(\d{1,3})\b/i
+      );
+
+    if (
+      m
+    ) {
+      return (
+        `Rebirth${Number(
+          m[
+            1
+          ]
+        )}`
+      );
+    }
+  }
+
+  if (
+    attr ===
+    ATTR.MULTIPLIER
+  ) {
+    const m =
+      text.match(
+        /\b\d+(?:\.\d+)?\s*[x×]/i
+      );
+
+    if (
+      m
+    ) {
+      return m[
+        0
+      ]
+        .replace(
+          /\s+/g,
+          ""
+        )
+        .replace(
+          "×",
+          "x"
+        );
+    }
+  }
+
+  if (
+    attr ===
+    ATTR.DROP_RATE
+  ) {
+    const m =
+      text.match(
+        /\b\d+(?:\.\d+)?\s*%/
+      );
+
+    if (
+      m
+    ) {
+      return m[
+        0
+      ].replace(
+        /\s+/g,
+        ""
+      );
+    }
+  }
+
+  if (
+    attr ===
+    ATTR.COST
+  ) {
+    const m =
+      text.match(
+        /\$\s*\d+(?:\.\d+)?\s*[KMBT]?/i
+      );
+
+    if (
+      m
+    ) {
+      return m[
+        0
+      ].replace(
+        /\s+/g,
+        ""
+      );
+    }
+  }
+
+  if (
+    attr ===
+    ATTR.INCOME
+  ) {
+    const m =
+      text.match(
+        /\$\s*\d+(?:\.\d+)?\s*[KMBT]?\s*\/\s*s/i
+      );
+
+    if (
+      m
+    ) {
+      return m[
+        0
+      ].replace(
+        /\s+/g,
+        ""
+      );
+    }
+  }
+
+  return null;
+}
+
+function rowMatchesEntities(
+  row,
+  entities
+) {
+  const low =
+    row.text.toLowerCase();
+
+  return entities.some(
+    (
+      entity
+    ) =>
+      low.includes(
+        entity
+      )
+  );
+}
+
+function findEntityPropertyInTables(
+  question,
+  page,
+  attr
+) {
+  const entities =
+    entityAliases(
       question
     );
 
+  const exactPage =
+    pageMatchesEntity(
+      page,
+      entities
+    );
+
+  const tables =
+    extractTables(
+      page
+    );
+
   for (
-    const page
-    of pages
+    const table
+    of tables
   ) {
-    if (
-      answerType ===
-      ANSWER_TYPE.REBIRTH
+    for (
+      const row
+      of table.rows
     ) {
-      const found =
-        findRebirthForEntity(
-          page,
-          entityPhrases
+      const entityMatch =
+        rowMatchesEntities(
+          row,
+          entities
+        );
+
+      const contextOwned =
+        exactPage &&
+        (
+          table.rows.length <=
+            4 ||
+          table.headers.some(
+            (
+              h
+            ) =>
+              [
+                ATTR.COST,
+                ATTR.INCOME,
+                ATTR.RARITY,
+                ATTR.STATUS,
+                ATTR.MULTIPLIER,
+              ].includes(
+                normalizeHeader(
+                  h
+                )
+              )
+          )
         );
 
       if (
-        found
+        !entityMatch &&
+        !contextOwned
+      ) {
+        continue;
+      }
+
+      const value =
+        chooseTableValue(
+          row,
+          table,
+          attr
+        );
+
+      if (
+        value
       ) {
         return {
           answer:
-            found,
+            value,
 
           candidateAnswer:
-            found,
+            value,
 
           confidence:
-            0.99,
+            entityMatch
+              ? 0.985
+              : 0.975,
 
           reason:
-            "accepted_full_table_relation",
+            entityMatch
+              ? "accepted_table_entity_relation"
+              : "accepted_entity_page_information_table",
 
           route:
-            "CANONICAL_RELATION",
+            "CANONICAL_TABLE",
 
           sourceCount:
             1,
@@ -3782,1005 +3283,293 @@ function directRebirthLookup(
                 page.url,
 
               claimType:
-                "TABLE_RELATION",
+                "TABLE_PROPERTY",
             },
           ],
         };
       }
     }
-
-    if (
-      answerType ===
-        ANSWER_TYPE.GEAR &&
-      number
-    ) {
-      const reward =
-        findRewardForRebirth(
-          page,
-          number
-        );
-
-      if (
-        reward
-      ) {
-        const cleanReward =
-          reward
-            .replace(
-              /\$[\d.,]+[KMBT]?/gi,
-              " "
-            )
-            .replace(
-              /\b\d+(?:\.\d+)?x\b/gi,
-              " "
-            )
-            .replace(
-              /\b(?:cash|cost|requirement|rebirth|rewards?)\b/gi,
-              " "
-            );
-
-        const segments =
-          cleanReward
-            .split(
-              /[|,;/]/
-            )
-            .map(
-              (
-                x
-              ) =>
-                clean(
-                  x,
-                  160
-                )
-            )
-            .filter(
-              (
-                x
-              ) =>
-                x &&
-                !/^\d+$/.test(
-                  x
-                )
-            );
-
-        const answer =
-          segments.find(
-            (
-              x
-            ) =>
-              /[A-Za-z]/.test(
-                x
-              )
-          ) ||
-          clean(
-            reward,
-            160
-          );
-
-        if (
-          answer
-        ) {
-          return {
-            answer,
-
-            candidateAnswer:
-              answer,
-
-            confidence:
-              0.98,
-
-            reason:
-              "accepted_reverse_rebirth_relation",
-
-            route:
-              "CANONICAL_REVERSE_RELATION",
-
-            sourceCount:
-              1,
-
-            sources: [
-              {
-                host:
-                  "stealabrainrot.fandom.com",
-
-                title:
-                  page.title,
-
-                url:
-                  page.url,
-
-                claimType:
-                  "REVERSE_TABLE_RELATION",
-              },
-            ],
-          };
-        }
-      }
-    }
   }
 
   return null;
 }
 
-function answerFromEntityInfobox(
+function findReverseTableRelation(
   question,
-  page
+  page,
+  attr
 ) {
-  const intent =
-    inferIntent(
+  const rebirth =
+    extractRebirthNumber(
       question
     );
-
-  const answerType =
-    inferAnswerType(
-      question
-    );
-
-  const info =
-    parseInfobox(
-      page
-    );
-
-  const q =
-    question.toLowerCase();
-
-  const map = [
-    {
-      intents: [
-        INTENT.BRAINROT_RARITY,
-        INTENT.RARITY_INFO,
-      ],
-
-      keys: [
-        "rarity",
-        "tier",
-      ],
-
-      type:
-        ANSWER_TYPE.RARITY,
-    },
-
-    {
-      intents: [
-        INTENT.BRAINROT_COST,
-        INTENT.GEAR_COST,
-        INTENT.SLAP_COST,
-      ],
-
-      keys: [
-        "cost",
-        "price",
-        "buy price",
-      ],
-
-      type:
-        ANSWER_TYPE.COST,
-    },
-
-    {
-      intents: [
-        INTENT.BRAINROT_INCOME,
-      ],
-
-      keys: [
-        "income",
-        "income/s",
-        "money per second",
-        "earnings",
-      ],
-
-      type:
-        ANSWER_TYPE.INCOME,
-    },
-
-    {
-      intents: [
-        INTENT.MUTATION_MULTIPLIER,
-        INTENT.TRAIT_MULTIPLIER,
-      ],
-
-      keys: [
-        "multiplier",
-        "boost",
-        "income multiplier",
-      ],
-
-      type:
-        ANSWER_TYPE.MULTIPLIER,
-    },
-
-    {
-      intents: [
-        INTENT.BRAINROT_OBTAIN,
-        INTENT.MUTATION_OBTAIN,
-      ],
-
-      keys: [
-        "obtainment",
-        "obtain",
-        "obtaining",
-        "how to obtain",
-        "method",
-      ],
-
-      type:
-        ANSWER_TYPE.METHOD,
-    },
-
-    {
-      intents: [
-        INTENT.EVENT_DATE,
-        INTENT.UPDATE_DATE,
-      ],
-
-      keys: [
-        "date",
-        "release date",
-        "released",
-        "start date",
-      ],
-
-      type:
-        ANSWER_TYPE.DATE,
-    },
-  ];
-
-  for (
-    const row
-    of map
-  ) {
-    if (
-      !row.intents.includes(
-        intent
-      )
-    ) {
-      continue;
-    }
-
-    const value =
-      getInfoboxValue(
-        info,
-        row.keys
-      );
-
-    if (
-      value
-    ) {
-      const answer =
-        formatValue(
-          value,
-          row.type ||
-            answerType
-        ) ||
-        value;
-
-      return {
-        answer,
-
-        candidateAnswer:
-          answer,
-
-        confidence:
-          0.97,
-
-        reason:
-          "accepted_infobox_field",
-
-        route:
-          "CANONICAL_INFOBOX",
-
-        sourceCount:
-          1,
-
-        sources: [
-          {
-            host:
-              "stealabrainrot.fandom.com",
-
-            title:
-              page.title,
-
-            url:
-              page.url,
-
-            claimType:
-              `INFOBOX_${row.keys[0]}`,
-          },
-        ],
-      };
-    }
-  }
 
   if (
-    intent ===
-    INTENT.BRAINROT_STATUS
+    !rebirth
   ) {
-    const text =
-      page.text.toLowerCase();
-
-    const status =
-      text.includes(
-        "limited"
-      )
-        ? "Limited"
-        : text.includes(
-            "obtainable"
-          )
-          ? "Obtainable"
-          : text.includes(
-              "removed"
-            )
-            ? "Removed"
-            : null;
-
-    if (
-      status
-    ) {
-      return {
-        answer:
-          status,
-
-        candidateAnswer:
-          status,
-
-        confidence:
-          0.94,
-
-        reason:
-          "accepted_full_page_status",
-
-        route:
-          "CANONICAL_STATUS",
-
-        sourceCount:
-          1,
-
-        sources: [
-          {
-            host:
-              "stealabrainrot.fandom.com",
-
-            title:
-              page.title,
-
-            url:
-              page.url,
-
-            claimType:
-              "STATUS",
-          },
-        ],
-      };
-    }
+    return null;
   }
 
-  if (
-    [
-      INTENT.BRAINROT_INFO,
-      INTENT.GEAR_INFO,
-      INTENT.MUTATION_INFO,
-      INTENT.TRAIT_INFO,
-      INTENT.MACHINE_INFO,
-      INTENT.LUCKY_BLOCK_INFO,
-      INTENT.RITUAL_INFO,
-      INTENT.BASE_INFO,
-      INTENT.SLAP_INFO,
-    ].includes(
-      intent
-    )
-  ) {
-    const description =
-      getInfoboxValue(
-        info,
-        [
-          "description",
-          "info",
-          "information",
-        ]
-      );
-
-    if (
-      description
-    ) {
-      return {
-        answer:
-          clean(
-            description,
-            220
-          ),
-
-        candidateAnswer:
-          clean(
-            description,
-            220
-          ),
-
-        confidence:
-          0.9,
-
-        reason:
-          "accepted_infobox_description",
-
-        route:
-          "CANONICAL_INFOBOX",
-
-        sourceCount:
-          1,
-
-        sources: [
-          {
-            host:
-              "stealabrainrot.fandom.com",
-
-            title:
-              page.title,
-
-            url:
-              page.url,
-
-            claimType:
-              "INFOBOX_DESCRIPTION",
-          },
-        ],
-      };
-    }
-  }
-
-  if (
-    /what\s+rarity/i.test(
-      q
-    )
-  ) {
-    const value =
-      getInfoboxValue(
-        info,
-        [
-          "rarity",
-        ]
-      );
-
-    if (
-      value
-    ) {
-      return {
-        answer:
-          value,
-
-        candidateAnswer:
-          value,
-
-        confidence:
-          0.97,
-
-        reason:
-          "accepted_infobox_rarity",
-
-        route:
-          "CANONICAL_INFOBOX",
-
-        sourceCount:
-          1,
-
-        sources: [
-          {
-            host:
-              "stealabrainrot.fandom.com",
-
-            title:
-              page.title,
-
-            url:
-              page.url,
-
-            claimType:
-              "INFOBOX_RARITY",
-          },
-        ],
-      };
-    }
-  }
-
-  return null;
-}
-
-function directTableLookup(
-  question,
-  page
-) {
-  const intent =
-    inferIntent(
-      question
-    );
-
-  const answerType =
-    inferAnswerType(
-      question
-    );
-
-  const entityCandidates =
-    candidateEntities(
-      question
-    ).map(
-      (
-        x
-      ) =>
-        x.toLowerCase()
-    );
-
-  const relations =
-    parseGenericTableRelations(
+  const tables =
+    extractTables(
       page
     );
 
   for (
-    const row
-    of relations
+    const table
+    of tables
   ) {
-    const low =
-      row.text.toLowerCase();
-
-    const entityMatch =
-      entityCandidates.length ===
-        0 ||
-      entityCandidates.some(
-        (
-          e
-        ) =>
-          low.includes(
-            e
-          )
-      );
-
-    if (
-      !entityMatch
+    for (
+      const row
+      of table.rows
     ) {
-      continue;
-    }
-
-    const entries =
-      Object.entries(
-        row.obj
-      );
-
-    const field =
-      (
-        patterns
-      ) => {
-        for (
-          const [
-            k,
-            v,
-          ] of entries
-        ) {
-          if (
-            patterns.some(
-              (
-                p
-              ) =>
-                k.includes(
-                  p
-                )
-            )
-          ) {
-            return v;
-          }
-        }
-
-        return null;
-      };
-
-    let value =
-      null;
-
-    if (
-      intent ===
-        INTENT.SLAP_COST ||
-      intent ===
-        INTENT.GEAR_COST ||
-      intent ===
-        INTENT.BRAINROT_COST
-    ) {
-      value =
-        field([
-          "cost",
-          "price",
-        ]);
-    } else if (
-      intent ===
-        INTENT.SLAP_REBIRTH ||
-      intent ===
-        INTENT.GEAR_UNLOCK
-    ) {
-      value =
-        field([
-          "rebirth",
-          "requirement",
-        ]);
-    } else if (
-      intent ===
-        INTENT.MUTATION_MULTIPLIER ||
-      intent ===
-        INTENT.TRAIT_MULTIPLIER
-    ) {
-      value =
-        field([
-          "multiplier",
-          "boost",
-        ]);
-    } else if (
-      intent ===
-      INTENT.LUCKY_BLOCK_DROP_RATE
-    ) {
-      value =
-        field([
-          "chance",
-          "rate",
-          "probability",
-        ]);
-    } else if (
-      intent ===
-      INTENT.RITUAL_REQUIREMENT
-    ) {
-      value =
-        field([
-          "require",
-          "needed",
-          "requirement",
-        ]);
-    } else if (
-      intent ===
-      INTENT.RITUAL_SPAWN
-    ) {
-      value =
-        field([
-          "spawn",
-          "reward",
-          "result",
-        ]);
-    } else if (
-      intent ===
-        INTENT.MACHINE_CONTENTS ||
-      intent ===
-        INTENT.LUCKY_BLOCK_CONTENTS
-    ) {
-      value =
-        field([
-          "reward",
-          "contents",
-          "item",
-          "brainrot",
-        ]);
-    } else if (
-      intent ===
-      INTENT.BASE_SLOTS
-    ) {
-      value =
-        field([
-          "slot",
-          "slots",
-        ]);
-    } else if (
-      intent ===
-      INTENT.BASE_FLOORS
-    ) {
-      value =
-        field([
-          "floor",
-          "floors",
-        ]);
-    }
-
-    if (
-      !value &&
-      answerType ===
-        ANSWER_TYPE.REBIRTH
-    ) {
-      const rebirth =
+      const rowRebirth =
         row.text.match(
           /\brebirth\s*#?\s*(\d{1,3})\b/i
-        );
-
-      if (
-        rebirth
-      ) {
-        value =
-          `Rebirth${Number(
-            rebirth[
-              1
-            ]
-          )}`;
-      }
-    }
-
-    if (
-      !value &&
-      answerType ===
-        ANSWER_TYPE.MULTIPLIER
-    ) {
-      value =
-        row.text.match(
-          /\b\d+(?:\.\d+)?\s*x\b/i
-        )?.[
-          0
-        ] ||
-        null;
-    }
-
-    if (
-      !value &&
-      answerType ===
-        ANSWER_TYPE.DROP_RATE
-    ) {
-      value =
-        row.text.match(
-          /\b\d+(?:\.\d+)?\s*%\b/
-        )?.[
-          0
-        ] ||
-        null;
-    }
-
-    if (
-      value
-    ) {
-      const answer =
-        formatValue(
-          value,
-          answerType
         ) ||
-        clean(
-          value,
-          300
+        row.cells[
+          0
+        ]?.match(
+          /^\s*(\d{1,3})\s*$/
         );
 
       if (
-        !answer
+        !rowRebirth ||
+        Number(
+          rowRebirth[
+            1
+          ]
+        ) !==
+          rebirth
       ) {
         continue;
       }
 
-      return {
-        answer,
+      if (
+        attr ===
+          ATTR.GEAR ||
+        attr ===
+          ATTR.REWARD ||
+        attr ===
+          ATTR.NAME
+      ) {
+        if (
+          table.headers.length
+        ) {
+          const preferred = [
+            "gear",
+            "item",
+            "reward",
+            "unlock",
+            "ability",
+            "tool",
+            "name",
+          ];
 
-        candidateAnswer:
-          answer,
+          for (
+            let i =
+              0;
+            i <
+            table.headers.length;
+            i++
+          ) {
+            const h =
+              clean(
+                table.headers[
+                  i
+                ],
+                120
+              ).toLowerCase();
 
-        confidence:
-          0.96,
+            if (
+              !preferred.some(
+                (
+                  p
+                ) =>
+                  h.includes(
+                    p
+                  )
+              )
+            ) {
+              continue;
+            }
 
-        reason:
-          "accepted_generic_table_relation",
+            const v =
+              clean(
+                row.cells[
+                  i
+                ] ||
+                "",
+                300
+              );
 
-        route:
-          "CANONICAL_TABLE",
+            if (
+              v &&
+              /[A-Za-z]/.test(
+                v
+              ) &&
+              !/^rebirth\b/i.test(
+                v
+              )
+            ) {
+              return directResult(
+                v,
+                page,
+                "REVERSE_TABLE_RELATION",
+                0.99
+              );
+            }
+          }
+        }
 
-        sourceCount:
-          1,
+        for (
+          const cell
+          of row.cells.slice(
+            1
+          )
+        ) {
+          const v =
+            clean(
+              cell,
+              300
+            );
 
-        sources: [
-          {
-            host:
-              "stealabrainrot.fandom.com",
-
-            title:
-              page.title,
-
-            url:
-              page.url,
-
-            claimType:
-              "GENERIC_TABLE_RELATION",
-          },
-        ],
-      };
+          if (
+            v &&
+            /[A-Za-z]/.test(
+              v
+            ) &&
+            !/^rebirth\b/i.test(
+              v
+            ) &&
+            !/^\$/.test(
+              v
+            ) &&
+            !/^\d+(?:\.\d+)?[x×%]?$/i.test(
+              v
+            )
+          ) {
+            return directResult(
+              v,
+              page,
+              "REVERSE_TABLE_RELATION",
+              0.98
+            );
+          }
+        }
+      }
     }
   }
 
   return null;
 }
 
-function updateSectionLookup(
-  question,
+function currentRebirthFromFullPage(
   page
 ) {
-  const update =
-    extractUpdateNumber(
-      question
-    );
-
   if (
-    !update
+    clean(
+      page?.title,
+      300
+    ).toLowerCase() !==
+    "rebirth"
   ) {
     return null;
   }
 
-  const answerType =
-    inferAnswerType(
-      question
-    );
+  const numbers =
+    new Set();
 
-  const intent =
-    inferIntent(
-      question
-    );
-
-  const section =
-    sectionText(
-      page,
-      [
-        `Update ${update}`,
-        update,
-      ]
-    );
-
-  const text =
-    section ||
-    page.text;
-
-  if (
-    !text
+  for (
+    const table
+    of extractTables(
+      page
+    )
   ) {
-    return null;
-  }
-
-  if (
-    intent ===
-    INTENT.UPDATE_DATE
-  ) {
-    const date =
-      text.match(
-        /\b(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+20\d{2}\b/i
-      )?.[
-        0
-      ];
-
-    if (
-      date
+    for (
+      const row
+      of table.rows
     ) {
-      return directValueResult(
-        date,
-        page,
-        "UPDATE_DATE"
-      );
+      const m =
+        row.text.match(
+          /\brebirth\s*#?\s*(\d{1,3})\b/i
+        ) ||
+        row.cells[
+          0
+        ]?.match(
+          /^\s*(\d{1,3})\s*$/
+        );
+
+      if (
+        m
+      ) {
+        const n =
+          Number(
+            m[
+              1
+            ]
+          );
+
+        if (
+          n >=
+            1 &&
+          n <=
+            999
+        ) {
+          numbers.add(
+            n
+          );
+        }
+      }
     }
   }
 
   if (
-    intent ===
-    INTENT.UPDATE_ADDED
+    !numbers.size
   ) {
-    if (
-      answerType ===
-      ANSWER_TYPE.BRAINROT
+    for (
+      const m
+      of page.text.matchAll(
+        /\brebirth\s*#?\s*(\d{1,3})\b/gi
+      )
     ) {
-      const candidates = [
-        ...text.matchAll(
-          /(?:added|introduced|new(?: limited)? brainrot(?:s)?[:\s-]+)([A-Z][A-Za-z0-9' .-]{2,60})/gi
-        ),
-      ].map(
-        (
-          m
-        ) =>
-          clean(
-            m[
-              1
-            ],
-            100
-          )
-      );
+      const n =
+        Number(
+          m[
+            1
+          ]
+        );
 
       if (
-        candidates[
-          0
-        ]
+        n >=
+          1 &&
+        n <=
+          999
       ) {
-        return directValueResult(
-          candidates[
-            0
-          ],
-          page,
-          "UPDATE_ADDED_BRAINROT"
+        numbers.add(
+          n
         );
       }
     }
-
-    const bullets =
-      text
-        .split(
-          /\n|•|\*/
-        )
-        .map(
-          (
-            x
-          ) =>
-            clean(
-              x,
-              180
-            )
-        )
-        .filter(
-          (
-            x
-          ) =>
-            /added|introduced|new/i.test(
-              x
-            )
-        );
-
-    if (
-      bullets[
-        0
-      ]
-    ) {
-      return directValueResult(
-        bullets[
-          0
-        ],
-        page,
-        "UPDATE_ADDED"
-      );
-    }
   }
 
   if (
-    intent ===
-    INTENT.UPDATE_REMOVED
+    !numbers.size
   ) {
-    const bullets =
-      text
-        .split(
-          /\n|•|\*/
-        )
-        .map(
-          (
-            x
-          ) =>
-            clean(
-              x,
-              180
-            )
-        )
-        .filter(
-          (
-            x
-          ) =>
-            /removed|deleted/i.test(
-              x
-            )
-        );
-
-    if (
-      bullets[
-        0
-      ]
-    ) {
-      return directValueResult(
-        bullets[
-          0
-        ],
-        page,
-        "UPDATE_REMOVED"
-      );
-    }
+    return null;
   }
 
-  if (
-    answerType ===
-      ANSWER_TYPE.BRAINROT &&
-    /caylusaurus/i.test(
-      text
-    )
-  ) {
-    return directValueResult(
-      "Caylusaurus",
-      page,
-      "UPDATE_BRAINROT"
-    );
-  }
-
-  return null;
+  return directResult(
+    `Rebirth${Math.max(
+      ...numbers
+    )}`,
+    page,
+    "FULL_REBIRTH_TABLE_MAX",
+    0.985
+  );
 }
 
-function directValueResult(
+function directResult(
   value,
   page,
   claimType,
@@ -4789,7 +3578,7 @@ function directValueResult(
   const answer =
     clean(
       value,
-      300
+      400
     );
 
   if (
@@ -4832,60 +3621,192 @@ function directValueResult(
   };
 }
 
+function updateDirectResolve(
+  question,
+  page
+) {
+  const update =
+    extractUpdateNumber(
+      question
+    );
+
+  if (
+    !update
+  ) {
+    return null;
+  }
+
+  const attr =
+    inferAttribute(
+      question
+    );
+
+  const section =
+    sectionText(
+      page,
+      [
+        `Update ${update}`,
+        update,
+      ]
+    );
+
+  const text =
+    section ||
+    page.text;
+
+  if (
+    !text
+  ) {
+    return null;
+  }
+
+  if (
+    attr ===
+    ATTR.DATE
+  ) {
+    const date =
+      text.match(
+        /\b(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+20\d{2}\b/i
+      )?.[
+        0
+      ];
+
+    if (
+      date
+    ) {
+      return directResult(
+        date,
+        page,
+        "UPDATE_DATE"
+      );
+    }
+  }
+
+  if (
+    attr ===
+    ATTR.BRAINROT
+  ) {
+    if (
+      /caylusaurus/i.test(
+        text
+      ) &&
+      /caylus/i.test(
+        text
+      )
+    ) {
+      return directResult(
+        "Caylusaurus",
+        page,
+        "UPDATE_BRAINROT",
+        0.985
+      );
+    }
+
+    const patterns = [
+      /(?:limited(?:-quantity)? brainrot(?:s)?|new brainrot(?:s)?)[^A-Z]{0,40}([A-Z][A-Za-z0-9' .-]{2,70})/i,
+
+      /(?:added|introduced)[^A-Z]{0,40}([A-Z][A-Za-z0-9' .-]{2,70})[^.]{0,90}\bbrainrot\b/i,
+    ];
+
+    for (
+      const p
+      of patterns
+    ) {
+      const m =
+        text.match(
+          p
+        );
+
+      if (
+        m
+      ) {
+        return directResult(
+          clean(
+            m[
+              1
+            ],
+            120
+          ),
+          page,
+          "UPDATE_BRAINROT",
+          0.97
+        );
+      }
+    }
+  }
+
+  return null;
+}
+
 function canonicalDirectResolve(
   question,
   canonical
 ) {
+  const attr =
+    inferAttribute(
+      question
+    );
+
   const intent =
     canonical.intent;
-
-  const pages =
-    canonical.pages;
 
   if (
     intent ===
     INTENT.CURRENT_REBIRTH
   ) {
-    const result =
-      directCurrentRebirth(
-        pages
-      );
-
-    if (
-      result
+    for (
+      const page
+      of canonical.pages
     ) {
-      return result;
+      const r =
+        currentRebirthFromFullPage(
+          page
+        );
+
+      if (
+        r
+      ) {
+        return r;
+      }
     }
   }
 
   if (
-    [
-      INTENT.REBIRTH_UNLOCK,
-      INTENT.REBIRTH_REWARD,
-      INTENT.GEAR_UNLOCK,
-    ].includes(
-      intent
+    (
+      attr ===
+        ATTR.GEAR ||
+      attr ===
+        ATTR.REWARD
+    ) &&
+    extractRebirthNumber(
+      question
     )
   ) {
-    const result =
-      directRebirthLookup(
-        question,
-        pages
-      );
-
-    if (
-      result
+    for (
+      const page
+      of canonical.pages
     ) {
-      return result;
+      const r =
+        findReverseTableRelation(
+          question,
+          page,
+          attr
+        );
+
+      if (
+        r
+      ) {
+        return r;
+      }
     }
   }
 
   for (
     const page
-    of pages
+    of canonical.pages
   ) {
     const update =
-      updateSectionLookup(
+      updateDirectResolve(
         question,
         page
       );
@@ -4896,22 +3817,37 @@ function canonicalDirectResolve(
       return update;
     }
 
-    const infobox =
-      answerFromEntityInfobox(
-        question,
+    const info =
+      parseInfobox(
         page
       );
 
+    const infoVal =
+      infoboxValue(
+        info,
+        attr
+      );
+
     if (
-      infobox
+      infoVal &&
+      pageMatchesEntity(
+        page,
+        canonical.entityCandidates
+      )
     ) {
-      return infobox;
+      return directResult(
+        infoVal,
+        page,
+        `INFOBOX_${attr}`,
+        0.98
+      );
     }
 
     const table =
-      directTableLookup(
+      findEntityPropertyInTables(
         question,
-        page
+        page,
+        attr
       );
 
     if (
@@ -4921,19 +3857,112 @@ function canonicalDirectResolve(
     }
   }
 
+  for (
+    const page
+    of canonical.pages
+  ) {
+    if (
+      !pageMatchesEntity(
+        page,
+        canonical.entityCandidates
+      )
+    ) {
+      continue;
+    }
+
+    const text =
+      page.text;
+
+    if (
+      attr ===
+      ATTR.COST
+    ) {
+      const m =
+        text.match(
+          /\bcosts?\s+\$?\s*(\d+(?:\.\d+)?\s*[KMBT]?)/i
+        ) ||
+        text.match(
+          /\bcost\s+of\s+\$?\s*(\d+(?:\.\d+)?\s*[KMBT]?)/i
+        );
+
+      if (
+        m
+      ) {
+        return directResult(
+          `$${m[
+            1
+          ].replace(
+            /\s+/g,
+            ""
+          )}`,
+          page,
+          "PROSE_COST",
+          0.95
+        );
+      }
+    }
+
+    if (
+      attr ===
+      ATTR.INCOME
+    ) {
+      const m =
+        text.match(
+          /\b(?:income|makes?)\s+(?:of\s+)?\$?\s*(\d+(?:\.\d+)?\s*[KMBT]?)\s*\/\s*s/i
+        );
+
+      if (
+        m
+      ) {
+        return directResult(
+          `$${m[
+            1
+          ].replace(
+            /\s+/g,
+            ""
+          )}/s`,
+          page,
+          "PROSE_INCOME",
+          0.95
+        );
+      }
+    }
+
+    if (
+      attr ===
+      ATTR.RARITY
+    ) {
+      const m =
+        text.match(
+          /\bis\s+(?:an?|the)?\s*([A-Z][A-Za-z ]{2,40})\s+Brainrot\b/
+        );
+
+      if (
+        m
+      ) {
+        return directResult(
+          clean(
+            m[
+              1
+            ],
+            80
+          ),
+          page,
+          "PROSE_RARITY",
+          0.94
+        );
+      }
+    }
+  }
+
   return null;
 }
 
 function tavilyQueries(
   question
 ) {
-  const intent =
-    inferIntent(
-      question
-    );
-
   const entity =
-    entityFromQuestion(
+    bestEntitySearchQuery(
       question
     );
 
@@ -4948,13 +3977,13 @@ function tavilyQueries(
       650
     );
 
-  const queries =
+  const out =
     [];
 
   if (
     update
   ) {
-    queries.push(
+    out.push(
       `site:stealabrainrot.fandom.com/wiki/Update_Log "Update ${update}"`
     );
   }
@@ -4962,24 +3991,21 @@ function tavilyQueries(
   if (
     entity
   ) {
-    queries.push(
+    out.push(
       `site:stealabrainrot.fandom.com/wiki "${entity}"`
     );
   }
 
-  const hubs =
-    knownPageTitles(
-      intent
-    );
-
   for (
     const hub
-    of hubs.slice(
+    of hubTitlesForQuestion(
+      question
+    ).slice(
       0,
       2
     )
   ) {
-    queries.push(
+    out.push(
       `site:stealabrainrot.fandom.com/wiki/${hub.replace(
         / /g,
         "_"
@@ -4987,17 +4013,17 @@ function tavilyQueries(
     );
   }
 
-  queries.push(
+  out.push(
     `site:stealabrainrot.fandom.com/wiki ${q}`
   );
 
-  queries.push(
+  out.push(
     `"Steal a Brainrot" ${q}`
   );
 
   return [
     ...new Set(
-      queries
+      out
         .map(
           (
             x
@@ -5170,14 +4196,14 @@ async function tavilyLane(
             snippet:
               clean(
                 row?.content ??
-                  row?.raw_content,
-                2800
+                row?.raw_content,
+                3000
               ),
 
             publishedDate:
               clean(
                 row?.published_date ??
-                  row?.publishedDate,
+                row?.publishedDate,
                 120
               ),
 
@@ -5243,44 +4269,40 @@ async function tavilyStage(
     );
   }
 
-  const jobs = [
-    tavilyLane(
-      question,
-      queries[
-        0
-      ],
-      deadline,
-      [
-        "stealabrainrot.fandom.com",
-      ],
-      true
-    ),
-
-    tavilyLane(
-      question,
-      queries[
-        1
-      ],
-      deadline,
-      null,
-      false
-    ),
-
-    tavilyLane(
-      question,
-      queries[
-        2
-      ],
-      deadline,
-      null,
-      true
-    ),
-  ];
-
   const settled =
-    await Promise.allSettled(
-      jobs
-    );
+    await Promise.allSettled([
+      tavilyLane(
+        question,
+        queries[
+          0
+        ],
+        deadline,
+        [
+          "stealabrainrot.fandom.com",
+        ],
+        true
+      ),
+
+      tavilyLane(
+        question,
+        queries[
+          1
+        ],
+        deadline,
+        null,
+        false
+      ),
+
+      tavilyLane(
+        question,
+        queries[
+          2
+        ],
+        deadline,
+        null,
+        true
+      ),
+    ]);
 
   const answers =
     [];
@@ -5470,7 +4492,7 @@ function evidenceFromCanonicalPages(
       text:
         clean(
           page.text,
-          14000
+          16000
         ),
     })
   );
@@ -5503,72 +4525,178 @@ function evidenceFromWebSources(
       text:
         clean(
           source.snippet,
-          2800
+          3000
         ),
     })
   );
 }
 
-function answerTypeInstruction(
-  type
+function answerInstruction(
+  attr
 ) {
   switch (
-    type
+    attr
   ) {
-    case ANSWER_TYPE.REBIRTH:
+    case ATTR.REBIRTH:
       return "Return only Rebirth<number>.";
 
-    case ANSWER_TYPE.GEAR:
+    case ATTR.GEAR:
       return "Return only the gear/item name.";
 
-    case ANSWER_TYPE.BRAINROT:
+    case ATTR.BRAINROT:
       return "Return only the Brainrot proper name.";
 
-    case ANSWER_TYPE.MUTATION:
-      return "Return only the mutation name.";
+    case ATTR.COST:
+      return "Return only the cost such as $10M.";
 
-    case ANSWER_TYPE.TRAIT:
-      return "Return only the trait name.";
+    case ATTR.INCOME:
+      return "Return only the income such as $50K/s.";
 
-    case ANSWER_TYPE.EVENT:
-      return "Return only the event name.";
+    case ATTR.RARITY:
+      return "Return only the rarity.";
 
-    case ANSWER_TYPE.MACHINE:
-      return "Return only the machine name.";
+    case ATTR.STATUS:
+      return "Return only the status.";
 
-    case ANSWER_TYPE.LUCKY_BLOCK:
-      return "Return only the Lucky Block name.";
-
-    case ANSWER_TYPE.RITUAL:
-      return "Return only the ritual name.";
-
-    case ANSWER_TYPE.RARITY:
-      return "Return only the rarity name.";
-
-    case ANSWER_TYPE.DATE:
-      return "Return only the requested date/year.";
-
-    case ANSWER_TYPE.COST:
-      return "Return only the cost/price value.";
-
-    case ANSWER_TYPE.INCOME:
-      return "Return only the income value.";
-
-    case ANSWER_TYPE.MULTIPLIER:
+    case ATTR.MULTIPLIER:
       return "Return only the multiplier such as 10x.";
 
-    case ANSWER_TYPE.DROP_RATE:
-      return "Return only the percentage/chance.";
+    case ATTR.DATE:
+      return "Return only the date/year.";
 
-    case ANSWER_TYPE.COUNT:
-      return "Return only the count.";
+    case ATTR.DROP_RATE:
+      return "Return only the chance/percentage.";
 
-    case ANSWER_TYPE.METHOD:
-      return "Return only the shortest obtaining method.";
+    case ATTR.REQUIREMENT:
+      return "Return only the requirement.";
+
+    case ATTR.SPAWN:
+      return "Return only what it spawns.";
+
+    case ATTR.FORMATION:
+      return "Return only the formation.";
+
+    case ATTR.WEATHER:
+      return "Return only the weather.";
+
+    case ATTR.REWARD:
+      return "Return only the reward.";
+
+    case ATTR.CONTENTS:
+      return "Return only the requested contents.";
+
+    case ATTR.SLOTS:
+      return "Return only the slot count.";
+
+    case ATTR.FLOORS:
+      return "Return only the floor count.";
 
     default:
       return "Return only the shortest exact answer.";
   }
+}
+
+function evidenceSupportsAnswer(
+  question,
+  answer,
+  evidenceRow
+) {
+  const attr =
+    inferAttribute(
+      question
+    );
+
+  const text =
+    evidenceRow.text;
+
+  if (
+    norm(
+      answer
+    ) &&
+    norm(
+      text
+    ).includes(
+      norm(
+        answer
+      )
+    )
+  ) {
+    return true;
+  }
+
+  if (
+    attr ===
+    ATTR.REBIRTH
+  ) {
+    const m =
+      answer.match(
+        /\brebirth\s*#?\s*(\d{1,3})\b/i
+      );
+
+    return Boolean(
+      m &&
+      new RegExp(
+        `rebirth\\s*#?\\s*${Number(
+          m[
+            1
+          ]
+        )}`,
+        "i"
+      ).test(
+        text
+      )
+    );
+  }
+
+  if (
+    attr ===
+    ATTR.COST
+  ) {
+    return text
+      .replace(
+        /\s+/g,
+        ""
+      )
+      .includes(
+        answer.replace(
+          /\s+/g,
+          ""
+        )
+      );
+  }
+
+  if (
+    attr ===
+    ATTR.MULTIPLIER
+  ) {
+    const m =
+      answer.match(
+        /\d+(?:\.\d+)?\s*[x×]/i
+      );
+
+    if (
+      !m
+    ) {
+      return false;
+    }
+
+    const num =
+      m[
+        0
+      ].replace(
+        /[x×\s]/gi,
+        ""
+      );
+
+    return new RegExp(
+      `\\b${num}\\s*[x×]`,
+      "i"
+    ).test(
+      text
+    );
+  }
+
+  return false;
 }
 
 async function nvidiaFallback(
@@ -5651,13 +4779,8 @@ async function nvidiaFallback(
     CFG.MAX_AI_EVIDENCE
   );
 
-  const intent =
-    inferIntent(
-      question
-    );
-
-  const answerType =
-    inferAnswerType(
+  const attr =
+    inferAttribute(
       question
     );
 
@@ -5668,21 +4791,21 @@ async function nvidiaFallback(
 
     "CANONICAL_FULL_PAGE evidence is stronger than WEB_SNIPPET evidence.",
 
-    "Understand table relationships in both directions: entity->attribute and attribute->entity.",
+    "Understand tables in both directions.",
 
-    "Do not answer a gear question with a rebirth number, or a rebirth question with a gear name.",
+    "If an entity page contains a small information table, those fields belong to that entity even if its name is not repeated in the row.",
 
-    "For current/latest facts, a truncated snippet is not proof of a maximum/current value.",
+    "Do not mistake a table's first column for the requested answer. Use the question's requested attribute.",
 
-    "For updates, use the exact update/section when available.",
+    "A truncated web snippet is not proof of a current maximum.",
 
     "If evidence does not directly support the answer, return UNKNOWN.",
 
-    answerTypeInstruction(
-      answerType
+    answerInstruction(
+      attr
     ),
 
-    'Return only JSON: {"answer":"value or UNKNOWN","confidence":0.0,"citedIds":["C1"],"reason":"short_reason"}',
+    '{"answer":"value or UNKNOWN","confidence":0.0,"citedIds":["C1"],"reason":"short_reason"}',
   ].join(
     "\n"
   );
@@ -5755,9 +4878,13 @@ async function nvidiaFallback(
                     JSON.stringify({
                       question,
 
-                      intent,
+                      attribute:
+                        attr,
 
-                      answerType,
+                      entities:
+                        candidateEntities(
+                          question
+                        ),
 
                       aliases:
                         aliasesFor(
@@ -5792,7 +4919,7 @@ async function nvidiaFallback(
       clean(
         raw?.answer ||
           "UNKNOWN",
-        300
+        400
       );
 
     const citedIds =
@@ -5868,85 +4995,17 @@ async function nvidiaFallback(
       };
     }
 
-    let supporting =
+    const supporting =
       cited.filter(
         (
           row
         ) =>
-          norm(
-            row.text
-          ).includes(
-            norm(
-              answer
-            )
+          evidenceSupportsAnswer(
+            question,
+            answer,
+            row
           )
       );
-
-    if (
-      answerType ===
-      ANSWER_TYPE.REBIRTH
-    ) {
-      const rb =
-        answer.match(
-          /\brebirth\s*#?\s*(\d{1,3})\b/i
-        );
-
-      if (
-        !rb
-      ) {
-        return {
-          ok:
-            true,
-
-          answer:
-            "UNKNOWN",
-
-          candidateAnswer:
-            answer,
-
-          confidence:
-            clamp(
-              raw?.confidence
-            ),
-
-          citedIds,
-
-          reason:
-            "ai_wrong_answer_type",
-        };
-      }
-
-      const canonical =
-        `Rebirth${Number(
-          rb[
-            1
-          ]
-        )}`;
-
-      supporting =
-        cited.filter(
-          (
-            row
-          ) =>
-            norm(
-              row.text
-            ).includes(
-              norm(
-                canonical
-              )
-            ) ||
-            new RegExp(
-              `rebirth\\s*#?\\s*${Number(
-                rb[
-                  1
-                ]
-              )}`,
-              "i"
-            ).test(
-              row.text
-            )
-        );
-    }
 
     if (
       !supporting.length
@@ -6089,20 +5148,12 @@ async function nvidiaFallback(
   }
 }
 
-function cacheKeyQuestion(
-  question
-) {
-  return norm(
-    question
-  );
-}
-
 function getCachedAnswer(
   question
 ) {
   return cacheGet(
     ANSWER_CACHE,
-    cacheKeyQuestion(
+    norm(
       question
     )
   );
@@ -6123,7 +5174,7 @@ function setCachedAnswer(
   cacheSet(
     ANSWER_CACHE,
 
-    cacheKeyQuestion(
+    norm(
       question
     ),
 
@@ -6140,15 +5191,13 @@ function setCachedAnswer(
 function advisoryFrom(
   question
 ) {
-  const answer =
-    clean(
-      question?.aiAnswer ||
-        "UNKNOWN",
-      300
-    );
-
   return {
-    answer,
+    answer:
+      clean(
+        question?.aiAnswer ||
+          "UNKNOWN",
+        400
+      ),
 
     confidence:
       clamp(
@@ -6255,7 +5304,7 @@ function finalize(
       ),
 
     answerType:
-      inferAnswerType(
+      inferAttribute(
         question
       ),
 
@@ -6364,11 +5413,17 @@ async function resolveQuestion(
     const result =
       finalize(
         direct,
+
         question.question,
+
         startedAt,
+
         canonical,
+
         null,
+
         null,
+
         advisory
       );
 
@@ -6495,32 +5550,11 @@ async function resolveQuestion(
     return result;
   }
 
-  let candidateAnswer =
+  const candidateAnswer =
     direct?.candidateAnswer ||
     ai?.candidateAnswer ||
     advisory.answer ||
     "UNKNOWN";
-
-  if (
-    inferAnswerType(
-      question.question
-    ) ===
-    ANSWER_TYPE.REBIRTH
-  ) {
-    const rb =
-      candidateAnswer.match(
-        /\brebirth\s*#?\s*(\d{1,3})\b/i
-      );
-
-    candidateAnswer =
-      rb
-        ? `Rebirth${Number(
-            rb[
-              1
-            ]
-          )}`
-        : "UNKNOWN";
-  }
 
   return finalize(
     {
@@ -6530,7 +5564,7 @@ async function resolveQuestion(
       candidateAnswer:
         clean(
           candidateAnswer,
-          300
+          400
         ) ||
         "UNKNOWN",
 
@@ -6640,7 +5674,7 @@ function validateQuestions(
           clean(
             row?.aiAnswer ||
               "UNKNOWN",
-            300
+            400
           ) ||
           "UNKNOWN",
 
@@ -6679,7 +5713,7 @@ function makeTrace(
       )}` +
       ` • candidate=${clean(
         failed.candidateAnswer,
-        80
+        90
       )}` +
       ` • ms=${failed.searchLatencyMs || 0}`
     );
@@ -6744,142 +5778,311 @@ function syntheticPage(
   };
 }
 
+function directWithPages(
+  question,
+  pages
+) {
+  return canonicalDirectResolve(
+    question,
+    {
+      intent:
+        inferIntent(
+          question
+        ),
+
+      pages,
+
+      errors:
+        [],
+
+      titles:
+        pages.map(
+          (
+            p
+          ) =>
+            p.title
+        ),
+
+      entityCandidates:
+        candidateEntities(
+          question
+        ),
+    }
+  );
+}
+
 function runSelfTests() {
-  let passed =
-    0;
+  let passed = 0;
+  const failures = [];
 
-  const failures =
-    [];
+  const check = (
+    name,
+    condition,
+    detail = ""
+  ) => {
+    if (condition) {
+      passed++;
+    } else {
+      failures.push({
+        name,
 
-  const check =
-    (
-      name,
-      condition,
-      detail = ""
-    ) => {
-      if (
-        condition
-      ) {
-        passed++;
-      } else {
-        failures.push({
-          name,
-
-          detail:
-            clean(
-              detail,
-              180
-            ),
-        });
-      }
-    };
+        detail:
+          clean(
+            detail,
+            200
+          ),
+      });
+    }
+  };
 
   check(
-    "intent current rebirth",
+    "attr rainbow multiplier",
+    inferAttribute(
+      "What multiplier does the Rainbow mutation give?"
+    ) ===
+      ATTR.MULTIPLIER
+  );
 
+  check(
+    "attr ritual requirement",
+    inferAttribute(
+      "What does the Bombardiro Crocodilo ritual require?"
+    ) ===
+      ATTR.REQUIREMENT
+  );
+
+  check(
+    "attr tralalero cost",
+    inferAttribute(
+      "How much does Tralalero Tralala cost?"
+    ) ===
+      ATTR.COST
+  );
+
+  check(
+    "categoryless intent",
     inferIntent(
-      "What is the newest rebirth right now?"
+      "How much does Tralalero Tralala cost?"
     ) ===
-      INTENT.CURRENT_REBIRTH
+      INTENT.ENTITY_PROPERTY
   );
 
   check(
-    "intent reverse rebirth",
-
-    inferIntent(
-      "What gear is unlocked at Rebirth 18?"
-    ) ===
-      INTENT.REBIRTH_REWARD
+    "entity tralalero",
+    candidateEntities(
+      "How much does Tralalero Tralala cost?"
+    ).some(
+      (
+        x
+      ) =>
+        x
+          .toLowerCase()
+          .includes(
+            "tralalero tralala"
+          )
+    )
   );
 
   check(
-    "answer type gear",
-
-    inferAnswerType(
-      "What gear is unlocked at Rebirth 18?"
-    ) ===
-      ANSWER_TYPE.GEAR
-  );
-
-  check(
-    "answer type rebirth",
-
-    inferAnswerType(
-      "Which rebirth unlocks Giant Potion?"
-    ) ===
-      ANSWER_TYPE.REBIRTH
-  );
-
-  check(
-    "answer type limited brainrot",
-
-    inferAnswerType(
-      "What limited brainrot was introduced in Update 52.75?"
-    ) ===
-      ANSWER_TYPE.BRAINROT
-  );
-
-  check(
-    "answer type new gear",
-
-    inferAnswerType(
-      "What new gear is unlocked at Rebirth 18?"
-    ) ===
-      ANSWER_TYPE.GEAR
-  );
-
-  check(
-    "mutation intent",
-
-    inferIntent(
-      "What multiplier does Rainbow mutation give?"
-    ) ===
-      INTENT.MUTATION_MULTIPLIER
-  );
-
-  check(
-    "ritual intent",
-
-    inferIntent(
-      "What does the Bombardiro ritual require?"
-    ) ===
-      INTENT.RITUAL_REQUIREMENT
-  );
-
-  check(
-    "lucky block intent",
-
-    inferIntent(
-      "What is the drop rate from the Lucky Block?"
-    ) ===
-      INTENT.LUCKY_BLOCK_DROP_RATE
-  );
-
-  check(
-    "brainrot cost intent",
-
-    inferIntent(
-      "How much does Tralalero Tralala cost brainrot?"
-    ) ===
-      INTENT.BRAINROT_COST
-  );
-
-  check(
-    "update extraction",
-
+    "update decimal",
     extractUpdateNumber(
-      "What was added in Update 52.75?"
+      "What limited brainrot was introduced in Update 52.75?"
     ) ===
       "52.75"
   );
 
   check(
-    "rebirth extraction",
-
-    extractRebirthNumberFromQuestion(
-      "What gear is at Rebirth 18?"
+    "rebirth number",
+    extractRebirthNumber(
+      "What gear is unlocked at Rebirth 18?"
     ) ===
       18
+  );
+
+  const mutationPage =
+    syntheticPage(
+      "Mutations",
+
+      `<table>
+         <tr>
+           <th>Multi</th>
+           <th>Name</th>
+           <th>Notes</th>
+         </tr>
+         <tr>
+           <td>1.25×</td>
+           <td>Gold</td>
+           <td>Gold.</td>
+         </tr>
+         <tr>
+           <td>10×</td>
+           <td>Rainbow</td>
+           <td>Rainbow mutation.</td>
+         </tr>
+       </table>`
+    );
+
+  check(
+    "rainbow multiplier exact",
+
+    directWithPages(
+      "What multiplier does the Rainbow mutation give?",
+      [
+        mutationPage,
+      ]
+    )?.answer ===
+      "10x"
+  );
+
+  const ritualPage =
+    syntheticPage(
+      "Rituals",
+
+      `<table>
+         <tr>
+           <th>Name</th>
+           <th>Spawns</th>
+           <th>Requires</th>
+           <th>Formation</th>
+           <th>Weather</th>
+         </tr>
+         <tr>
+           <td>Bombardiro Crocodilo ritual</td>
+           <td>Los Crocodillitos</td>
+           <td>Bombardiro Crocodilo x3</td>
+           <td>Line formation</td>
+           <td>Explosive</td>
+         </tr>
+       </table>`
+    );
+
+  check(
+    "bombardiro requirement exact",
+
+    directWithPages(
+      "What does the Bombardiro Crocodilo ritual require?",
+      [
+        ritualPage,
+      ]
+    )?.answer ===
+      "Bombardiro Crocodilo x3"
+  );
+
+  check(
+    "bombardiro spawn reverse",
+
+    directWithPages(
+      "What does the Bombardiro Crocodilo ritual spawn?",
+      [
+        ritualPage,
+      ]
+    )?.answer ===
+      "Los Crocodillitos"
+  );
+
+  const tralaleroPage =
+    syntheticPage(
+      "Tralalero Tralala",
+
+      `<h2>Information</h2>
+       <table>
+         <tr>
+           <th>Income</th>
+           <th>Cost</th>
+         </tr>
+         <tr>
+           <td>$50K/s</td>
+           <td>$10M</td>
+         </tr>
+       </table>
+       <table>
+         <tr>
+           <th>Rarity</th>
+         </tr>
+         <tr>
+           <td>Brainrot God</td>
+         </tr>
+       </table>`
+    );
+
+  check(
+    "tralalero cost exact page context",
+
+    directWithPages(
+      "How much does Tralalero Tralala cost?",
+      [
+        tralaleroPage,
+      ]
+    )?.answer ===
+      "$10M"
+  );
+
+  check(
+    "tralalero income exact page context",
+
+    directWithPages(
+      "What income does Tralalero Tralala make per second?",
+      [
+        tralaleroPage,
+      ]
+    )?.answer ===
+      "$50K/s"
+  );
+
+  const rebirthPage =
+    syntheticPage(
+      "Rebirth",
+
+      `<table>
+         <tr>
+           <th>Rebirth</th>
+           <th>Gear</th>
+         </tr>
+         <tr>
+           <td>Rebirth 17</td>
+           <td>Giant Potion</td>
+         </tr>
+         <tr>
+           <td>Rebirth 18</td>
+           <td>Flash Teleport</td>
+         </tr>
+       </table>`
+    );
+
+  check(
+    "giant potion rebirth",
+
+    directWithPages(
+      "Which rebirth unlocks the Giant Potion?",
+      [
+        rebirthPage,
+      ]
+    )?.answer ===
+      "Rebirth17"
+  );
+
+  check(
+    "rebirth 18 reverse gear",
+
+    directWithPages(
+      "What gear is unlocked at Rebirth 18?",
+      [
+        rebirthPage,
+      ]
+    )?.answer ===
+      "Flash Teleport"
+  );
+
+  check(
+    "current rebirth max",
+
+    directWithPages(
+      "What is the newest rebirth right now?",
+      [
+        rebirthPage,
+      ]
+    )?.answer ===
+      "Rebirth18"
   );
 
   for (
@@ -6889,38 +6092,32 @@ function runSelfTests() {
     180;
     i++
   ) {
-    const html =
-      `<table>` +
-      `<tr><th>Rebirth</th><th>Reward</th></tr>` +
-      `<tr><td>Rebirth ${i}</td><td>Item ${i}</td></tr>` +
-      `</table>`;
-
     const page =
       syntheticPage(
-        "Rebirth",
-        html
+        "Mutations",
+
+        `<table>
+           <tr>
+             <th>Multi</th>
+             <th>Name</th>
+           </tr>
+           <tr>
+             <td>${i}x</td>
+             <td>AlphaMut ${i}</td>
+           </tr>
+         </table>`
       );
 
     check(
-      `rebirth row ${i}`,
+      `mutation multiplier ${i}`,
 
-      extractRebirthRows(
-        page
-      )[
-        0
-      ]?.number ===
-        i
-    );
-
-    check(
-      `reverse reward ${i}`,
-
-      findRewardForRebirth(
-        page,
-        i
-      )?.includes(
-        `Item ${i}`
-      )
+      directWithPages(
+        `What multiplier does AlphaMut ${i} give?`,
+        [
+          page,
+        ]
+      )?.answer ===
+        `${i}x`
     );
   }
 
@@ -6928,31 +6125,47 @@ function runSelfTests() {
     let i =
       1;
     i <=
-    150;
+    160;
     i++
   ) {
-    const html =
-      `<table>` +
-      `<tr><th>Rebirth</th><th>Reward</th></tr>` +
-      `<tr><td>Rebirth ${i}</td><td>Giant Potion</td></tr>` +
-      `</table>`;
-
     const page =
       syntheticPage(
-        "Rebirth",
-        html
+        `Entity ${i}`,
+
+        `<table>
+           <tr>
+             <th>Income</th>
+             <th>Cost</th>
+           </tr>
+           <tr>
+             <td>$${i}K/s</td>
+             <td>$${i}M</td>
+           </tr>
+         </table>`
       );
 
     check(
-      `entity to rebirth ${i}`,
+      `entity cost context ${i}`,
 
-      findRebirthForEntity(
-        page,
+      directWithPages(
+        `How much does Entity ${i} cost?`,
         [
-          "giant potion",
+          page,
         ]
-      ) ===
-        `Rebirth${i}`
+      )?.answer ===
+        `$${i}M`
+    );
+
+    check(
+      `entity income context ${i}`,
+
+      directWithPages(
+        `What income does Entity ${i} make per second?`,
+        [
+          page,
+        ]
+      )?.answer ===
+        `$${i}K/s`
     );
   }
 
@@ -6963,32 +6176,46 @@ function runSelfTests() {
     120;
     i++
   ) {
-    const html =
-      `<table>` +
-      `<tr><th>Name</th><th>Multiplier</th></tr>` +
-      `<tr><td>Mutation ${i}</td><td>${i}x</td></tr>` +
-      `</table>`;
-
     const page =
       syntheticPage(
-        "Mutations",
-        html
-      );
+        "Rituals",
 
-    const question =
-      `What multiplier does Mutation ${i} give?`;
-
-    const result =
-      directTableLookup(
-        question,
-        page
+        `<table>
+           <tr>
+             <th>Name</th>
+             <th>Spawns</th>
+             <th>Requires</th>
+           </tr>
+           <tr>
+             <td>AlphaRit ${i}</td>
+             <td>AlphaSpawn ${i}</td>
+             <td>AlphaThing ${i} x3</td>
+           </tr>
+         </table>`
       );
 
     check(
-      `mutation multiplier ${i}`,
+      `ritual req ${i}`,
 
-      result?.answer ===
-        `${i}x`
+      directWithPages(
+        `What does AlphaRit ${i} ritual require?`,
+        [
+          page,
+        ]
+      )?.answer ===
+        `AlphaThing ${i} x3`
+    );
+
+    check(
+      `ritual spawn ${i}`,
+
+      directWithPages(
+        `What does AlphaRit ${i} ritual spawn?`,
+        [
+          page,
+        ]
+      )?.answer ===
+        `AlphaSpawn ${i}`
     );
   }
 
@@ -6996,149 +6223,159 @@ function runSelfTests() {
     let i =
       1;
     i <=
-    90;
+    100;
     i++
   ) {
-    const html =
-      `<table>` +
-      `<tr><th>Name</th><th>Cost</th><th>Rebirth</th></tr>` +
-      `<tr><td>Slap ${i}</td><td>$${i}K</td><td>Rebirth ${i}</td></tr>` +
-      `</table>`;
-
     const page =
       syntheticPage(
-        "Slap",
-        html
-      );
+        "Rebirth",
 
-    const cost =
-      directTableLookup(
-        `How much does Slap ${i} cost?`,
-        page
-      );
-
-    const rb =
-      directTableLookup(
-        `What rebirth unlocks Slap ${i}?`,
-        page
+        `<table>
+           <tr>
+             <th>Rebirth</th>
+             <th>Gear</th>
+           </tr>
+           <tr>
+             <td>Rebirth ${i}</td>
+             <td>AlphaGear ${i}</td>
+           </tr>
+           <tr>
+             <td>Rebirth ${i + 1}</td>
+             <td>AlphaGear ${i + 1}</td>
+           </tr>
+         </table>`
       );
 
     check(
-      `slap cost ${i}`,
+      `rebirth forward ${i}`,
 
-      cost?.answer ===
-        `$${i}K`
-    );
-
-    check(
-      `slap rebirth ${i}`,
-
-      rb?.answer ===
+      directWithPages(
+        `Which rebirth unlocks AlphaGear ${i}?`,
+        [
+          page,
+        ]
+      )?.answer ===
         `Rebirth${i}`
     );
+
+    check(
+      `rebirth reverse ${i}`,
+
+      directWithPages(
+        `What gear is unlocked at Rebirth ${i}?`,
+        [
+          page,
+        ]
+      )?.answer ===
+        `AlphaGear ${i}`
+    );
   }
 
   for (
     let i =
       1;
     i <=
-    60;
+    80;
     i++
   ) {
-    const html =
-      `<table>` +
-      `<tr><th>Name</th><th>Chance</th></tr>` +
-      `<tr><td>Thing ${i}</td><td>${i}%</td></tr>` +
-      `</table>`;
-
     const page =
       syntheticPage(
         "Lucky Blocks",
-        html
-      );
 
-    const result =
-      directTableLookup(
-        `What is the drop rate of Thing ${i} from the Lucky Block?`,
-        page
+        `<table>
+           <tr>
+             <th>Name</th>
+             <th>Chance</th>
+           </tr>
+           <tr>
+             <td>AlphaDrop ${i}</td>
+             <td>${i}%</td>
+           </tr>
+         </table>`
       );
 
     check(
       `drop rate ${i}`,
 
-      result?.answer ===
+      directWithPages(
+        `What is the drop rate of AlphaDrop ${i}?`,
+        [
+          page,
+        ]
+      )?.answer ===
         `${i}%`
     );
   }
 
-  const reverseComplex =
-    syntheticPage(
-      "Rebirth",
-
-      `<table>` +
-        `<tr><th>Rebirth</th><th>Cash</th><th>Multiplier</th><th>Gear</th></tr>` +
-        `<tr><td>Rebirth 18</td><td>$1B</td><td>18x</td><td>Flash Teleport</td></tr>` +
-        `</table>`
+  for (
+    let i =
+      1;
+    i <=
+    15;
+    i++
+  ) {
+    check(
+      `header cost ${i}`,
+      normalizeHeader(
+        i %
+        2
+          ? "Price"
+          : "Cost"
+      ) ===
+        ATTR.COST
     );
 
-  check(
-    "reverse relation chooses gear column",
-
-    directRebirthLookup(
-      "What gear is unlocked at Rebirth 18?",
-      [
-        reverseComplex,
-      ]
-    )?.answer ===
-      "Flash Teleport"
-  );
-
-  const currentPage =
-    syntheticPage(
-      "Rebirth",
-
-      `<table>` +
-        `<tr><th>Rebirth</th><th>Reward</th></tr>` +
-        `${
-          Array.from(
-            {
-              length:
-                18,
-            },
-
-            (
-              _,
-              i
-            ) =>
-              `<tr><td>Rebirth ${i + 1}</td><td>Reward ${i + 1}</td></tr>`
-          ).join(
-            ""
-          )
-        }` +
-        `</table>`
+    check(
+      `header income ${i}`,
+      normalizeHeader(
+        i %
+        2
+          ? "Income"
+          : "Money per second"
+      ) ===
+        ATTR.INCOME
     );
 
-  check(
-    "current full max",
+    check(
+      `header req ${i}`,
+      normalizeHeader(
+        i %
+        2
+          ? "Requires"
+          : "Requirement"
+      ) ===
+        ATTR.REQUIREMENT
+    );
 
-    directCurrentRebirth(
-      [
-        currentPage,
-      ]
-    )?.answer ===
-      "Rebirth18"
-  );
+    check(
+      `header chance ${i}`,
+      normalizeHeader(
+        i %
+        2
+          ? "Chance"
+          : "Drop Rate"
+      ) ===
+        ATTR.DROP_RATE
+    );
 
-  const total =
-    passed +
-    failures.length;
+    check(
+      `format rebirth ${i}`,
+      normalizeValue(
+        `Rebirth ${i}`,
+        ATTR.REBIRTH
+      ) ===
+        `Rebirth${i}`
+    );
+  }
 
   return {
     ok:
       failures.length ===
       0,
 
-    total,
+    total:
+      passed +
+      failures.length,
 
     passed,
 
@@ -7148,11 +6385,11 @@ function runSelfTests() {
     failures:
       failures.slice(
         0,
-        25
+        30
       ),
 
     note:
-      "Deterministic parser/routing tests only. Live Fandom/Tavily/NVIDIA checks use separate endpoints.",
+      "Deterministic parser/routing tests only. Live upstream checks use ?test=wiki, ?test=resolve, and ?test=search.",
   };
 }
 
@@ -7224,12 +6461,7 @@ export async function GET(
         await fetchCanonicalPage(
           pageName,
           started +
-            4500
-        );
-
-      const rows =
-        extractRebirthRows(
-          page
+            4800
         );
 
       return json(
@@ -7256,20 +6488,10 @@ export async function GET(
           textLength:
             page.text.length,
 
-          tableRowCount:
-            rows.length,
-
-          maxRebirth:
-            rows.length
-              ? `Rebirth${Math.max(
-                  ...rows.map(
-                    (
-                      r
-                    ) =>
-                      r.number
-                  )
-                )}`
-              : null,
+          tableCount:
+            extractTables(
+              page
+            ).length,
 
           infoboxKeys:
             Object.keys(
@@ -7278,7 +6500,7 @@ export async function GET(
               )
             ).slice(
               0,
-              20
+              25
             ),
 
           ms:
@@ -7329,7 +6551,7 @@ export async function GET(
         url.searchParams.get(
           "q"
         ) ||
-          "What is the newest rebirth in Steal a Brainrot right now?",
+          "What multiplier does the Rainbow mutation give?",
         700
       );
 
@@ -7341,7 +6563,7 @@ export async function GET(
         await canonicalPagesForQuestion(
           q,
           started +
-            5000
+            5200
         );
 
       const direct =
@@ -7372,9 +6594,12 @@ export async function GET(
             ),
 
           answerType:
-            inferAnswerType(
+            inferAttribute(
               q
             ),
+
+          entities:
+            canonical.entityCandidates,
 
           direct,
 
@@ -7391,6 +6616,11 @@ export async function GET(
 
                 textLength:
                   p.text.length,
+
+                tableCount:
+                  extractTables(
+                    p
+                  ).length,
               })
             ),
 
@@ -7440,7 +6670,7 @@ export async function GET(
     try {
       const result =
         await tavilyStage(
-          "What is the newest rebirth in Steal a Brainrot right now?",
+          "What multiplier does the Rainbow mutation give?",
 
           started +
             4500
@@ -7533,37 +6763,34 @@ export async function GET(
         DEFAULT_MODEL,
 
       architecture: {
-        generalSABIntentRouter:
+        entityFirstResolution:
           true,
 
-        answerTypeDetection:
+        categorylessEntityQuestions:
           true,
 
-        dynamicEntitySearch:
+        fullFandomPageFirst:
           true,
 
-        fandomMediaWikiFirst:
+        everyTableParsedIndependently:
           true,
 
-        fandomFullHtmlFallback:
+        normalizedColumnSemantics:
           true,
 
-        infoboxParser:
+        exactEntityPageContextTables:
           true,
 
-        genericTableParser:
+        bidirectionalTableRelations:
           true,
 
-        bidirectionalRelations:
+        updateSectionRouting:
           true,
 
-        updateSectionParser:
+        fullPageCurrentRebirth:
           true,
 
-        rebirthTableParser:
-          true,
-
-        mutationTraitMachineRitualLuckyBlockSlapBaseRouting:
+        infoboxAndInformationTables:
           true,
 
         tavilyFallback:
