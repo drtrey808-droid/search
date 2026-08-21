@@ -1,4 +1,4 @@
-const BUILD_ID = "SAB_CANONICAL_FIRST_SLOT_ENGINE_R34_2026_08_19";
+const BUILD_ID = "SAB_SINGLE_SLOT_REVERSE_ENGINE_R35_2026_08_21";
 
 const PRIMARY_ORIGIN = "https://steal-a-brainrot.org";
 const FANDOM_API = "https://stealabrainrot.fandom.com/api.php";
@@ -470,7 +470,7 @@ function analyzeQuestion(question) {
     intent: inferIntent(q, relation, update, date),
     rawQuestion: q,
     wantedRelations: detectWantedRelations(q, relation),
-    source: "DETERMINISTIC_R34",
+    source: "DETERMINISTIC_R35",
   };
 }
 
@@ -610,7 +610,7 @@ async function fetchPage(url, source, deadline) {
   const html = await fetchText(source.key, url, {
     headers: {
       Accept: "text/html,application/xhtml+xml",
-      "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R34",
+      "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R35",
     },
   }, timeout);
   const page = {
@@ -944,7 +944,7 @@ function withBridgedUpdate(analysis, update) {
     source:
       analysis.source === "NVIDIA_QUESTION_ROUTER"
         ? "NVIDIA_QUESTION_ROUTER+DATE_BRIDGE"
-        : "DETERMINISTIC_R34+DATE_BRIDGE",
+        : "DETERMINISTIC_R35+DATE_BRIDGE",
   };
 }
 
@@ -1988,7 +1988,7 @@ async function fandomSearchTitles(query, deadline) {
     format: "json",
   });
   try {
-    const data = await fetchJson("FANDOM_SEARCH", `${FANDOM_API}?${params.toString()}`, { headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R34" } }, Math.min(CFG.FANDOM_TIMEOUT_MS, left - 20));
+    const data = await fetchJson("FANDOM_SEARCH", `${FANDOM_API}?${params.toString()}`, { headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R35" } }, Math.min(CFG.FANDOM_TIMEOUT_MS, left - 20));
     return (Array.isArray(data?.query?.search) ? data.query.search : []).map((x) => oneLine(x?.title, 300)).filter(Boolean);
   } catch {
     return [];
@@ -2001,7 +2001,7 @@ async function fetchFandomPage(title, deadline) {
   if (cached) return { ...cached, cache: "HIT" };
   const left = timeLeft(deadline);
   if (left < 250) throw new Error("FANDOM_BUDGET_EXHAUSTED");
-  const data = await fetchJson("FANDOM_PARSE", fandomParseUrl(title), { headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R34" } }, Math.min(CFG.FANDOM_TIMEOUT_MS, left - 20));
+  const data = await fetchJson("FANDOM_PARSE", fandomParseUrl(title), { headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R35" } }, Math.min(CFG.FANDOM_TIMEOUT_MS, left - 20));
   if (data?.error) throw new Error(`FANDOM_PARSE_${data.error.code || "ERROR"}`);
   const p = data?.parse || {};
   const html = typeof p.text === "string" ? p.text : String(p.text?.["*"] || "");
@@ -4375,14 +4375,17 @@ function detectFactSlots(question, analysis) {
   };
 
   // ----------------------------------------------------------------
-  // Same-relation duplicate slots: "99% and 1% outcomes"
+  // Chance-qualified ritual outcomes. Works for ONE percentage or many.
+  // Examples:
+  //   "What is the 1% outcome ...?"
+  //   "What are the 99% and 1% outcomes ...?"
   // ----------------------------------------------------------------
   const percents = [...q.matchAll(/\b(\d+(?:\.\d+)?)\s*%/g)]
     .map((m) => `${m[1]}%`);
 
   if (
-    percents.length >= 2 &&
-    /\b(?:outcome|outcomes|result|results)\b/i.test(q) &&
+    percents.length >= 1 &&
+    /\b(?:outcome|outcomes|result|results|spawn|reward)\b/i.test(q) &&
     /\britual\b/i.test(q)
   ) {
     const subject = lower.includes("job job job sahur")
@@ -4402,6 +4405,29 @@ function detectFactSlots(question, analysis) {
       ));
     }
 
+    return slots;
+  }
+
+  // ----------------------------------------------------------------
+  // Reverse mutation identification by multiplier.
+  // "Which mutation has a 13x multiplier?" -> Crystal
+  // ----------------------------------------------------------------
+  const multiplier = q.match(/\b(\d+(?:\.\d+)?)\s*[x×]\b/i)?.[1];
+  if (
+    multiplier &&
+    /\b(?:which|what)\s+mutation\b/i.test(q)
+  ) {
+    add(makeSlot(
+      `mutation_${String(multiplier).replace(".", "_")}x`,
+      REL.MUTATION,
+      {
+        subject: null,
+        qualifier: `${multiplier}x`,
+        predicate: "HAS_MULTIPLIER",
+        answerType: REL.MUTATION,
+        anchorUpdate: analysis.update,
+      }
+    ));
     return slots;
   }
 
@@ -4446,7 +4472,7 @@ function detectFactSlots(question, analysis) {
   }
 
   // ----------------------------------------------------------------
-  // Los Traders replacement binding.
+  // Los Traders replacement binding. Single-slot form is intentional.
   // ----------------------------------------------------------------
   if (lower.includes("los traders") && /\breplac/.test(lower)) {
     if (/\b(?:which|what)\s+machine\b/.test(lower)) {
@@ -4473,7 +4499,7 @@ function detectFactSlots(question, analysis) {
   }
 
   // ----------------------------------------------------------------
-  // Generic multipart fallback: one slot per requested relation.
+  // Generic fallback: one slot per requested relation.
   // ----------------------------------------------------------------
   const wanted = analysis.wantedRelations || [analysis.relation];
   for (let i = 0; i < wanted.length; i++) {
@@ -4534,7 +4560,26 @@ function applyFactSlots(question, analysis) {
 }
 
 function isFactSlotQuestion(analysis) {
-  return Array.isArray(analysis?.factSlots) && analysis.factSlots.length > 1;
+  const slots = Array.isArray(analysis?.factSlots) ? analysis.factSlots : [];
+  if (!slots.length) return false;
+  if (slots.length > 1) return true;
+
+  const slot = slots[0];
+  const specialPredicates = new Set([
+    "OUTCOME_AT_CHANCE",
+    "REPLACED_BY",
+    "REPLACED_IN",
+    "EVENT_FREQUENCY",
+    "SUBJECT_UPDATE",
+    "MACHINE_IN_SAME_UPDATE",
+    "HAS_MULTIPLIER",
+  ]);
+
+  return Boolean(
+    slot.qualifier ||
+    specialPredicates.has(slot.predicate) ||
+    (slot.answerType && slot.answerType !== slot.relation)
+  );
 }
 
 function subjectAppears(value, subject) {
@@ -4682,6 +4727,10 @@ function slotSpecificQuestion(slot) {
     return `Which machine was introduced in the same update as ${slot.subject || "the subject"}?`;
   }
 
+  if (slot.predicate === "HAS_MULTIPLIER") {
+    return `Which mutation has a ${slot.qualifier || "requested"} multiplier?`;
+  }
+
   if (slot.predicate === "SUBJECT_UPDATE") {
     return `What update was ${slot.subject || "the subject"} tied to?`;
   }
@@ -4704,6 +4753,83 @@ function relationAnalysisForSlot(analysis, slot) {
   };
 }
 
+
+function regexEscape(value) {
+  return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function looksLikeMutationName(value) {
+  const v = oneLine(value, 100);
+  if (!v || v.length > 60 || v.split(/\s+/).length > 5) return false;
+  if (/\b(?:mutation|mutations|multiplier|event|always available|collect all|brainrots?|traits?)\b/i.test(v)) return false;
+  if (/^\d+(?:\.\d+)?\s*[x×]$/i.test(v)) return false;
+  return /^[A-Z][A-Za-z0-9' -]*$/.test(v);
+}
+
+function extractMutationByMultiplier(page, qualifier) {
+  const q = oneLine(qualifier, 30).replace("×", "x");
+  if (!q) return null;
+
+  const qNumber = q.match(/\d+(?:\.\d+)?/)?.[0];
+  if (!qNumber) return null;
+
+  const text = oneLine(page?.text || "", 20000).replace(/×/g, "x");
+  const escaped = regexEscape(qNumber);
+
+  const qualifierIndex = text.toLowerCase().indexOf(`${qNumber.toLowerCase()}x`);
+  const qualifierContext = qualifierIndex >= 0
+    ? text.slice(Math.max(0, qualifierIndex - 260), qualifierIndex + 360)
+    : "";
+
+  // A numeric multiplier on an unrelated event/page must never become a
+  // mutation answer. Either the canonical mutation hub is being read, or
+  // the local qualifier context must explicitly identify mutation semantics.
+  if (
+    !/\/wiki\/mutations(?:\/|$|\?)/i.test(page?.url || "") &&
+    !/\bmutation(?:s)?\b/i.test(qualifierContext)
+  ) {
+    return null;
+  }
+
+  // Strong prose shape from S+: "Crystal 13x Crystal mutation with a 13x multiplier"
+  const prose = text.match(
+    new RegExp(`\\b([A-Z][A-Za-z0-9' -]{0,50}?)\\s+${escaped}x\\s+\\1\\s+mutation\\b`, "i")
+  );
+  if (prose?.[1]) {
+    const candidate = oneLine(prose[1], 80);
+    if (looksLikeMutationName(candidate)) return candidate;
+  }
+
+  // Line-based table/card form: heading/name immediately precedes 13x.
+  const lines = Array.isArray(page?.lines) ? page.lines.map((x) => oneLine(x, 300)).filter(Boolean) : [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].replace(/×/g, "x");
+    if (!new RegExp(`\\b${escaped}\\s*x\\b`, "i").test(line)) continue;
+
+    // Same line can be "Crystal 13x".
+    const same = line.match(new RegExp(`^([A-Z][A-Za-z0-9' -]{0,50}?)\\s+${escaped}\\s*x\\b`, "i"));
+    if (same?.[1] && looksLikeMutationName(oneLine(same[1], 80))) {
+      return oneLine(same[1], 80);
+    }
+
+    for (let back = 1; back <= 4 && i - back >= 0; back++) {
+      const candidate = oneLine(lines[i - back], 80);
+      if (looksLikeMutationName(candidate)) return candidate;
+    }
+  }
+
+  // Last fallback: title-like word shortly before the requested multiplier.
+  const idx = text.toLowerCase().indexOf(`${qNumber.toLowerCase()}x`);
+  if (idx >= 0) {
+    const before = text.slice(Math.max(0, idx - 100), idx);
+    const candidates = [...before.matchAll(/\\b([A-Z][A-Za-z0-9'-]{2,30})\\b/g)].map((m) => m[1]);
+    for (let i = candidates.length - 1; i >= 0; i--) {
+      if (looksLikeMutationName(candidates[i])) return candidates[i];
+    }
+  }
+
+  return null;
+}
 
 function looksLikeBrainrotEntityName(value) {
   const answer = oneLine(value, 240);
@@ -4747,6 +4873,29 @@ function validateSlotAnswer(slot, answer, page) {
     }
   }
 
+  if (slot.answerType === REL.MUTATION) {
+    if (!looksLikeMutationName(value)) {
+      return { valid: false, reason: "EXPECTED_MUTATION_NAME" };
+    }
+
+    if (slot.predicate === "HAS_MULTIPLIER" && slot.qualifier) {
+      const pageText = oneLine(page?.text || "", 20000).replace(/×/g, "x");
+      const qualifier = oneLine(slot.qualifier, 40).replace(/×/g, "x");
+      const idx = pageText.toLowerCase().indexOf(qualifier.toLowerCase());
+      const ctx = idx >= 0
+        ? pageText.slice(Math.max(0, idx - 320), idx + qualifier.length + 420)
+        : "";
+
+      if (
+        !ctx ||
+        !/\bmutation(?:s)?\b/i.test(ctx) ||
+        !evidenceSupports(value, ctx)
+      ) {
+        return { valid: false, reason: "MULTIPLIER_NOT_BOUND_TO_MUTATION" };
+      }
+    }
+  }
+
   if (slot.answerType === REL.MACHINE && !/\bMachine\b/i.test(value)) {
     return { valid: false, reason: "EXPECTED_MACHINE_NAME" };
   }
@@ -4771,6 +4920,8 @@ function extractSlotDeterministic(slot, question, analysis, pages) {
 
     if (slot.relation === REL.OUTCOME && slot.qualifier) {
       answer = extractChanceResultFromPage(slotQuestion, page);
+    } else if (slot.predicate === "HAS_MULTIPLIER" && slot.relation === REL.MUTATION) {
+      answer = extractMutationByMultiplier(page, slot.qualifier);
     } else if (slot.predicate === "REPLACED_BY") {
       answer = extractReplacedByMachine(page.text, slot.subject);
     } else if (slot.predicate === "REPLACED_IN") {
@@ -4918,6 +5069,7 @@ async function aiExtractFactSlots(question, analysis, pages, source, deadline) {
                 "For duplicate OUTCOME slots, the qualifier (for example 99% vs 1%) must select the matching outcome.",
                 "For REPLACED_BY, answer the machine/entity that the subject was explicitly replaced by.",
                 "For REPLACED_IN, answer the update where that same replacement occurred.",
+                "For HAS_MULTIPLIER, answer the entity whose multiplier exactly matches the slot qualifier; never answer the multiplier itself.",
                 "For MACHINE_IN_SAME_UPDATE, answer a machine explicitly tied to the same update/event as the subject.",
                 "For EVENT_FREQUENCY, answer only the recurrence phrase.",
                 "If ANY slot is not explicitly supported, answer UNKNOWN for that slot.",
@@ -7037,6 +7189,72 @@ function runSelfTests() {
     looksLikeBrainrotEntityName("ec804a6bfa90408597072080ef2b0063") === false
   );
 
+
+  const r35CrystalQ = "Which mutation has a 13x multiplier?";
+  const r35CrystalA = applyFactSlots(
+    r35CrystalQ,
+    enforceQuestionSemantics(r35CrystalQ, analyzeQuestion(r35CrystalQ))
+  );
+  check("R35 Crystal one special slot", isFactSlotQuestion(r35CrystalA) === true);
+  check("R35 Crystal slot predicate", r35CrystalA.factSlots[0]?.predicate === "HAS_MULTIPLIER");
+  const r35MutationPage = syntheticPrimaryPage(
+    "Steal a Brainrot Mutations & Traits List",
+    `${PRIMARY_ORIGIN}/wiki/mutations`,
+    [
+      "Event Mutations",
+      "Phantom",
+      "12x",
+      "Phantom mutation with 12x multiplier.",
+      "Crystal",
+      "13x",
+      "Crystal mutation with a 13x multiplier. It gives brainrots a faceted crystal appearance during the Crystal Event.",
+    ]
+  );
+  check(
+    "R35 Crystal reverse qualifier",
+    deterministicFactSlots(r35CrystalQ, r35CrystalA, [r35MutationPage])?.answer === "Crystal"
+  );
+
+  const r35LosQ = "Which machine replaced Los Traders?";
+  const r35LosA = applyFactSlots(
+    r35LosQ,
+    enforceQuestionSemantics(r35LosQ, analyzeQuestion(r35LosQ))
+  );
+  check("R35 Los Traders one special slot", isFactSlotQuestion(r35LosA) === true);
+  const r35LosPage = syntheticPrimaryPage(
+    "All Machines",
+    `${PRIMARY_ORIGIN}/machines`,
+    [
+      "Los Traders",
+      "Removed Brainrot Trader variant that ran from Update 57 through Update 60 with rotating 30-minute offers.",
+      "Update 61 replaced it with the RNG Machine and Queen Bee event.",
+    ]
+  );
+  check(
+    "R35 Los Traders single replacement",
+    deterministicFactSlots(r35LosQ, r35LosA, [r35LosPage])?.answer === "RNG Machine"
+  );
+
+  const r35NooQ = "What is the 1% outcome of the Job Job Job Sahur ritual?";
+  const r35NooA = applyFactSlots(
+    r35NooQ,
+    enforceQuestionSemantics(r35NooQ, analyzeQuestion(r35NooQ))
+  );
+  check("R35 1pct one special slot", isFactSlotQuestion(r35NooA) === true);
+  const r35NooPage = syntheticPrimaryPage(
+    "Job Job Job Sahur Ritual",
+    `${PRIMARY_ORIGIN}/rituals/job-job-job-sahur-ritual`,
+    [
+      "Job Job Job Sahur Ritual",
+      "Yess my Resume with a 99% outcome chance",
+      "Noo my Resume with a 1% outcome chance",
+    ]
+  );
+  check(
+    "R35 Noo single outcome",
+    deterministicFactSlots(r35NooQ, r35NooA, [r35NooPage])?.answer === "Noo my Resume"
+  );
+
   // Priority behavior: once S+ has a direct value, lower tier disagreement does not participate.
   const primary = makeResult("10x", REL.MULTIPLIER, SOURCE.PRIMARY, mutationPage, "PRIMARY_MUTATION_SECTION", 0.995);
   const fandom = makeResult("9x", REL.MULTIPLIER, SOURCE.FANDOM, { title: "Mutations", url: "fandom" }, "FANDOM_DIRECT", 0.93);
@@ -7254,6 +7472,9 @@ export async function GET(request) {
       trueMultipartAnswers: true,
       factSlotSemanticBinding: true,
       canonicalPrimaryFastPath: true,
+      singleSpecialFactSlots: true,
+      reverseMutationMultiplierSlot: true,
+      singleChanceOutcomeSlot: true,
       canonicalMachinesHub: true,
       canonicalEventsHub: true,
       canonicalRitualEntityPage: true,
