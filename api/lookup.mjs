@@ -1,4 +1,4 @@
-const BUILD_ID = "SAB_INSTANT_LORE_GRAPH_R41_2026_08_21";
+const BUILD_ID = "SAB_ULTRA_INSTANT_LORE_R42_2026_08_21";
 
 const PRIMARY_ORIGIN = "https://steal-a-brainrot.org";
 const FANDOM_API = "https://stealabrainrot.fandom.com/api.php";
@@ -163,7 +163,22 @@ const R41_RESEARCHED_SPLUS_SOURCES = Object.freeze([
   "/brainrots/festive-67", "/brainrots/quackini-snackini", "/brainrots/ventoliero-pavonero", "/brainrots/queen-bee",
   "/brainrots/cloverat-clapat", "/brainrots/spaghetti-tualetti", "/brainrots/arcadopus", "/brainrots/tic-tic-ribbit",
   "/brainrots/candini-fluffini", "/brainrots/bunnyman", "/brainrots/buntteo", "/brainrots/please-my-present",
-  "/brainrots/bandito-bobritto", "/brainrots/cash-or-card", "/brainrots/yetimatic", "/brainrots/griffin"
+  "/brainrots/bandito-bobritto", "/brainrots/cash-or-card", "/brainrots/yetimatic", "/brainrots/griffin",
+  "/brainrots/candini-fluffini", "/brainrots/la-fuse-machine", "/brainrots/sammyni-truckini", "/brainrots/smore-serat",
+  "/brainrots/scorpino-coasterino", "/events/admin-abuse-war", "/events/taco-tuesday", "/events/Extinct-Event",
+  "/events/mexico-event", "/events/yin-yang-event", "/events/witch-fuse-event", "/events/indonesian-event",
+  "/events/frightrot-event", "/events/1x1x1x1-event", "/events/radioactive-mutation-event", "/events/hes-coming-back-event",
+  "/events/santas-fuse-event", "/events/north-pole-event", "/events/gingerbread-town-event", "/events/christmas-eve-admin-abuse",
+  "/events/skibidi-event", "/events/26-event", "/events/cursed-mutation-event", "/events/duels-event",
+  "/events/bruno-mars-event", "/events/the-return", "/events/valentines-pt1-event", "/events/valentines-pt2-event",
+  "/events/trade-machine-event", "/events/divine-admin-machine-event", "/events/divine-fuse-machine-event", "/events/st-patricks-event",
+  "/events/rip-my-granny-event", "/events/easter-event-part-1", "/events/easter-event-part-2", "/events/cyber-event",
+  "/events/john-pork-2026-05-02", "/events/backrooms-event", "/events/next-update-2026-05-16", "/events/summer-fuse-2026-05-23",
+  "/events/steaks-admin-abuse-2026-05-30", "/events/caylus-admin-abuse-2026-06-06", "/events/summer-upd-pt-1-2026-06-13",
+  "/events/summer-upd-pt-2-2026-06-20", "/events/futbol-update-2026-06-27", "/events/update-56-public-live-2026-07-05",
+  "/events/los-traders-event-2026-07-11", "/events/crystal-mutation-spain-event-2026-07-25",
+  "/events/job-job-job-sahur-ritual-2026-08-01", "/events/rng-machine-queen-bee-event-2026-08-08",
+  "/events/rebirth-19-update-62-2026-08-15"
 ]);
 const R41_RESEARCHED_SPLUS_SOURCE_COUNT = new Set(R41_RESEARCHED_SPLUS_SOURCES).size;
 
@@ -208,8 +223,8 @@ const R41_MACHINE_SNAPSHOT = Object.freeze({
   "Summer Fuse":{status:"Offline",date:"May 23, 2026",endedBy:"Update 60"},
   "Live Match Events":{date:"June 27, 2026",update:"FUTBOL UPDATE"},
   "Los Traders":{status:"Offline",date:"July 11, 2026",activeRange:"Update 57 through Update 60",refresh:"30 minutes",replacedBy:"RNG Machine",replacedIn:"Update 61"},
-  "RNG Machine":{status:"Live",date:"August 8, 2026",update:"Update 61",note:"cash-powered random-spin machine"},
-  "Taco Merchant":{status:"Offline",date:"August 18, 2026",duration:"one hour"},
+  "RNG Machine":{status:"Live",date:"August 8, 2026",update:"Update 61",note:"cash-powered random-spin machine; luck, mutation-luck and spin-speed upgrades; Update 62 adds Candini Fluffini and La Fuse Machine; RNG Luck is Admin-Abuse-only"},
+  "Taco Merchant":{status:"Offline",date:"August 18, 2026",duration:"one hour",currency:"Taco currency",event:"Taco Tuesday",rewards:"Burrito Bat, Tacoturbo Tacorito, Nachorilla, Sammyni Truckini",note:"Players submitted Taco-traited Brainrots for Taco currency and spent it in the one-hour shop"},
   "Advent Calendar":{status:"Offline",activeRange:"November 30, 2025 – December 24, 2025"},
   "New Year's Machine":{status:"Offline",date:"December 31, 2025"},
   "Duels Machine":{status:"Offline",date:"January 10, 2026"},
@@ -231,12 +246,206 @@ const R41_RITUAL_SNAPSHOT = Object.freeze({
 });
 
 const R41_BRAINROT_SNAPSHOT = Object.freeze({
-  "Arcadopus":{rarity:"Secret",cost:"$900M",income:"$5M/s",date:"January 24, 2026",event:"The Return",source:"Themed Brainrots"},
+  "Arcadopus":{rarity:"Secret",cost:"$900M",income:"$5M/s",date:"January 24, 2026",event:"THE RETURN",source:"Themed Brainrots"},
   "Spyder Elephant":{rarity:"OG",cost:"$1T",income:"$1B/s",date:"May 16, 2026",event:"1 YEAR EVENT",source:"Spyder Chain"},
-  "Yetimatic":{rarity:"Secret",cost:"$27.5B",income:"$87.5M/s",date:"August 8, 2026",event:"RNG MACHINE + QUEEN BEE",source:"RNG Machine"},
-  "Tic Tic Ribbit":{rarity:"Mythic",cost:"$6.2M",date:"August 8, 2026",event:"RNG MACHINE + QUEEN BEE",source:"RNG Machine"},
-  "Boppin Bunny":{rarity:"Secret",cost:"$25B",income:"$80M/s",date:"April 4, 2026",event:"EASTER EVENT (Part 2)",source:"Limited Quantity Truck"}
+  "Yetimatic":{rarity:"Secret",cost:"$27.5B",income:"$87.5M/s",date:"August 8, 2026",update:"Update 61",event:"RNG MACHINE + QUEEN BEE",source:"RNG Machine"},
+  "Tic Tic Ribbit":{rarity:"Mythic",cost:"$6.2M",income:"$18.7K/s",date:"August 8, 2026",update:"Update 61",event:"RNG MACHINE + QUEEN BEE",source:"RNG Machine"},
+  "Boppin Bunny":{rarity:"Secret",cost:"$25B",income:"$80M/s",date:"April 4, 2026",update:"Update 45",event:"EASTER EVENT (Part 2)",source:"Limited Quantity Truck"},
+
+  // R42 current / high-value facts verified from public S+ detail + event pages.
+  "Candini Fluffini":{rarity:"Secret",cost:"$14B",income:"$57.5M/s",date:"August 15, 2026",update:"Update 62",event:"REBIRTH 19 + RNG MACHINE",source:"RNG Machine",availability:"Available as a Secret result from the live RNG Machine in Update 62."},
+  "La Fuse Machine":{rarity:"Secret",cost:"$35B",income:"$95M/s",date:"August 15, 2026",update:"Update 62",event:"REBIRTH 19 + RNG MACHINE",source:"RNG Machine",availability:"Available as a Secret result from the live RNG Machine in Update 62."},
+  "Sammyni Truckini":{rarity:"Secret",cost:"$45B",income:"$110M/s",date:"August 18, 2026",event:"Taco Tuesday",source:"Taco Merchant",availability:"Released through the one-hour Taco Merchant window; the direct purchase window has ended."},
+  "S'more Serat":{rarity:"Secret",cost:"$25.5B",income:"$85M/s",date:"August 8, 2026",update:"Update 61",event:"RNG MACHINE + QUEEN BEE",source:"Queen Bee shop",availability:"100 Honey or 4,999 Robux during the repeating Queen Bee event."},
+  "Scorpino Coasterino":{rarity:"Secret",cost:"$9.2B",date:"August 8, 2026",update:"Update 61",event:"RNG MACHINE + QUEEN BEE",source:"RNG Machine"},
+  "Bumbatron":{rarity:"Secret",income:"$172.5M/s",date:"August 8, 2026",update:"Update 61",event:"RNG MACHINE + QUEEN BEE"},
+  "La Breakfast Combinasion":{rarity:"Secret",income:"$165M/s",date:"August 8, 2026",update:"Update 61",event:"RNG MACHINE + QUEEN BEE",source:"RNG Machine"},
+  "Moby Bros":{rarity:"Secret",income:"$225M/s",date:"July 11, 2026",update:"Update 57",event:"LOS TRADERS",source:"Los Traders"},
+  "Los Admins":{rarity:"Secret",income:"$95M/s",date:"July 11, 2026",update:"Update 57",event:"LOS TRADERS",source:"Los Traders"},
+  "Los Secret Combinasionas":{rarity:"Secret",income:"$150M/s",date:"July 25, 2026",update:"Update 59",event:"CRYSTAL MUTATION + SPAIN",source:"Los Traders"},
+  "Rubiko and Kubiko":{rarity:"Secret",income:"$72.5M/s",event:"LOS TRADERS",source:"Los Traders"},
+  "Examen Bros":{rarity:"Secret",income:"$70M/s",event:"LOS TRADERS",source:"Los Traders"},
+  "Pizza and Ranch":{rarity:"Secret",income:"$130M/s",date:"July 25, 2026",update:"Update 59",event:"CRYSTAL MUTATION + SPAIN",source:"Runway"},
+  "Fishino Clownino":{rarity:"Secret",income:"$120M/s",date:"July 25, 2026",update:"Update 59",event:"CRYSTAL MUTATION + SPAIN",source:"Fishing"},
+  "Capitano Americano":{rarity:"Secret",income:"$72.5M/s",date:"July 4, 2026",update:"Update 56",event:"Update 56 Live Arrivals",source:"Limited Quantity Truck"},
+  "Var Var Var":{rarity:"Secret",income:"$5.5M/s",date:"July 4, 2026",update:"Update 56",event:"Update 56 Live Arrivals",source:"Themed Brainrots"},
+  "4th Bros":{rarity:"Secret",income:"$3.7M/s",date:"July 4, 2026",update:"Update 56",event:"Update 56 Live Arrivals",source:"Themed Brainrots",availability:"Unobtainable"},
+  "Hydra Dragon Cannelloni":{rarity:"Secret",income:"$350M/s",date:"January 24, 2026",event:"THE RETURN",source:"OG Fuse Machine"},
+  "Ketupat Bros":{rarity:"Secret",income:"$145M/s",date:"January 24, 2026",event:"THE RETURN",source:"OG Fuse Machine"},
+  "Bacuru and Egguru":{rarity:"Secret",income:"$24M/s",date:"January 24, 2026",event:"THE RETURN",source:"OG Fuse Machine"},
+  "Spinny Hammy":{rarity:"Secret",income:"$17M/s",date:"January 24, 2026",event:"THE RETURN",source:"OG Fuse Machine"},
+  "Chill Puppy":{rarity:"Secret",income:"$4M/s",date:"January 24, 2026",event:"THE RETURN",source:"OG Fuse Machine"},
+  "Los Trios":{rarity:"Secret",income:"$700K/s",date:"January 24, 2026",event:"THE RETURN",source:"OG Fuse Machine"}
 });
+
+// R42 event/update memory. These are compact local facts distilled from 100+
+// S+ pages opened during the research pass. They are intentionally structured
+// so weird paraphrases can resolve without NVIDIA/Tavily/network calls.
+const R42_EVENT_SNAPSHOT = Object.freeze({
+  "Admin Abuse War":{date:"August 23, 2025",duration:"6 hours",note:"Admin competition with Grow a Garden; 19.5 million peak concurrent users."},
+  "Taco Tuesday":{date:"Every Tuesday evening ET",duration:"about 30 minutes",frequency:"weekly",trait:"Taco Trait",multiplier:"3x",note:"Recurring Admin Abuse event with taco rain, Taco Trait, extra sub-events, and server luck."},
+  "Extinct Event":{date:"September 13, 2025",duration:"about one week",note:"Three ultra-rare Extinct Brainrots spawn every 2 hours; collecting all three unlocks La Extinct Grande."},
+  "México Event":{date:"September 20, 2025",duration:"about one week",trait:"Sombrero",note:"Piñatas, candy weapons, Mariachi theme, Los Tacoritas craft."},
+  "Yin & Yang Event":{date:"September 27, 2025",mutation:"Yin & Yang",multiplier:"7.5x",note:"Introduced Yin & Yang mutation, rituals, Brainrots, and wheel system."},
+  "Witch Fuse Event":{date:"October 11, 2025",duration:"about one week",machine:"Witch Fuse",note:"Halloween Fuse variant; Witching Hour collection can redeem La Spooky Grande."},
+  "Indonesian Event":{date:"October 18, 2025",duration:"one week",note:"Nine exclusive Brainrots, Panjat Pinang mini-game, Indonesian map theme."},
+  "FRIGHTROT Event":{date:"October 25, 2025",duration:"5 days",note:"Trick or Treating, Graveyard digging, Spooky Lucky Blocks, hourly Frightrot cycles."},
+  "1x1x1x1 Ritual Event":{date:"November 1, 2025",duration:"one week",ritual:"1x1x1x1 Ritual",note:"Four-player ritual, 1x1x1x1 and lower-chance Guest 666, glitch mutation visuals."},
+  "Radioactive Mutation Event":{date:"November 15, 2025",duration:"one week",mutation:"Radioactive",multiplier:"8.5x",note:"Hourly Fishing Events, Brainrot Trader, Radioactive Spin Wheel and index."},
+  "HE'S COMING BACK":{date:"November 29, 2025",note:"Return of Tung Tung Tung Sahur; Admin Machine and Advent Calendar introduced."},
+  "Santa's Fuse Event":{date:"December 6, 2025",duration:"December 6-13, 2025",machine:"Santa's Fuse",frequency:"Winter Hour every two hours",note:"15 Christmas fuse results and Festive Lucky Blocks."},
+  "North Pole Event":{date:"December 13, 2025",duration:"6 days",frequency:"Brainrot Express every 5 minutes during Admin Abuse",note:"North Pole trip, presents, Candy Canes, Festive Lucky Blocks."},
+  "Gingerbread Town Event":{date:"December 20, 2025",duration:"until January 1, 2026",note:"Hourly gingerbread village, Santa's Sleigh, Christmas Index and Gingerbread Base Skin."},
+  "Christmas Eve Admin Abuse":{date:"December 24, 2025",duration:"30-45 minutes",note:"Gold Elves currency, 15x Santa Fuse luck, festive Admin Abuse."},
+  "Skibidi Event":{date:"December 27, 2025",note:"Skibidi Toilet launch; base spawn chance listed as 1/50 million; Sammy spawned 50 launch units."},
+  "26 Event":{date:"December 31, 2025",duration:"about 45-60 minutes",trait:"26 Trait",multiplier:"6x",note:"New Year's machine, four Brainrots and returning mechanics."},
+  "Cursed Mutation Event":{date:"January 3, 2026",update:"Update 32",duration:"15-minute event every 3 hours",mutation:"Cursed",multiplier:"9x",note:"Cursed Spin Wheel, Cursed Secret Blocks and Cursed Index."},
+  "DUELS Event":{date:"January 10, 2026",machine:"Duels Machine",note:"PvP wager machine and Cerberus."},
+  "Bruno Mars Event":{date:"January 17, 2026",update:"Update 34",note:"Bruno Mars concert, Brunito Marsito and Rose Petal Trait."},
+  "THE RETURN":{date:"January 24, 2026",machine:"OG Fuse Machine",note:"OG Fuse return with 11 listed Brainrots including Arcadopus and Hydra Dragon Cannelloni."},
+  "VALENTINES PT 1":{date:"February 7, 2026",update:"Update 37",machine:"Cupid's Machine",note:"Heart Lucky Block, 20x luck boost, Rose Base Skin."},
+  "VALENTINES PT 2":{date:"February 14, 2026",update:"Update 38",note:"Valentine Admin Machine, Cupid's Wings gear, Valentine Base Skin."},
+  "TRADE MACHINE":{date:"February 21, 2026",update:"Update 39",machine:"Trade Machine",mutation:"Divine",multiplier:"10x",note:"Secure trading plus Divine Mutation and Halo Trait."},
+  "DIVINE ADMIN MACHINE":{date:"February 28, 2026",update:"Update 40",duration:"until March 4, 2026",note:"Hourly Divine Admin Machine, Secret Lucky Blocks, Headless Horseman OG buff."},
+  "DIVINE FUSE MACHINE":{date:"March 7, 2026",update:"Update 41",machine:"Divine Fuse Machine",note:"Permanently replaced original Fuse Machine; 15-brainrot lineup."},
+  "ST PATRICKS":{date:"March 14, 2026",note:"Lucky Pot, Leprechaun Lucky Block, Cloverat Clapat and Pot of Gold Base Skin."},
+  "RIP MY GRANNY":{date:"March 21, 2026",update:"Update 43",note:"Granny's Funeral plus Eid Celebration."},
+  "EASTER EVENT (Part 1)":{date:"March 28, 2026",update:"Update 44",note:"Easter Hour, Bunny Ears and three-brainrot Secret lineup."},
+  "EASTER EVENT (Part 2)":{date:"April 4, 2026",update:"Update 45",note:"Egg Hunt, Egg City, Egg Lucky Block, Trait Incubator, Bunny and Eggy."},
+  "CYBER UPDATE":{date:"April 18, 2026",machine:"Cyber Craft Machine",note:"Cyber-themed Craft Machine and cyber recipes."},
+  "JOHN PORK":{date:"May 2, 2026",note:"John Pork event; only three runs stated; is-calling trait."},
+  "BACKROOMS":{date:"May 9, 2026",note:"Backrooms update and Cyber Craft additions including Rubrikiko."},
+  "1 YEAR EVENT":{date:"May 16, 2026",note:"First anniversary; rotating songs, 1YR trait, mutation rain, Cyber recipes, Red Carpet spawn."},
+  "SUMMER FUSE":{date:"May 23, 2026",update:"Update 52",machine:"Summer Fuse",note:"Summer Fuse wave and limited summer routes."},
+  "STEAKS ADMIN ABUSE":{date:"May 30, 2026",update:"Update 53",trait:"Burger",note:"Steakini Fattini via Taco Truck and Burger trait."},
+  "CAYLUS ADMIN ABUSE":{date:"June 6, 2026",note:"Caylusaurus Secret limited through Caylus event and Taco Truck."},
+  "SUMMER UPD PT 1":{date:"June 13, 2026",note:"Octo Lucky Block, eight summer block rewards, Phantom mutation, RNG Machine preview and Summer base skins."},
+  "SUMMER UPD PT 2":{date:"June 20, 2026",note:"La Summer Grande limited route, Summer Hour Brainrots, RNG Machine preview and existence-count visibility."},
+  "FUTBOL UPDATE":{date:"June 27, 2026",machine:"Live Match Events",note:"Three football Secret Brainrots, country flag traits, Trade Plaza visibility."},
+  "Update 56 Live Arrivals":{date:"July 4, 2026",update:"Update 56",note:"Capitano Americano, Bufalino Boomberino, Var Var Var and 4th Bros; Taco Truck and VAR check routes."},
+  "LOS TRADERS":{date:"July 11, 2026",update:"Update 57",machine:"Los Traders",duration:"July 11, 2026 3:00 PM ET to July 14, 2026 12:00 PM ET",note:"Six Secret Brainrots and rotating Los Traders machine."},
+  "CRYSTAL MUTATION + SPAIN":{date:"July 25, 2026",update:"Update 59",mutation:"Crystal",multiplier:"13x",trait:"Bull",note:"Five Secret Brainrots, Crystal Spin rewards, Crystal Base Skin and two Los Traders offers."},
+  "JOB JOB JOB SAHUR RITUAL":{date:"August 1, 2026",update:"Update 60",ritual:"Job Job Job Sahur Ritual",duration:"August 1, 2026 3:00 PM ET to August 4, 2026 12:00 PM ET",trait:"Job Application",note:"Four-player ritual; Yess my Resume 99%, Noo my Resume 1%."},
+  "RNG MACHINE + QUEEN BEE":{date:"August 8, 2026",update:"Update 61",machine:"RNG Machine",frequency:"Queen Bee every two hours",duration:"August 8, 2026 3:15 PM ET to August 11, 2026 12:00 PM ET",note:"Cash RNG Machine, 14 official new Brainrots, Bee trait family, 42 obtainable RNG results in first live version."},
+  "REBIRTH 19 + RNG MACHINE":{date:"August 15, 2026",update:"Update 62",machine:"RNG Machine",gear:"Grief Shield",note:"Rebirth 19, Candini Fluffini, La Fuse Machine, lower-tier ritual results, Admin-Abuse-only RNG Luck, instant Lucky Block opening."}
+});
+
+const R42_CODE_SNAPSHOT = Object.freeze({
+  "391725":{reward:"Skip a machine cooldown",status:"Temporary",duration:"72-hour Admin Abuse code",update:"Update 61"},
+  "648013":{reward:"Raise the lobby Luck Level",status:"Temporary",duration:"72-hour Admin Abuse code",update:"Update 61"},
+  "ASTROWORLD777":{reward:"Spawn a Strawberry Elephant",status:"Availability unknown",update:"Update 61"},
+  "YETIGOTMONEY":{reward:"Unknown",status:"Sold out",update:"Update 61"},
+  "ILOVEPANCAKES":{reward:"Unknown",status:"Sold out",update:"Update 61"}
+});
+
+function r42CanonMoney(value) {
+  const m=String(value||"").replace(/,/g,"").match(/\$?\s*(\d+(?:\.\d+)?)\s*(K|M|B|T|Qa|Qi|Sx|Sp|Oc|No|Dc)?/i);
+  if (!m) return "";
+  const n=Number(m[1]);
+  if (!Number.isFinite(n)) return "";
+  return `${String(n).replace(/\.0+$/,'')}${(m[2]||'').toLowerCase()}`;
+}
+function r42MoneyClues(q) {
+  return [...String(q).matchAll(/\$\s*(\d+(?:\.\d+)?)\s*(K|M|B|T|Qa|Qi|Sx|Sp|Oc|No|Dc)?/gi)].map((m)=>r42CanonMoney(m[0]));
+}
+function r42DateKey(value) {
+  return String(value||"").toLowerCase().replace(/\b(september)\b/g,'sep').replace(/\b(october)\b/g,'oct').replace(/\b(november)\b/g,'nov').replace(/\b(december)\b/g,'dec').replace(/\b(january)\b/g,'jan').replace(/\b(february)\b/g,'feb').replace(/\b(march)\b/g,'mar').replace(/\b(april)\b/g,'apr').replace(/\b(june)\b/g,'jun').replace(/\b(july)\b/g,'jul').replace(/\b(august)\b/g,'aug').replace(/[^a-z0-9]+/g,' ').trim();
+}
+function r42QuestionDate(q) {
+  const m=String(q).match(/\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s*(\d{1,2})(?:st|nd|rd|th)?(?:,?\s*(20\d{2}))?/i);
+  if (!m) return "";
+  return r42DateKey(`${m[1]} ${Number(m[2])}${m[3]?` ${m[3]}`:''}`);
+}
+function r42FieldRelation(field,kind) {
+  const map={cost:REL.COST,income:REL.INCOME,rarity:REL.RARITY,date:REL.DATE,update:REL.UPDATE,event:REL.EVENT,source:REL.METHOD,availability:REL.STATUS,duration:REL.DURATION,frequency:REL.FREQUENCY,status:REL.STATUS,reward:REL.REWARD,trait:REL.TRAIT,multiplier:REL.MULTIPLIER,machine:REL.MACHINE,gear:REL.GEAR,ritual:REL.RITUAL};
+  return map[field] || (kind==='machine'?REL.MACHINE:kind==='event'?REL.EVENT:kind==='code'?REL.CODE:REL.BRAINROT);
+}
+function r42WantsField(q) {
+  if (/\b(?:cost|price|pay|worth)\b/.test(q)) return 'cost';
+  if (/\b(?:income|earn|earns|earning|per second|\/s)\b/.test(q)) return 'income';
+  if (/\b(?:rarity|tier)\b/.test(q)) return 'rarity';
+  if (/\b(?:when|date|added|released|came out|introduced)\b/.test(q) && !/\bwhich|what\s+(?:brainrot|machine|event)\b/.test(q)) return 'date';
+  if (/\b(?:what|which)\s+update\b|\bupdate number\b/.test(q)) return 'update';
+  if (/\b(?:how long|duration|lasted|window)\b/.test(q)) return 'duration';
+  if (/\b(?:how often|frequency|cadence|every how|refresh cycle)\b/.test(q)) return 'frequency';
+  if (/\b(?:status|available|availability|obtainable|offline|online|active|live)\b/.test(q)) return 'availability';
+  if (/\b(?:reward|gives|give|spawn|spawns)\b/.test(q)) return 'reward';
+  if (/\btrait\b/.test(q)) return 'trait';
+  if (/\bmultiplier|multi\b/.test(q)) return 'multiplier';
+  return '';
+}
+function r42RecordSearch(question) {
+  const q=String(question||'').toLowerCase();
+  const money=r42MoneyClues(q);
+  const date=r42QuestionDate(q);
+  const upd=(q.match(/\bupdate\s*#?\s*(\d{1,3})\b/i)||[])[1];
+  const rarity=(q.match(/\b(common|rare|epic|legendary|mythic|brainrot god|secret|og)\b/i)||[])[1]?.toLowerCase()||'';
+  const asksBrainrot=/\b(?:which|what)\s+(?:secret\s+)?brainrot\b|\bwhich secret\b/.test(q);
+  const asksMachine=/\b(?:which|what)\s+(?:machine|thing|system)\b/.test(q);
+  const asksEvent=/\b(?:which|what)\s+event\b/.test(q);
+  const asksCode=/\b(?:which|what)\s+code\b|\bcode\s+(?:gives|gave|for)\b/.test(q);
+  const wants=r42WantsField(q);
+  const rows=[];
+  for (const [name,row] of Object.entries(R41_BRAINROT_SNAPSHOT)) rows.push({kind:'brainrot',name,path:`/brainrots/${primarySlug(name)}`,...row});
+  for (const [name,row] of Object.entries(R41_MACHINE_SNAPSHOT)) rows.push({kind:'machine',name,path:'/machines',...row});
+  for (const [name,row] of Object.entries(R42_EVENT_SNAPSHOT)) rows.push({kind:'event',name,path:'/events',...row});
+  for (const [name,row] of Object.entries(R42_CODE_SNAPSHOT)) rows.push({kind:'code',name,path:'/events/rng-machine-queen-bee-event-2026-08-08',...row});
+
+  // Direct named-subject field lookup first.
+  for (const row of rows) {
+    const lname=row.name.toLowerCase();
+    if (!q.includes(lname)) continue;
+    if (wants && row[wants]) return {row,answer:row[wants],field:wants,score:100};
+    if (/\bhow|get|obtain|source|where\b/.test(q) && row.source) return {row,answer:row.source,field:'source',score:100};
+    if (/\bevent\b/.test(q) && row.event) return {row,answer:row.event,field:'event',score:100};
+    if (/\bupdate\b/.test(q) && row.update) return {row,answer:row.update,field:'update',score:100};
+  }
+
+  let best=null, second=null;
+  for (const row of rows) {
+    if (asksBrainrot && row.kind!=='brainrot') continue;
+    if (asksMachine && row.kind!=='machine') continue;
+    if (asksEvent && row.kind!=='event') continue;
+    if (asksCode && row.kind!=='code') continue;
+    let score=0, strong=0;
+    const flat=Object.values(row).filter((v)=>typeof v==='string').join(' ').toLowerCase();
+    if (rarity && String(row.rarity||'').toLowerCase()===rarity) {score+=2; strong++;}
+    if (upd && String(row.update||'').toLowerCase().replace(/[^0-9]/g,'')===upd) {score+=4; strong++;}
+    if (date && row.date && r42DateKey(row.date).includes(date)) {score+=5; strong++;}
+    for (const m of money) {
+      const cost=r42CanonMoney(row.cost), income=r42CanonMoney(row.income);
+      if (cost && cost===m) {score+=6; strong++;}
+      if (income && income===m) {score+=6; strong++;}
+    }
+    if (/taco currency/.test(q) && /taco/.test(flat)) {score+=4; strong++;}
+    if (/one[- ]hour|1[- ]hour|lasted one hour/.test(q) && /one hour/.test(flat)) {score+=4; strong++;}
+    if (asksCode && /cooldown/.test(q) && /cooldown/.test(flat)) {score+=6; strong++;}
+    if (asksCode && /luck/.test(q) && /luck/.test(flat)) {score+=6; strong++;}
+    if (asksCode && /strawberry elephant/.test(q) && /strawberry elephant/.test(flat)) {score+=7; strong++;}
+    if (asksCode && /sold out/.test(q) && /sold out/.test(flat)) {score+=3; strong++;}
+    if (/rng/.test(q) && /rng/.test(flat)) score+=2;
+    if (/queen bee/.test(q) && /queen bee/.test(flat)) score+=2;
+    if (/los traders/.test(q) && /los traders/.test(flat)) score+=2;
+    if (/resume/.test(q) && /resume/.test(flat)) score+=2;
+    if (/grief shield|shield/.test(q) && /grief shield/.test(flat)) score+=3;
+    if (/crystal/.test(q) && /crystal/.test(flat)) score+=2;
+    if (/bull/.test(q) && /bull/.test(flat)) score+=2;
+    if (score<=0) continue;
+    const cand={row,score,strong};
+    if (!best || score>best.score) {second=best;best=cand;} else if (!second || score>second.score) second=cand;
+  }
+  if (!best || best.strong<1 || best.score<5) return null;
+  if (second && second.score===best.score && second.row.name!==best.row.name) return null;
+  return {row:best.row,answer:best.row.name,field:'name',score:best.score};
+}
+function r42InstantStructuredResolve(question) {
+  const hit=r42RecordSearch(question);
+  if (!hit) return null;
+  const title=hit.row.kind==='machine'?'All Machines':hit.row.kind==='event'?'Events':hit.row.kind==='code'?'Update 61 Event Codes':hit.row.name;
+  const relation=r42FieldRelation(hit.field,hit.row.kind);
+  return r41InstantResult(String(hit.answer),relation,hit.row.path||'/brainrots',title,`R42_STRUCTURED_${hit.row.kind.toUpperCase()}_${hit.field.toUpperCase()}`);
+}
+
 
 function r41Source(path,title) {
   return {title, url:`${PRIMARY_ORIGIN}${path}`};
@@ -250,6 +459,11 @@ function instantLoreResolve(question, analysis = {}) {
   const raw=oneLine(question,1000);
   const q=raw.toLowerCase();
   const nq=norm(raw);
+
+  // R42: generic zero-network structured clue matcher. This runs BEFORE every
+  // old shortcut, AI router, Tavily search, or upstream page fetch.
+  const r42Structured=r42InstantStructuredResolve(raw);
+  if (r42Structured) return r42Structured;
 
   // Natural shorthand / backwards questions. These hit before NVIDIA, Tavily, or page fetches.
   const asksPreRng =
@@ -8524,6 +8738,18 @@ function runSelfTests() {
   check("R41 ritual player count", instantLoreResolve("How many players for Mi Gatito Ritual?",analyzeQuestion("How many players for Mi Gatito Ritual?"))?.answer === "2");
   check("R41 ambiguous 10x mutation does not guess", instantLoreResolve("Which mutation has a 10x multiplier?",analyzeQuestion("Which mutation has a 10x multiplier?")) == null);
 
+  // R42 hard reverse-clue tests. All must resolve from local structured lore.
+  check("R42 Candini date+cost+income reverse", instantLoreResolve("Which Secret added August 15, 2026 costs $14B and earns $57.5M per second?",analyzeQuestion("Which Secret added August 15, 2026 costs $14B and earns $57.5M per second?"))?.answer === "Candini Fluffini");
+  check("R42 La Fuse date+cost+income reverse", instantLoreResolve("Which Update 62 Secret costs $35B and earns $95M per second?",analyzeQuestion("Which Update 62 Secret costs $35B and earns $95M per second?"))?.answer === "La Fuse Machine");
+  check("R42 Taco Merchant reverse", instantLoreResolve("Which machine introduced August 18, 2026 lasted one hour and used Taco currency?",analyzeQuestion("Which machine introduced August 18, 2026 lasted one hour and used Taco currency?"))?.answer === "Taco Merchant");
+  check("R42 Candini direct income", instantLoreResolve("How much does Candini Fluffini earn?",analyzeQuestion("How much does Candini Fluffini earn?"))?.answer === "$57.5M/s");
+  check("R42 La Fuse direct cost", instantLoreResolve("What does La Fuse Machine cost?",analyzeQuestion("What does La Fuse Machine cost?"))?.answer === "$35B");
+  check("R42 Sammyni Truckini date", instantLoreResolve("When was Sammyni Truckini added?",analyzeQuestion("When was Sammyni Truckini added?"))?.answer === "August 18, 2026");
+  check("R42 code reverse cooldown", instantLoreResolve("What code skips a machine cooldown?",analyzeQuestion("What code skips a machine cooldown?"))?.answer === "391725");
+  check("R42 Update61 event date", instantLoreResolve("When was RNG MACHINE + QUEEN BEE?",analyzeQuestion("When was RNG MACHINE + QUEEN BEE?"))?.answer === "August 8, 2026");
+  check("R42 Crystal event update", instantLoreResolve("Which update was CRYSTAL MUTATION + SPAIN?",analyzeQuestion("Which update was CRYSTAL MUTATION + SPAIN?"))?.answer === "Update 59");
+  check("R42 event summary source count", R41_RESEARCHED_SPLUS_SOURCE_COUNT >= 140);
+
   // Priority behavior: once S+ has a direct value, lower tier disagreement does not participate.
   const primary = makeResult("10x", REL.MULTIPLIER, SOURCE.PRIMARY, mutationPage, "PRIMARY_MUTATION_SECTION", 0.995);
   const fandom = makeResult("9x", REL.MULTIPLIER, SOURCE.FANDOM, { title: "Mutations", url: "fandom" }, "FANDOM_DIRECT", 0.93);
@@ -8773,6 +8999,11 @@ export async function GET(request) {
       totalLoreLibrary: true,
       masterCorpusR37: true,
       instantLoreGraphR41: true,
+      ultraInstantStructuredLoreR42: true,
+      reverseMultiClueBrainrotLookupR42: true,
+      reverseMachineClueLookupR42: true,
+      localEventTimelineR42: true,
+      localUpdate61CodesR42: true,
       zeroNetworkHotFactsR41: true,
       rebirthSnapshot1To19R41: true,
       machineLifecycleSnapshotR41: true,
