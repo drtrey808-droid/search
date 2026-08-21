@@ -1,4 +1,4 @@
-const BUILD_ID = "SAB_FACT_SLOT_BINDING_R33_2026_08_19";
+const BUILD_ID = "SAB_CANONICAL_FIRST_SLOT_ENGINE_R34_2026_08_19";
 
 const PRIMARY_ORIGIN = "https://steal-a-brainrot.org";
 const FANDOM_API = "https://stealabrainrot.fandom.com/api.php";
@@ -470,7 +470,7 @@ function analyzeQuestion(question) {
     intent: inferIntent(q, relation, update, date),
     rawQuestion: q,
     wantedRelations: detectWantedRelations(q, relation),
-    source: "DETERMINISTIC_R33",
+    source: "DETERMINISTIC_R34",
   };
 }
 
@@ -610,7 +610,7 @@ async function fetchPage(url, source, deadline) {
   const html = await fetchText(source.key, url, {
     headers: {
       Accept: "text/html,application/xhtml+xml",
-      "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R33",
+      "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R34",
     },
   }, timeout);
   const page = {
@@ -944,7 +944,7 @@ function withBridgedUpdate(analysis, update) {
     source:
       analysis.source === "NVIDIA_QUESTION_ROUTER"
         ? "NVIDIA_QUESTION_ROUTER+DATE_BRIDGE"
-        : "DETERMINISTIC_R33+DATE_BRIDGE",
+        : "DETERMINISTIC_R34+DATE_BRIDGE",
   };
 }
 
@@ -1988,7 +1988,7 @@ async function fandomSearchTitles(query, deadline) {
     format: "json",
   });
   try {
-    const data = await fetchJson("FANDOM_SEARCH", `${FANDOM_API}?${params.toString()}`, { headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R33" } }, Math.min(CFG.FANDOM_TIMEOUT_MS, left - 20));
+    const data = await fetchJson("FANDOM_SEARCH", `${FANDOM_API}?${params.toString()}`, { headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R34" } }, Math.min(CFG.FANDOM_TIMEOUT_MS, left - 20));
     return (Array.isArray(data?.query?.search) ? data.query.search : []).map((x) => oneLine(x?.title, 300)).filter(Boolean);
   } catch {
     return [];
@@ -2001,7 +2001,7 @@ async function fetchFandomPage(title, deadline) {
   if (cached) return { ...cached, cache: "HIT" };
   const left = timeLeft(deadline);
   if (left < 250) throw new Error("FANDOM_BUDGET_EXHAUSTED");
-  const data = await fetchJson("FANDOM_PARSE", fandomParseUrl(title), { headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R33" } }, Math.min(CFG.FANDOM_TIMEOUT_MS, left - 20));
+  const data = await fetchJson("FANDOM_PARSE", fandomParseUrl(title), { headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R34" } }, Math.min(CFG.FANDOM_TIMEOUT_MS, left - 20));
   if (data?.error) throw new Error(`FANDOM_PARSE_${data.error.code || "ERROR"}`);
   const p = data?.parse || {};
   const html = typeof p.text === "string" ? p.text : String(p.text?.["*"] || "");
@@ -4054,7 +4054,7 @@ function relationAnalysis(analysis, relation) {
 }
 
 function normalizeFrequencyAnswer(value) {
-  const text = oneLine(value, 200);
+  const text = oneLine(value, 6000);
   if (!text) return null;
 
   const patterns = [
@@ -4704,6 +4704,60 @@ function relationAnalysisForSlot(analysis, slot) {
   };
 }
 
+
+function looksLikeBrainrotEntityName(value) {
+  const answer = oneLine(value, 240);
+  if (!answer) return false;
+
+  if (answerLooksLikeMetadata(answer)) return false;
+  if (answer.length > 100 || answer.split(/\s+/).length > 9) return false;
+
+  // Descriptive/stat sentences are not entity names.
+  if (
+    /\b(?:brainrot|generating|generates|income|per second|outcome|chance|success rate|request[_ -]?id|developer|producer|creator|cost|price)\b/i.test(answer)
+  ) return false;
+
+  if (/\$\s*\d|\b\d+(?:\.\d+)?\s*[KMBTQ]\b|\/s\b/i.test(answer)) return false;
+
+  return true;
+}
+
+function validateSlotAnswer(slot, answer, page) {
+  const value = oneLine(answer, 300);
+  if (!value) return { valid: false, reason: "EMPTY_SLOT_ANSWER" };
+
+  if (
+    slot.answerType === REL.BRAINROT ||
+    [REL.OUTCOME, REL.SPAWN, REL.REWARD].includes(slot.relation)
+  ) {
+    if (!looksLikeBrainrotEntityName(value)) {
+      return { valid: false, reason: "NOT_ENTITY_NAME" };
+    }
+
+    if (/\britual\b/i.test(value)) {
+      return { valid: false, reason: "RITUAL_LABEL_NOT_OUTCOME" };
+    }
+
+    if (
+      slot.predicate === "OUTCOME_AT_CHANCE" &&
+      slot.subject &&
+      similarity(value, slot.subject) >= 0.72
+    ) {
+      return { valid: false, reason: "OUTCOME_EQUALS_INPUT_SUBJECT" };
+    }
+  }
+
+  if (slot.answerType === REL.MACHINE && !/\bMachine\b/i.test(value)) {
+    return { valid: false, reason: "EXPECTED_MACHINE_NAME" };
+  }
+
+  if (slot.answerType === REL.UPDATE && !/^Update\s*\d+(?:\.\d+)?$/i.test(value.replace(/\s+/g, ""))) {
+    return { valid: false, reason: "EXPECTED_UPDATE_NAME" };
+  }
+
+  return { valid: true, reason: "SLOT_TYPE_OK" };
+}
+
 function extractSlotDeterministic(slot, question, analysis, pages) {
   const slotQuestion = slotSpecificQuestion(slot);
   const subAnalysis = relationAnalysisForSlot(analysis, slot);
@@ -4759,6 +4813,9 @@ function extractSlotDeterministic(slot, question, analysis, pages) {
     );
 
     if (!type.valid) continue;
+
+    const slotType = validateSlotAnswer(slot, answer, page);
+    if (!slotType.valid) continue;
 
     // Strong binding: subject + answer must be present on the same page.
     if (slot.subject && !subjectAppears(pageText, slot.subject)) continue;
@@ -4937,6 +4994,11 @@ async function aiExtractFactSlots(question, analysis, pages, source, deadline) {
         return { result: null, error: `FACT_SLOT_TYPE_${slot.id}_${type.reason}` };
       }
 
+      const slotType = validateSlotAnswer(slot, row.answer, page);
+      if (!slotType.valid) {
+        return { result: null, error: `FACT_SLOT_SEMANTIC_${slot.id}_${slotType.reason}` };
+      }
+
       if (
         row.evidence &&
         !norm(supportChunk.text).includes(norm(row.evidence))
@@ -4978,6 +5040,265 @@ async function aiExtractFactSlots(question, analysis, pages, source, deadline) {
       error: errorCode(error),
     };
   }
+}
+
+
+function primarySlug(value) {
+  return oneLine(value, 220)
+    .toLowerCase()
+    .replace(/['’]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function canonicalPrimaryTargets(question, analysis) {
+  const slots = Array.isArray(analysis.factSlots) ? analysis.factSlots : [];
+  const targets = [];
+  const add = (url, reason) => {
+    if (!url) return;
+    if (!targets.some((x) => x.url === url)) targets.push({ url, reason });
+  };
+
+  const relations = new Set([
+    analysis.relation,
+    ...(analysis.wantedRelations || []),
+    ...slots.map((x) => x.relation),
+  ].filter(Boolean));
+
+  const predicates = new Set(slots.map((x) => x.predicate).filter(Boolean));
+
+  // Canonical hubs are cheap and stable. Use them before any web search.
+  if (
+    relations.has(REL.MACHINE) ||
+    relations.has(REL.REPLACED_BY) ||
+    relations.has(REL.REPLACED_IN) ||
+    relations.has(REL.ACTIVE_RANGE) ||
+    predicates.has("REPLACED_BY") ||
+    predicates.has("REPLACED_IN")
+  ) {
+    add(`${PRIMARY_ORIGIN}/machines`, "MACHINES_HUB");
+  }
+
+  if (
+    relations.has(REL.EVENT) ||
+    relations.has(REL.FREQUENCY) ||
+    relations.has(REL.UPDATE) ||
+    analysis.update ||
+    analysis.date ||
+    predicates.has("EVENT_FREQUENCY") ||
+    predicates.has("SUBJECT_UPDATE") ||
+    predicates.has("MACHINE_IN_SAME_UPDATE")
+  ) {
+    add(`${PRIMARY_ORIGIN}/events`, "EVENTS_HUB");
+  }
+
+  if (
+    relations.has(REL.MUTATION) ||
+    relations.has(REL.MULTIPLIER) ||
+    relations.has(REL.TRAIT)
+  ) {
+    add(`${PRIMARY_ORIGIN}/wiki/mutations`, "MUTATIONS_HUB");
+  }
+
+  if (
+    relations.has(REL.REBIRTH) ||
+    relations.has(REL.GEAR)
+  ) {
+    add(`${PRIMARY_ORIGIN}/wiki/rebirth`, "REBIRTH_HUB");
+  }
+
+  // Ritual entity pages have predictable stable slugs.
+  const ritualSubject =
+    slots.find((x) => [REL.OUTCOME, REL.SPAWN, REL.REQUIREMENT, REL.RITUAL].includes(x.relation) && x.subject)?.subject ||
+    (relations.has(REL.OUTCOME) || relations.has(REL.RITUAL) ? analysis.entity : null);
+
+  if (ritualSubject) {
+    let slug = primarySlug(ritualSubject);
+    if (slug && !slug.endsWith("-ritual")) slug += "-ritual";
+    if (slug) add(`${PRIMARY_ORIGIN}/rituals/${slug}`, "RITUAL_ENTITY");
+  }
+
+  // Exact brainrot entity pages when the requested subject is a brainrot.
+  if (
+    relations.has(REL.BRAINROT) &&
+    analysis.entity
+  ) {
+    const slug = primarySlug(analysis.entity);
+    if (slug) add(`${PRIMARY_ORIGIN}/brainrots/${slug}`, "BRAINROT_ENTITY");
+  }
+
+  return targets.slice(0, 4);
+}
+
+function canonicalSinglePartResolve(question, analysis, pages, source) {
+  for (const page of pages) {
+    const direct =
+      deterministicHighValueExactPage(question, analysis, page, source) ||
+      deterministicExactPageFallback(question, analysis, page, source);
+
+    if (!direct?.answer) continue;
+
+    const chunks = buildEvidenceBundle(question, analysis, pages);
+    const check = validateBundleAnswer(
+      question,
+      analysis,
+      direct.answer,
+      pages,
+      chunks
+    );
+
+    if (check.valid) {
+      direct.confidence = source.confidence;
+      direct.reason = `${source.key}_CANONICAL_DETERMINISTIC`;
+      return {
+        result: direct,
+        page: check.page || page,
+      };
+    }
+  }
+
+  return null;
+}
+
+async function canonicalPrimaryFastPath(question, analysis, deadline) {
+  const targets = canonicalPrimaryTargets(question, analysis);
+
+  if (!targets.length) {
+    return {
+      result: null,
+      pages: [],
+      pagesTried: [],
+      targets: [],
+      error: "NO_CANONICAL_TARGET",
+    };
+  }
+
+  const opened = await Promise.all(
+    targets.map(async (target) => {
+      try {
+        const page = await fetchPage(target.url, SOURCE.PRIMARY, deadline);
+        return { ok: true, target, page, error: null };
+      } catch (error) {
+        return {
+          ok: false,
+          target,
+          page: null,
+          error: errorCode(error),
+        };
+      }
+    })
+  );
+
+  const pages = [];
+  const pagesTried = [];
+  const errors = [];
+
+  for (const item of opened) {
+    if (!item.ok) {
+      pagesTried.push({
+        url: item.target.url,
+        reason: item.target.reason,
+        ok: false,
+        error: item.error,
+      });
+      errors.push(`${item.target.url}:${item.error}`);
+      continue;
+    }
+
+    const page = item.page;
+    const subjectText = `${page.title}\n${page.text}`;
+
+    // Subject-lock applies here too, but only keep the pages that mention at
+    // least one locked subject. Other canonical hubs can be ignored.
+    const locked = analysis.lockedSubjects || [];
+    if (
+      locked.length &&
+      !locked.some((subject) => subjectAppears(subjectText, subject))
+    ) {
+      pagesTried.push({
+        url: page.url,
+        title: page.title,
+        reason: item.target.reason,
+        ok: true,
+        used: false,
+        error: "LOCKED_SUBJECT_NOT_ON_CANONICAL_PAGE",
+      });
+      continue;
+    }
+
+    pages.push(page);
+    pagesTried.push({
+      url: page.url,
+      title: page.title,
+      reason: item.target.reason,
+      ok: true,
+      used: true,
+      error: null,
+    });
+  }
+
+  if (!pages.length) {
+    return {
+      result: null,
+      pages,
+      pagesTried,
+      targets,
+      error: errors.join("|") || "NO_USABLE_CANONICAL_PAGE",
+    };
+  }
+
+  if (isFactSlotQuestion(analysis)) {
+    const slots = deterministicFactSlots(
+      question,
+      analysis,
+      pages
+    );
+
+    if (slots) {
+      return {
+        result: makeResult(
+          slots.answer,
+          analysis.relation,
+          SOURCE.PRIMARY,
+          slots.page,
+          "PRIMARY_SPLUS_CANONICAL_FACT_SLOTS",
+          SOURCE.PRIMARY.confidence
+        ),
+        page: slots.page,
+        pages,
+        pagesTried,
+        targets,
+        factSlots: slots.slots,
+        error: null,
+      };
+    }
+  } else {
+    const single = canonicalSinglePartResolve(
+      question,
+      analysis,
+      pages,
+      SOURCE.PRIMARY
+    );
+
+    if (single) {
+      return {
+        result: single.result,
+        page: single.page,
+        pages,
+        pagesTried,
+        targets,
+        error: null,
+      };
+    }
+  }
+
+  return {
+    result: null,
+    pages,
+    pagesTried,
+    targets,
+    error: errors.join("|") || "CANONICAL_PAGE_NO_VERIFIED_ANSWER",
+  };
 }
 
 async function exactTierLookup(question, analysis, source, deadline) {
@@ -5481,6 +5802,9 @@ async function resolveQuestion(questionObj, lore = "") {
     aiQuestionRouter: analysis.source,
     aiQuestionRouterError: routed.aiError,
 
+    primaryCanonicalTargets: [],
+    primaryCanonicalPagesTried: [],
+    primaryCanonicalError: "",
     primaryQuery: "",
     primaryQueries: [],
     primarySelectedPage: "",
@@ -5509,7 +5833,46 @@ async function resolveQuestion(questionObj, lore = "") {
   };
 
   // =====================================================
-  // 1) S+ ONLY.
+  // 1A) S+ CANONICAL FIRST.
+  // Fetch stable S+ hub/entity pages before spending time on Tavily/NVIDIA
+  // extraction. This directly covers machines, events, rituals, mutations,
+  // rebirths, and exact brainrot pages when the question structure identifies
+  // one of those canonical locations.
+  // =====================================================
+  const primaryCanonical = await canonicalPrimaryFastPath(
+    question,
+    analysis,
+    deadline
+  );
+
+  diagnostic.primaryCanonicalTargets = primaryCanonical.targets || [];
+  diagnostic.primaryCanonicalPagesTried = primaryCanonical.pagesTried || [];
+  diagnostic.primaryCanonicalError = primaryCanonical.error || "";
+
+  if (primaryCanonical.result) {
+    const result = attachTrustLog(
+      primaryCanonical.result,
+      SOURCE.PRIMARY
+    );
+
+    const final = finalize(
+      result,
+      question,
+      analysis,
+      startedAt,
+      diagnostic
+    );
+
+    final.trustLog = result.trustLog;
+    final.trustedTier = "S+";
+    final.factSlotResults = primaryCanonical.factSlots || null;
+
+    setCachedAnswer(question, final);
+    return final;
+  }
+
+  // =====================================================
+  // 1B) S+ AGGRESSIVE SEARCH FALLBACK.
   // Run 3 S+ searches in parallel -> open top 3 useful S+ pages ->
   // deterministic extraction first -> AI over small verified S+ evidence chunks.
   // If any S+ evidence supports the answer, 0.995 and STOP.
@@ -6601,6 +6964,79 @@ function runSelfTests() {
     ).usable === false
   );
 
+
+  const r34TargetsMachine = canonicalPrimaryTargets(
+    "Which machine replaced Los Traders, and what update did that happen in?",
+    applyFactSlots(
+      "Which machine replaced Los Traders, and what update did that happen in?",
+      enforceQuestionSemantics(
+        "Which machine replaced Los Traders, and what update did that happen in?",
+        analyzeQuestion("Which machine replaced Los Traders, and what update did that happen in?")
+      )
+    )
+  );
+  check(
+    "R34 canonical machines target",
+    r34TargetsMachine.some((x) => x.url === `${PRIMARY_ORIGIN}/machines`)
+  );
+
+  const r34TargetsQueen = canonicalPrimaryTargets(
+    "How often did the Queen Bee event happen, and which machine was introduced in the same update?",
+    applyFactSlots(
+      "How often did the Queen Bee event happen, and which machine was introduced in the same update?",
+      enforceQuestionSemantics(
+        "How often did the Queen Bee event happen, and which machine was introduced in the same update?",
+        analyzeQuestion("How often did the Queen Bee event happen, and which machine was introduced in the same update?")
+      )
+    )
+  );
+  check(
+    "R34 canonical events target",
+    r34TargetsQueen.some((x) => x.url === `${PRIMARY_ORIGIN}/events`)
+  );
+
+  const r34TargetsRitual = canonicalPrimaryTargets(
+    "What are the 99% and 1% outcomes of the Job Job Job Sahur ritual?",
+    applyFactSlots(
+      "What are the 99% and 1% outcomes of the Job Job Job Sahur ritual?",
+      enforceQuestionSemantics(
+        "What are the 99% and 1% outcomes of the Job Job Job Sahur ritual?",
+        analyzeQuestion("What are the 99% and 1% outcomes of the Job Job Job Sahur ritual?")
+      )
+    )
+  );
+  check(
+    "R34 canonical ritual target",
+    r34TargetsRitual.some((x) => x.url.endsWith("/rituals/job-job-job-sahur-ritual"))
+  );
+
+
+  check(
+    "R34 rejects descriptor as brainrot outcome",
+    looksLikeBrainrotEntityName("Secret brainrot generating 7000K second") === false
+  );
+  check(
+    "R34 rejects ritual label as outcome",
+    validateSlotAnswer(
+      makeSlot("x", REL.OUTCOME, {
+        subject: "Job Job Job Sahur",
+        qualifier: "99%",
+        predicate: "OUTCOME_AT_CHANCE",
+        answerType: REL.BRAINROT,
+      }),
+      "Job Job Job Sahur Ritual",
+      r33RitualPage
+    ).valid === false
+  );
+  check(
+    "R34 accepts Yess my Resume entity",
+    looksLikeBrainrotEntityName("Yess my Resume") === true
+  );
+  check(
+    "R34 rejects hash metadata",
+    looksLikeBrainrotEntityName("ec804a6bfa90408597072080ef2b0063") === false
+  );
+
   // Priority behavior: once S+ has a direct value, lower tier disagreement does not participate.
   const primary = makeResult("10x", REL.MULTIPLIER, SOURCE.PRIMARY, mutationPage, "PRIMARY_MUTATION_SECTION", 0.995);
   const fandom = makeResult("9x", REL.MULTIPLIER, SOURCE.FANDOM, { title: "Mutations", url: "fandom" }, "FANDOM_DIRECT", 0.93);
@@ -6817,6 +7253,11 @@ export async function GET(request) {
       pageFetchFailureIsolation: true,
       trueMultipartAnswers: true,
       factSlotSemanticBinding: true,
+      canonicalPrimaryFastPath: true,
+      canonicalMachinesHub: true,
+      canonicalEventsHub: true,
+      canonicalRitualEntityPage: true,
+      canonicalBeforeTavily: true,
       duplicateRelationSlots: true,
       subjectLockAcrossTiers: true,
       predicateBoundExtraction: true,
