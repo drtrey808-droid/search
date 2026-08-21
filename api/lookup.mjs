@@ -1,4 +1,4 @@
-const BUILD_ID = "SAB_MASTER_LOOKUP_PROTOCOL_R40_2026_08_21";
+const BUILD_ID = "SAB_INSTANT_LORE_GRAPH_R41_2026_08_21";
 
 const PRIMARY_ORIGIN = "https://steal-a-brainrot.org";
 const FANDOM_API = "https://stealabrainrot.fandom.com/api.php";
@@ -128,6 +128,239 @@ const STATIC_ALIASES = Object.freeze({
   "lucky block": ["lucky block", "lucky blocks"],
   "admin abuse": ["admin abuse", "admin event"],
 });
+
+
+// =====================================================
+// R41 INSTANT LORE SNAPSHOT
+// Research pass: 100+ public S+ pages from steal-a-brainrot.org.
+// This manifest is NOT fetched wholesale per request. It records the reviewed
+// corpus and gives the resolver stable, local routing targets. Hot facts below
+// are answerable with zero Tavily / zero page fetch / zero answer-generation AI.
+// =====================================================
+const R41_RESEARCHED_SPLUS_SOURCES = Object.freeze([
+  "/brainrots", "/wiki", "/machines", "/rituals", "/ritual-brainrots", "/collections",
+  "/wiki/rebirth", "/wiki/mutations", "/wiki/shop", "/wiki/tips", "/wiki/base", "/wiki/craft",
+  "/wiki/trade-machine", "/wiki/duels-machine", "/wiki/advent-calendar", "/wiki/santas-fuse", "/wiki/cupids-machine",
+  "/wiki/cyber-craft-machine", "/codes", "/lucky-blocks", "/lucky-block-brainrots", "/gallery", "/blogs",
+  "/og", "/og-fuse-brainrots", "/crafts", "/witch-fuse-brainrots", "/santas-fuse-brainrots",
+  "/limited-brainrots", "/themed-brainrots", "/aquatic-brainrots", "/dealer-brainrots", "/collections/christmas-brainrots",
+  "/brainrots/spyder-elephant", "/brainrots/strawberry-elephant", "/brainrots/meowl", "/brainrots/headless-horseman",
+  "/brainrots/john-pork", "/brainrots/skibidi-toilet", "/brainrots/griffin", "/brainrots/dragon-aquanini",
+  "/brainrots/hydra-dragon-cannelloni", "/brainrots/dragon-gingerini", "/brainrots/dragon-cannelloni", "/brainrots/moby-bros",
+  "/brainrots/digi-narwhal", "/brainrots/la-supreme-combinasion", "/brainrots/kraken", "/brainrots/bunny-and-eggy",
+  "/brainrots/celestial-pegasus", "/brainrots/cerberus", "/brainrots/jelly-moby", "/brainrots/bumbatron",
+  "/brainrots/hydra-bunny", "/brainrots/popcuru-and-fizzuru", "/brainrots/rosey-and-teddy", "/brainrots/la-breakfast-combinasion",
+  "/brainrots/capitano-moby", "/brainrots/cooki-and-milki", "/brainrots/arcadragon", "/brainrots/burguro-and-fryuro",
+  "/brainrots/los-secret-combinasionas", "/brainrots/ketupat-bros", "/brainrots/reinito-sleighito", "/brainrots/fortunu-and-cashuru",
+  "/brainrots/los-amigos", "/brainrots/pizza-and-ranch", "/brainrots/la-secret-combinasion", "/brainrots/pancake-and-syrup",
+  "/brainrots/fishino-clownino", "/brainrots/foxini-lanternini", "/brainrots/kalika-bros", "/brainrots/los-sekolahs",
+  "/brainrots/cash-or-card", "/brainrots/fragrama-and-chocrama", "/brainrots/la-casa-boo", "/brainrots/los-admins",
+  "/brainrots/la-fuse-machine", "/brainrots/duggy-bros", "/brainrots/la-food-combinasion", "/brainrots/yetimatic",
+  "/brainrots/sammyni-cakini", "/brainrots/smore-serat", "/brainrots/boppin-bunny", "/brainrots/spooky-and-pumpky",
+  "/brainrots/cangurato-gelato", "/brainrots/ginger-gerat", "/brainrots/la-ginger-sekolah", "/brainrots/los-chillis",
+  "/brainrots/los-hackers", "/brainrots/love-love-bear", "/brainrots/bearito-cabinito", "/brainrots/capitano-americano",
+  "/brainrots/rubiko-and-kubiko", "/brainrots/los-spaghettis", "/brainrots/rubrikiko", "/brainrots/sammyni-fattini",
+  "/brainrots/festive-67", "/brainrots/quackini-snackini", "/brainrots/ventoliero-pavonero", "/brainrots/queen-bee",
+  "/brainrots/cloverat-clapat", "/brainrots/spaghetti-tualetti", "/brainrots/arcadopus", "/brainrots/tic-tic-ribbit",
+  "/brainrots/candini-fluffini", "/brainrots/bunnyman", "/brainrots/buntteo", "/brainrots/please-my-present",
+  "/brainrots/bandito-bobritto", "/brainrots/cash-or-card", "/brainrots/yetimatic", "/brainrots/griffin"
+]);
+const R41_RESEARCHED_SPLUS_SOURCE_COUNT = new Set(R41_RESEARCHED_SPLUS_SOURCES).size;
+
+const R41_REBIRTH_SNAPSHOT = Object.freeze({
+  1:{cash:"$1M",chars:["Trippi Troppi","Tung Tung Tung Sahur"],gear:["Friend Controller","IRON SLAP","GRAVITY COIL","BEE LAUNCHER"],multi:"x0.5",startCash:"$5K"},
+  2:{cash:"$3M",chars:["Brr Brr Patapim","Boneca Ambalabu"],gear:["GOLD SLAP","COIL COMBO","RAGE TABLE"],multi:"x1",startCash:"$10K",floor:"Second Floor"},
+  3:{cash:"$12.5M",chars:["Trulimero Trulicina","Chimpanzini Bananini"],gear:["DIAMOND SLAP","GRAPPLE HOOK","TASER GUN"],multi:"x2",startCash:"$25K"},
+  4:{cash:"$35M",chars:["Chef Crabracadabra","Glorbo Fruttodrillo"],gear:["EMERALD SLAP","INVISIBILITY CLOAK","BOOGIE BOMB"],multi:"x3",startCash:"$50K"},
+  5:{cash:"$100M",chars:["Frigo Camelo","Orangutini Ananassini"],gear:["RUBY SLAP","MEDUSA'S HEAD"],multi:"x4",startCash:"$100K"},
+  6:{cash:"$350M",chars:["Bombardiro Crocodilo"],gear:["DARK MATTER SLAP","WEB SLINGER"],multi:"x5",startCash:"$250K"},
+  7:{cash:"$1B",chars:["Bombombini Gusini"],gear:["FLAME SLAP","QUANTUM CLONER","ALL SEEING SENTRY"],multi:"x6",startCash:"$500K"},
+  8:{cash:"$5B",chars:["Cocofanto Elefanto"],gear:["NUCLEAR SLAP","RAINBOWRATH SWORD"],multi:"x7",startCash:"$1M"},
+  9:{cash:"$25B",chars:["Girafa Celestre"],gear:["GALAXY SLAP","LASER CAPE"],multi:"x8",startCash:"$5M"},
+  10:{cash:"$250B",chars:["Tralalero Tralala"],gear:["GLITCHED SLAP","BODY SWAP POTION"],multi:"x9",startCash:"$25M",floor:"Third Floor"},
+  11:{cash:"$1T",chars:["Odin Din Din Dun"],gear:["SPLATTER SLAP","PAINTBALL GUN"],multi:"x10",startCash:"$45M"},
+  12:{cash:"$7T",chars:["Trenostruzzo Turbo 3000"],gear:["HEART BALOON","MAGNET"],multi:"x11",startCash:"$500M"},
+  13:{cash:"$50T",chars:["Ballerino Lololo"],gear:["MEGAPHONE","BEEHIVE"],multi:"x12",startCash:"$1B"},
+  14:{cash:"$100T",chars:["Trippi Troppi Troppa Trippa"],gear:["GUMMY SLAP","SUBSPACE MINE"],multi:"x13",startCash:"$2.5T"},
+  15:{cash:"$500T",chars:["Pakrahmatmamat"],gear:["HEATSEEKER"],multi:"x15",startCash:"$10T"},
+  16:{cash:"$1Qa",chars:["Los Tralaleritos"],gear:["ATTACK DOGE"],multi:"x16",startCash:"$25T"},
+  17:{cash:"$2.5Qa",chars:["Job Job Job Sahur","Chicleteira Bicicleteira"],gear:["Giant Potion"],multi:"x17",startCash:"$50T"},
+  18:{cash:"$10Qa",chars:["Graipuss Medussi"],gear:["Flash Teleport"],multi:"x18",startCash:"$100T"},
+  19:{cash:"$300Qa",chars:["La Grande Combinasion"],gear:["Grief Shield"],multi:"x19",startCash:"$250T"}
+});
+
+const R41_MUTATION_SNAPSHOT = Object.freeze([
+  ["Default","1x"],["Gold","1.25x"],["Diamond","1.5x"],["Rainbow","10x"],["Bloodrot","2x"],
+  ["Celestial","4x"],["Candy","4x"],["Lava","6x"],["Galaxy","6x"],["Yin Yang","7.5x"],
+  ["Radioactive","8.5x"],["CURSED x9","9x"],["Divine","10x"],["Cyber","11x"],["Phantom","12x"],["Crystal","13x"]
+]);
+
+const R41_MACHINE_SNAPSHOT = Object.freeze({
+  "Fuse Machine":{status:"Offline",date:"August 1, 2025",kind:"Fuse family Base"},
+  "Craft Machine":{status:"Offline",date:"September 6, 2025",kind:"Craft family Base",refresh:"30 minutes"},
+  "Witch Fuse":{status:"Offline",date:"October 11, 2025"},
+  "Santa's Fuse":{status:"Offline",date:"November 29, 2025"},
+  "OG Fuse Machine":{status:"Offline",date:"January 24, 2026"},
+  "Cupid's Machine":{status:"Offline",date:"February 7, 2026"},
+  "Divine Fuse Machine":{status:"Offline",date:"March 7, 2026",update:"Update 41"},
+  "Trait Incubator":{status:"Live placeholder",date:"April 4, 2026",update:"Update 45"},
+  "Cyber Craft Machine":{status:"Offline",date:"April 18, 2026"},
+  "Summer Fuse":{status:"Offline",date:"May 23, 2026",endedBy:"Update 60"},
+  "Live Match Events":{date:"June 27, 2026",update:"FUTBOL UPDATE"},
+  "Los Traders":{status:"Offline",date:"July 11, 2026",activeRange:"Update 57 through Update 60",refresh:"30 minutes",replacedBy:"RNG Machine",replacedIn:"Update 61"},
+  "RNG Machine":{status:"Live",date:"August 8, 2026",update:"Update 61",note:"cash-powered random-spin machine"},
+  "Taco Merchant":{status:"Offline",date:"August 18, 2026",duration:"one hour"},
+  "Advent Calendar":{status:"Offline",activeRange:"November 30, 2025 – December 24, 2025"},
+  "New Year's Machine":{status:"Offline",date:"December 31, 2025"},
+  "Duels Machine":{status:"Offline",date:"January 10, 2026"},
+  "Trade Machine":{date:"February 21, 2026"}
+});
+
+const R41_RITUAL_SNAPSHOT = Object.freeze({
+  "La Vacca Ritual":{reward:"Las Vaquitas Saturnitas",trait:"galactic",players:"3"},
+  "Crocodilo Ritual":{reward:"Los Crocodillitos",trait:"explosive",players:"3"},
+  "Orcalero Ritual":{reward:"Los Orcalitos",trait:"water",players:"4"},
+  "Matteo Ritual":{reward:"Los Matteos",trait:"matteo",players:"3"},
+  "Spyderini Ritual":{reward:"Los Spyderinis",trait:"spider",players:"4"},
+  "Chicleteira Ritual":{reward:"Los Chicleteiras",trait:"paint",players:"2"},
+  "Dul Dul Dul Ritual":{reward:"Yess My Examine",alternate:"Noo My Examine",trait:"tie",players:"4"},
+  "Karkerkar Kurkur Ritual":{reward:"Los Karkeritos",players:"4"},
+  "1x1x1x1 Ritual":{reward:"1x1x1x1",alternate:"Guest 666",alternateChance:"lower chance",players:"4"},
+  "Mi Gatito Ritual":{reward:"Los Mi Gatitos",trait:"gatito",players:"2"},
+  "Job Job Job Sahur Ritual":{reward:"Yess my Resume",rewardChance:"99%",alternate:"Noo my Resume",alternateChance:"1%",trait:"job-application",players:"4"}
+});
+
+const R41_BRAINROT_SNAPSHOT = Object.freeze({
+  "Arcadopus":{rarity:"Secret",cost:"$900M",income:"$5M/s",date:"January 24, 2026",event:"The Return",source:"Themed Brainrots"},
+  "Spyder Elephant":{rarity:"OG",cost:"$1T",income:"$1B/s",date:"May 16, 2026",event:"1 YEAR EVENT",source:"Spyder Chain"},
+  "Yetimatic":{rarity:"Secret",cost:"$27.5B",income:"$87.5M/s",date:"August 8, 2026",event:"RNG MACHINE + QUEEN BEE",source:"RNG Machine"},
+  "Tic Tic Ribbit":{rarity:"Mythic",cost:"$6.2M",date:"August 8, 2026",event:"RNG MACHINE + QUEEN BEE",source:"RNG Machine"},
+  "Boppin Bunny":{rarity:"Secret",cost:"$25B",income:"$80M/s",date:"April 4, 2026",event:"EASTER EVENT (Part 2)",source:"Limited Quantity Truck"}
+});
+
+function r41Source(path,title) {
+  return {title, url:`${PRIMARY_ORIGIN}${path}`};
+}
+
+function r41InstantResult(answer, relation, path, title, reason) {
+  return makeResult(answer, relation, SOURCE.PRIMARY, r41Source(path,title), `PRIMARY_SPLUS_R41_INSTANT_${reason}`, 0.995);
+}
+
+function instantLoreResolve(question, analysis = {}) {
+  const raw=oneLine(question,1000);
+  const q=raw.toLowerCase();
+  const nq=norm(raw);
+
+  // Natural shorthand / backwards questions. These hit before NVIDIA, Tavily, or page fetches.
+  const asksPreRng =
+    ((/\bbefore\b|\bprevious\b|\bpreceded\b|\bpredecessor\b/.test(q) && /\brng(?:\s+machine)?\b/.test(q) && /machine|thing|what|system/.test(q))) ||
+    /what\s+did\s+(?:the\s+)?rng(?:\s+machine)?\s+replace/.test(q) ||
+    /what\s+was\s+replaced\s+by\s+(?:the\s+)?rng(?:\s+machine)?/.test(q) ||
+    /replaced\s+by\s+(?:the\s+)?rng(?:\s+machine)?/.test(q) ||
+    /predecessor\s+(?:of|to)\s+(?:the\s+)?rng(?:\s+machine)?/.test(q) ||
+    /machinebeforerng|beforetherng|whatdidrngmachinereplace|rngmachinepredecessor/.test(nq);
+  if (asksPreRng) {
+    return r41InstantResult("Los Traders",REL.MACHINE,"/machines","All Machines","PRE_RNG_MACHINE");
+  }
+  if ((/\b1\s*%/.test(q) || /\bone\s+percent\b/.test(q)) && /resume/.test(q)) {
+    return r41InstantResult("Noo my Resume",REL.OUTCOME,"/rituals","Secret Rituals & Traits","JOB_RITUAL_1PCT");
+  }
+  if ((/\b99\s*%/.test(q) || /\bninety[- ]?nine\s+percent\b/.test(q)) && /resume/.test(q)) {
+    return r41InstantResult("Yess my Resume",REL.OUTCOME,"/rituals","Secret Rituals & Traits","JOB_RITUAL_99PCT");
+  }
+  const jan24 = /jan(?:uary)?\.?\s*24(?:th)?/.test(q) || /24(?:th)?\s+of\s+jan/.test(q) || /(?:^|\s)0?1[\/-]24[\/-](?:20)?26(?:\s|$|[?.!,])/.test(q);
+  if (jan24 && /brainrot|came out|released|added|which|what/.test(q)) {
+    return r41InstantResult("Arcadopus",REL.BRAINROT,"/brainrots/arcadopus","Arcadopus","DATE_TO_BRAINROT");
+  }
+  if (/shield/.test(q) && /rebirth|which|what/.test(q)) {
+    return r41InstantResult("Rebirth19",REL.REBIRTH,"/wiki/rebirth","Rebirth System Guide","GEAR_TO_REBIRTH");
+  }
+  if (/third\s+floor/.test(q) && /rebirth|unlock|which|what/.test(q)) {
+    return r41InstantResult("Rebirth10",REL.REBIRTH,"/wiki/rebirth","Rebirth System Guide","THIRD_FLOOR");
+  }
+
+  // Reverse mutation lookup: "which mutation has 13x?"
+  const mult=q.match(/\b(\d+(?:\.\d+)?)\s*x\b/);
+  if (mult && /mutation|which/.test(q)) {
+    const target=`${mult[1]}x`.toLowerCase();
+    const matches=R41_MUTATION_SNAPSHOT.filter(([,m])=>m.toLowerCase()===target);
+    if (matches.length===1) return r41InstantResult(matches[0][0],REL.MUTATION,"/wiki/mutations","Mutations & Traits","MULTIPLIER_TO_MUTATION");
+    // 10x is intentionally ambiguous (Rainbow + Divine), so do not guess.
+  }
+
+  // Named mutation -> multiplier.
+  for (const [name,multi] of R41_MUTATION_SNAPSHOT) {
+    if (q.includes(name.toLowerCase()) && /multiplier|multi|\bx\b|mutation/.test(q)) {
+      return r41InstantResult(multi,REL.MULTIPLIER,"/wiki/mutations","Mutations & Traits","MUTATION_MULTIPLIER");
+    }
+  }
+
+  // Rebirth N direct fields.
+  const reb=q.match(/rebirth\s*#?\s*(\d{1,2})/i);
+  if (reb) {
+    const n=Number(reb[1]);
+    const row=R41_REBIRTH_SNAPSHOT[n];
+    if (row) {
+      if (/gear|item|unlock|give|reward/.test(q) && row.gear?.length) return r41InstantResult(row.gear.join(", "),REL.GEAR,"/wiki/rebirth","Rebirth System Guide",`REBIRTH_${n}_GEAR`);
+      if ((/character|brainrot|who/.test(q) || (/need|require/.test(q) && !/cash|cost|price|money|how much/.test(q))) && row.chars?.length) return r41InstantResult(row.chars.join(", "),REL.REQUIREMENT,"/wiki/rebirth","Rebirth System Guide",`REBIRTH_${n}_CHARACTERS`);
+      if (/start(?:ing)? cash|cash after|reset cash/.test(q)) return r41InstantResult(row.startCash,REL.REWARD,"/wiki/rebirth","Rebirth System Guide",`REBIRTH_${n}_START_CASH`);
+      if (/cash|cost|price|money|how much/.test(q)) return r41InstantResult(row.cash,REL.COST,"/wiki/rebirth","Rebirth System Guide",`REBIRTH_${n}_CASH`);
+      if (/multiplier|multi/.test(q)) return r41InstantResult(row.multi,REL.MULTIPLIER,"/wiki/rebirth","Rebirth System Guide",`REBIRTH_${n}_MULTI`);
+      if (/floor/.test(q) && row.floor) return r41InstantResult(row.floor,REL.BASE,"/wiki/rebirth","Rebirth System Guide",`REBIRTH_${n}_FLOOR`);
+    }
+  }
+
+  // Reverse gear/item -> rebirth.
+  if (/rebirth|which|what/.test(q)) {
+    for (const [n,row] of Object.entries(R41_REBIRTH_SNAPSHOT)) {
+      for (const gear of row.gear||[]) {
+        if (q.includes(gear.toLowerCase())) return r41InstantResult(`Rebirth${n}`,REL.REBIRTH,"/wiki/rebirth","Rebirth System Guide","GEAR_REVERSE");
+      }
+    }
+  }
+
+  // Machine facts and natural aliases.
+  for (const [name,row] of Object.entries(R41_MACHINE_SNAPSHOT)) {
+    const lname=name.toLowerCase();
+    if (!q.includes(lname) && !(name==="RNG Machine" && /\brng\b/.test(q)) && !(name==="Los Traders" && /\blos\s+traders\b|\btraders\b/.test(q))) continue;
+    if (/refresh|cycle|rotate|offer/.test(q) && row.refresh) return r41InstantResult(row.refresh,REL.COOLDOWN,"/machines","All Machines","MACHINE_REFRESH");
+    if (/status|offline|online|active|live/.test(q) && row.status) return r41InstantResult(row.status,REL.STATUS,"/machines","All Machines","MACHINE_STATUS");
+    if (/when|date|added|introduced|came out/.test(q) && row.date) return r41InstantResult(row.date,REL.DATE,"/machines","All Machines","MACHINE_DATE");
+    if (/replaced by|replace(?:d)? it|what replaced|after/.test(q) && row.replacedBy) return r41InstantResult(row.replacedBy,REL.REPLACED_BY,"/machines","All Machines","MACHINE_REPLACEMENT");
+    if (/what update|which update|replaced in/.test(q) && row.replacedIn) return r41InstantResult(row.replacedIn,REL.REPLACED_IN,"/machines","All Machines","MACHINE_REPLACED_IN");
+    if (/ran from|active range|which updates|update range/.test(q) && row.activeRange) return r41InstantResult(row.activeRange,REL.ACTIVE_RANGE,"/machines","All Machines","MACHINE_ACTIVE_RANGE");
+  }
+
+  // 30-minute / twice-an-hour reverse lookup. Two S+ machine systems match; don't hallucinate one.
+  if ((/twice\s+(?:an|per)\s+hour/.test(q) || /every\s+(?:30|thirty)\s*(?:min|mins|minute|minutes)/.test(q) || /every\s+(?:half|half[- ]an?)\s*hour/.test(q) || /30[- ]?minute\s+refresh/.test(q)) && /refresh|thing|machine|offer|what|system/.test(q)) {
+    return r41InstantResult("Los Traders, Craft Machine",REL.MACHINE,"/machines","All Machines","THIRTY_MINUTE_SYSTEMS");
+  }
+
+  // Ritual facts.
+  for (const [name,row] of Object.entries(R41_RITUAL_SNAPSHOT)) {
+    const aliases=[name.toLowerCase(),name.toLowerCase().replace(/ ritual$/,'')];
+    if (!aliases.some((x)=>x && q.includes(x))) continue;
+    if (/1\s*%/.test(q) && row.alternateChance==="1%") return r41InstantResult(row.alternate,REL.OUTCOME,"/rituals","Secret Rituals & Traits","RITUAL_CHANCE_1");
+    if (/99\s*%/.test(q) && row.rewardChance==="99%") return r41InstantResult(row.reward,REL.OUTCOME,"/rituals","Secret Rituals & Traits","RITUAL_CHANCE_99");
+    if (/player|how many/.test(q) && row.players) return r41InstantResult(row.players,REL.PLAYERS,"/rituals","Secret Rituals & Traits","RITUAL_PLAYERS");
+    if (/trait/.test(q) && row.trait) return r41InstantResult(row.trait,REL.TRAIT,"/rituals","Secret Rituals & Traits","RITUAL_TRAIT");
+    if (/reward|spawn|outcome|give|what does/.test(q) && row.reward) return r41InstantResult(row.reward,REL.OUTCOME,"/rituals","Secret Rituals & Traits","RITUAL_REWARD");
+  }
+
+  // Small locally snapshotted brainrot identity facts.
+  for (const [name,row] of Object.entries(R41_BRAINROT_SNAPSHOT)) {
+    if (!q.includes(name.toLowerCase())) continue;
+    const path=`/brainrots/${primarySlug(name)}`;
+    if (/rarity|tier/.test(q)) return r41InstantResult(row.rarity,REL.RARITY,path,name,"BRAINROT_RARITY");
+    if (/cost|price/.test(q)) return r41InstantResult(row.cost,REL.COST,path,name,"BRAINROT_COST");
+    if (/income|per second|\/s/.test(q) && row.income) return r41InstantResult(row.income,REL.INCOME,path,name,"BRAINROT_INCOME");
+    if (/when|date|added|released|came out/.test(q) && row.date) return r41InstantResult(row.date,REL.DATE,path,name,"BRAINROT_DATE");
+    if (/event/.test(q) && row.event) return r41InstantResult(row.event,REL.EVENT,path,name,"BRAINROT_EVENT");
+    if (/how|get|source|obtain/.test(q) && row.source) return r41InstantResult(row.source,REL.METHOD,path,name,"BRAINROT_SOURCE");
+  }
+
+  return null;
+}
 
 const PAGE_CACHE = new Map();
 const SEARCH_CACHE = new Map();
@@ -3271,10 +3504,10 @@ function relationEvidenceScore(text, relation) {
     [REL.BASE_SKIN]: /\b(?:base skin|skin)\b/,
     [REL.ANNOUNCEMENT]: /\b(?:announc|teas|preview|reveal|developer)\b/,
     [REL.LORE]: /./,
-    [REL.BASE]: /(?:base|laser|lock|floor|defen|protect)/,
-    [REL.MECHANIC]: /(?:mechanic|works?|trigger|activate|upgrade|open|spin|steal)/,
-    [REL.ASSET]: /(?:image|icon|visual|appearance|model|looks?)/,
-    [REL.COOLDOWN]: /(?:cooldown|refresh|restock|every|minutes?|hours?)/,
+    [REL.BASE]: /\b(?:base|laser|lock|floor|defen|protect)\b/,
+    [REL.MECHANIC]: /\b(?:mechanic|works?|trigger|activate|upgrade|open|spin|steal)\b/,
+    [REL.ASSET]: /\b(?:image|icon|visual|appearance|model|looks?)\b/,
+    [REL.COOLDOWN]: /\b(?:cooldown|refresh|restock|every|minutes?|hours?)\b/,
   };
 
   return checks[relation]?.test(t) ? 1 : 0;
@@ -6792,7 +7025,31 @@ async function resolveQuestion(questionObj, lore = "") {
     };
   }
 
-  // AI understands the question first. It never supplies the trivia answer.
+  // R41: ZERO-NETWORK instant lore first. For facts already in the reviewed
+  // S+ snapshot, do not spend time on NVIDIA, Tavily, or a page fetch.
+  const instantAnalysis = analyzeQuestion(question);
+  const instant = instantLoreResolve(question, instantAnalysis);
+  if (instant) {
+    const instantDiagnostic = {
+      instantLoreHit: true,
+      instantLoreSourcesReviewed: R41_RESEARCHED_SPLUS_SOURCE_COUNT,
+      instantLoreBuild: BUILD_ID,
+      aiQuestionRouter: "BYPASSED_R41_INSTANT_LORE",
+      aiQuestionRouterError: "",
+    };
+    const trusted = attachTrustLog(instant, SOURCE.PRIMARY);
+    const final = finalize(trusted, question, instantAnalysis, startedAt, instantDiagnostic);
+    final.trustLog = trusted.trustLog;
+    final.trustedTier = "S+";
+    final.loreLibrary = true;
+    final.instantLore = true;
+    final.researchedSourceCount = R41_RESEARCHED_SPLUS_SOURCE_COUNT;
+    setCachedAnswer(question, final);
+    return final;
+  }
+
+  // AI understands questions not already satisfied by the local lore snapshot.
+  // It still never supplies the trivia answer from memory.
   const routed = await analyzeQuestionAI(question, deadline);
   const analysis = routed.analysis;
 
@@ -8252,6 +8509,21 @@ function runSelfTests() {
   check("R40 AI answer requires requested entity evidence",answerExistsInLore("3%",r40WrongEntity,{entity:"67",relation:REL.DROP_RATE})===false);
   check("R40 AI evidence quote requires requested entity evidence",evidenceQuoteExists("Guerriro Digitale 3% drop chance.",r40WrongEntity,{entity:"67",relation:REL.DROP_RATE})===false);
 
+  // R41 instant-lore regression tests: these must bypass web/AI entirely.
+  check("R41 researched source manifest 100+", R41_RESEARCHED_SPLUS_SOURCE_COUNT >= 100);
+  check("R41 shorthand machine before RNG", instantLoreResolve("What was that machine before RNG?",analyzeQuestion("What was that machine before RNG?"))?.answer === "Los Traders");
+  check("R41 twice-an-hour systems", instantLoreResolve("What thing refreshes twice an hour?",analyzeQuestion("What thing refreshes twice an hour?"))?.answer === "Los Traders, Craft Machine");
+  check("R41 date reverse Arcadopus", instantLoreResolve("What brainrot came out Jan 24?",analyzeQuestion("What brainrot came out Jan 24?"))?.answer === "Arcadopus");
+  check("R41 1pct resume shorthand", instantLoreResolve("the 1% resume ritual thing?",analyzeQuestion("the 1% resume ritual thing?"))?.answer === "Noo my Resume");
+  check("R41 shield reverse", instantLoreResolve("what rebirth gives shield?",analyzeQuestion("what rebirth gives shield?"))?.answer === "Rebirth19");
+  check("R41 Los Traders refresh", instantLoreResolve("What is the refresh cycle of Los Traders?",analyzeQuestion("What is the refresh cycle of Los Traders?"))?.answer === "30 minutes");
+  check("R41 Crystal reverse", instantLoreResolve("Which mutation has a 13x multiplier?",analyzeQuestion("Which mutation has a 13x multiplier?"))?.answer === "Crystal");
+  check("R41 third floor reverse", instantLoreResolve("Which rebirth unlocks the third floor?",analyzeQuestion("Which rebirth unlocks the third floor?"))?.answer === "Rebirth10");
+  check("R41 rebirth19 cash", instantLoreResolve("How much cash does Rebirth 19 require?",analyzeQuestion("How much cash does Rebirth 19 require?"))?.answer === "$300Qa");
+  check("R41 flash teleport reverse", instantLoreResolve("What rebirth unlocks Flash Teleport?",analyzeQuestion("What rebirth unlocks Flash Teleport?"))?.answer === "Rebirth18");
+  check("R41 ritual player count", instantLoreResolve("How many players for Mi Gatito Ritual?",analyzeQuestion("How many players for Mi Gatito Ritual?"))?.answer === "2");
+  check("R41 ambiguous 10x mutation does not guess", instantLoreResolve("Which mutation has a 10x multiplier?",analyzeQuestion("Which mutation has a 10x multiplier?")) == null);
+
   // Priority behavior: once S+ has a direct value, lower tier disagreement does not participate.
   const primary = makeResult("10x", REL.MULTIPLIER, SOURCE.PRIMARY, mutationPage, "PRIMARY_MUTATION_SECTION", 0.995);
   const fandom = makeResult("9x", REL.MULTIPLIER, SOURCE.FANDOM, { title: "Mutations", url: "fandom" }, "FANDOM_DIRECT", 0.93);
@@ -8487,7 +8759,9 @@ export async function GET(request) {
     ],
     conflictPolicy: "AI ROUTES INTO RICH RELATION SCHEMA; MULTI-UPDATE QUESTIONS USE LIFECYCLE HINTS WITHOUT OVER-CONSTRAINING SEARCH; URL FAMILY + HARD CLUES VALIDATE PAGE; ANSWER TYPE + CLUE-LOCAL EVIDENCE MUST PASS; S+ VERIFIED = 0.995 + STOP; A+ ONLY ON S+ MISS; B ONLY ON S+/A+ MISS",
     architecture: {
-      aiQuestionRouterFirst: true,
+      instantLoreBeforeAI: true,
+      researchedSplusSourceManifest: R41_RESEARCHED_SPLUS_SOURCES.length,
+      aiQuestionRouterFirstForLoreMisses: true,
       exactPageSearchFirst: true,
       cluePreservingSearch: true,
       threeParallelSearchVariants: true,
@@ -8498,6 +8772,11 @@ export async function GET(request) {
       canonicalPrimaryFastPath: true,
       totalLoreLibrary: true,
       masterCorpusR37: true,
+      instantLoreGraphR41: true,
+      zeroNetworkHotFactsR41: true,
+      rebirthSnapshot1To19R41: true,
+      machineLifecycleSnapshotR41: true,
+      ritualOutcomeSnapshotR41: true,
         entityBoundNumericFactsR38: true,
         dateWindowExtractionR38: true,
         approximatePrecisionPreservedR38: true,
