@@ -1,4 +1,4 @@
-const BUILD_ID = "SAB_TOTAL_LORE_LIBRARY_R36_2026_08_21";
+const BUILD_ID = "SAB_MASTER_LOOKUP_PROTOCOL_R40_2026_08_21";
 
 const PRIMARY_ORIGIN = "https://steal-a-brainrot.org";
 const FANDOM_API = "https://stealabrainrot.fandom.com/api.php";
@@ -9,7 +9,7 @@ const NVIDIA_URL = "https://integrate.api.nvidia.com/v1/chat/completions";
 const DEFAULT_MODEL = "nvidia/nemotron-3-super-120b-a12b";
 
 const CFG = Object.freeze({
-  GLOBAL_BUDGET_MS: Number(process.env.LOOKUP_BUDGET_MS || 5400),
+  GLOBAL_BUDGET_MS: Number(process.env.LOOKUP_BUDGET_MS || 6200),
   PRIMARY_TIMEOUT_MS: Number(process.env.PRIMARY_TIMEOUT_MS || 1050),
   FANDOM_TIMEOUT_MS: Number(process.env.FANDOM_TIMEOUT_MS || 900),
   BACKUP_TIMEOUT_MS: Number(process.env.BACKUP_TIMEOUT_MS || 800),
@@ -21,9 +21,10 @@ const CFG = Object.freeze({
   MAX_BACKUP_PAGES: 5,
   MAX_SEARCH_RESULTS: 6,
   MAX_AI_EVIDENCE: 8,
-  MAX_LORE_HUBS: Number(process.env.MAX_LORE_HUBS || 8),
-  MAX_LORE_DETAIL_PAGES: Number(process.env.MAX_LORE_DETAIL_PAGES || 4),
-  MAX_LORE_CHUNKS: Number(process.env.MAX_LORE_CHUNKS || 12),
+  MAX_LORE_HUBS: Number(process.env.MAX_LORE_HUBS || 10),
+  MAX_LORE_DETAIL_PAGES: Number(process.env.MAX_LORE_DETAIL_PAGES || 8),
+  MAX_LORE_CHUNKS: Number(process.env.MAX_LORE_CHUNKS || 18),
+  MAX_LORE_MANIFEST: Number(process.env.MAX_LORE_MANIFEST || 140),
   LORE_HUB_TIMEOUT_MS: Number(process.env.LORE_HUB_TIMEOUT_MS || 1050),
 
   PAGE_CACHE_TTL_MS: 5 * 60 * 1000,
@@ -74,6 +75,10 @@ const REL = Object.freeze({
   BASE_SKIN: "BASE_SKIN",
   ANNOUNCEMENT: "ANNOUNCEMENT",
   LORE: "LORE",
+  BASE: "BASE",
+  MECHANIC: "MECHANIC",
+  ASSET: "ASSET",
+  COOLDOWN: "COOLDOWN",
 });
 
 const SOURCE = Object.freeze({
@@ -254,6 +259,12 @@ function decodeHtml(value) {
 
 function htmlToLines(html, maxChars = 160000) {
   const text = decodeHtml(String(html ?? ""))
+    .replace(/<img\b([^>]*)>/gi, (_m, attrs) => {
+      const alt = String(attrs || "").match(/\balt=["']([^"']+)["']/i)?.[1] || "";
+      const src = String(attrs || "").match(/\bsrc=["']([^"']+)["']/i)?.[1] || "";
+      if (!alt && !src) return "\nImage\n";
+      return `\nImage: ${alt || "unlabeled"}${src ? ` | Source: ${src}` : ""}\n`;
+    })
     .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
     .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
     .replace(/<(?:br|hr)\b[^>]*\/?\s*>/gi, "\n")
@@ -378,6 +389,11 @@ function extractLifecycleHints(question) {
 function inferRelation(question) {
   const q = oneLine(question, 700).toLowerCase();
 
+  if (/\b(?:image|icon|asset|model|thumbnail|picture|visual|appearance|look like|looks like)\b/.test(q)) return REL.ASSET;
+  if (/\b(?:base|laser gate|base lock|lock time|defense|defence|protection|protect|floor|second floor|third floor)\b/.test(q)) return REL.BASE;
+  if (/\b(?:cooldown|cool down|refresh time|refresh cycle|restock time|restock cycle)\b/.test(q) && !/\bcode\b/.test(q)) return REL.COOLDOWN;
+  if (/\b(?:mechanic|mechanics|how does .* work|how do .* work|what happens when|what happens if)\b/.test(q)) return REL.MECHANIC;
+
   if (/\b(?:redeem code|event code|what code|which code|code was|code did|codes?)\b/.test(q)) return REL.CODE;
   if (/\b(?:stock|stock limit|quantity|how many copies|limited quantity)\b/.test(q)) return REL.STOCK;
   if (/\b(?:how many players|players required|player requirement)\b/.test(q)) return REL.PLAYERS;
@@ -389,7 +405,7 @@ function inferRelation(question) {
   if (/\b(?:base skin|skin reward|base theme)\b/.test(q)) return REL.BASE_SKIN;
   if (/\b(?:announcement|announced|teased|previewed|revealed|developer said|dev said)\b/.test(q)) return REL.ANNOUNCEMENT;
 
-  if (/\b(?:how often|how frequently|what interval|what cadence|frequency|recurr?ence|every how many)\b/.test(q)) return REL.FREQUENCY;
+  if (/\b(?:how often|how frequently|what interval|what cadence|frequency|recurr?ence|every how many|spawn rate|spawn frequency|respawn rate|milliseconds?)\b/.test(q)) return REL.FREQUENCY;
   if (/\bwhat\s+(?:replaced|replaces)\b|\breplaced by what\b/.test(q)) return REL.REPLACED_BY;
   if (/\b(?:which|what)\s+update\b[^?]{0,80}\breplaced\b|\breplaced in which update\b/.test(q)) return REL.REPLACED_IN;
   if (/\b(?:active|ran|available)\s+from\s+update\b|\bactive range\b/.test(q) && !/\b(?:what|which)\s+machine\b/.test(q)) return REL.ACTIVE_RANGE;
@@ -535,12 +551,12 @@ function normalizeAnswer(value, relation) {
   }
 
   if (relation === REL.COST) {
-    const m = text.match(/\$\s*\d+(?:\.\d+)?\s*[KMBTQ]?/i);
+    const m = text.match(/\$\s*\d+(?:\.\d+)?\s*(?:Qa|Qi|Sx|Sp|Oc|No|Dc|K|M|B|T|Q)?/i);
     return m ? m[0].replace(/\s+/g, "") : null;
   }
 
   if (relation === REL.INCOME) {
-    const m = text.match(/\$\s*\d+(?:\.\d+)?\s*[KMBTQ]?\s*(?:\/\s*s|\/sec|per\s*second)?/i);
+    const m = text.match(/\$\s*\d+(?:\.\d+)?\s*(?:Qa|Qi|Sx|Sp|Oc|No|Dc|K|M|B|T|Q)?\s*(?:\/\s*s|\/sec|per\s*second)?/i);
     if (!m) return null;
     let out = m[0].replace(/\s+/g, "").replace(/persecond/i, "/s").replace(/\/sec$/i, "/s");
     if (!/\/s$/i.test(out)) out += "/s";
@@ -636,7 +652,7 @@ async function fetchPage(url, source, deadline) {
   const html = await fetchText(source.key, url, {
     headers: {
       Accept: "text/html,application/xhtml+xml",
-      "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R36",
+      "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R37",
     },
   }, timeout);
   const page = {
@@ -1516,8 +1532,8 @@ function resolvePrimaryEntityPage(page, analysis) {
   if (relation === REL.COST) {
     const v =
       findLabelValue(lines, ["Base Cost", "Cost", "Price"]) ||
-      text.match(/\bBase Cost\b[\s:|-]{0,20}(\$\s*[\d.]+\s*[KMBTQ]?)/i)?.[1] ||
-      text.match(/\blisted base cost of\s+(\$\s*[\d.]+\s*[KMBTQ]?)/i)?.[1];
+      text.match(/\bBase Cost\b[\s:|-]{0,20}(\$\s*[\d.]+\s*(?:Qa|Qi|Sx|Sp|Oc|No|Dc|K|M|B|T|Q)?)/i)?.[1] ||
+      text.match(/\blisted base cost of\s+(\$\s*[\d.]+\s*(?:Qa|Qi|Sx|Sp|Oc|No|Dc|K|M|B|T|Q)?)/i)?.[1];
 
     const answer = normalizeAnswer(v, REL.COST);
     if (answer) return makeResult(answer, relation, SOURCE.PRIMARY, page, "SPLUS_DIRECT_ENTITY_COST", 0.995);
@@ -1526,8 +1542,8 @@ function resolvePrimaryEntityPage(page, analysis) {
   if (relation === REL.INCOME) {
     const v =
       findLabelValue(lines, ["Income per Second", "Base Income/sec", "Income/sec", "Generates"]) ||
-      text.match(/\bIncome per Second\b[\s:|-]{0,25}(\$\s*[\d.]+\s*[KMBTQ]?(?:\s*\/\s*s)?)/i)?.[1] ||
-      text.match(/\b(?:generating|generates?)\s+(\$\s*[\d.]+\s*[KMBTQ]?)\s*(?:\/second|\/s|per second)/i)?.[1];
+      text.match(/\bIncome per Second\b[\s:|-]{0,25}(\$\s*[\d.]+\s*(?:Qa|Qi|Sx|Sp|Oc|No|Dc|K|M|B|T|Q)?(?:\s*\/\s*s)?)/i)?.[1] ||
+      text.match(/\b(?:generating|generates?)\s+(\$\s*[\d.]+\s*(?:Qa|Qi|Sx|Sp|Oc|No|Dc|K|M|B|T|Q)?)\s*(?:\/second|\/s|per second)/i)?.[1];
 
     const answer = normalizeAnswer(v, REL.INCOME);
     if (answer) return makeResult(answer, relation, SOURCE.PRIMARY, page, "SPLUS_DIRECT_ENTITY_INCOME", 0.995);
@@ -1858,7 +1874,7 @@ function resolvePrimaryGenericPage(page, analysis) {
     if (m) return makeResult(m[0], REL.DROP_RATE, SOURCE.PRIMARY, page, "PRIMARY_GENERIC_WINDOW", 0.975);
   }
   if (analysis.relation === REL.COST) {
-    const m = window.match(/\$\s*\d+(?:\.\d+)?\s*[KMBTQ]?/i);
+    const m = window.match(/\$\s*\d+(?:\.\d+)?\s*(?:Qa|Qi|Sx|Sp|Oc|No|Dc|K|M|B|T|Q)?/i);
     if (m) return makeResult(m[0], REL.COST, SOURCE.PRIMARY, page, "PRIMARY_GENERIC_WINDOW", 0.975);
   }
   if (analysis.relation === REL.RARITY) {
@@ -1966,8 +1982,8 @@ function resolvePrimarySnippet(search, analysis) {
     const text = `${row.title}\n${row.content}`;
     if (analysis.entity && bestEntityScore(analysis, text) < 0.22) continue;
     let answer = null;
-    if (analysis.relation === REL.COST) answer = text.match(/(?:Base Cost|Cost|Price)[:\s|]+(\$\s*\d+(?:\.\d+)?\s*[KMBTQ]?)/i)?.[1];
-    if (analysis.relation === REL.INCOME) answer = text.match(/(?:Income per Second|Base Income\/sec|Generates?)[:\s|]+(\$\s*\d+(?:\.\d+)?\s*[KMBTQ]?(?:\/s)?)/i)?.[1];
+    if (analysis.relation === REL.COST) answer = text.match(/(?:Base Cost|Cost|Price)[:\s|]+(\$\s*\d+(?:\.\d+)?\s*(?:Qa|Qi|Sx|Sp|Oc|No|Dc|K|M|B|T|Q)?)/i)?.[1];
+    if (analysis.relation === REL.INCOME) answer = text.match(/(?:Income per Second|Base Income\/sec|Generates?)[:\s|]+(\$\s*\d+(?:\.\d+)?\s*(?:Qa|Qi|Sx|Sp|Oc|No|Dc|K|M|B|T|Q)?(?:\/s)?)/i)?.[1];
     if (analysis.relation === REL.RARITY) answer = text.match(/(?:Rarity[:\s|]+)([A-Za-z][A-Za-z ]{1,40})/i)?.[1] || text.match(/\bis an?\s+([A-Za-z][A-Za-z ]{1,40}?)\s+brainrot\b/i)?.[1];
     if (analysis.relation === REL.MULTIPLIER) answer = text.match(/\b\d+(?:\.\d+)?\s*[x×]/i)?.[0];
     if (analysis.relation === REL.REBIRTH) answer = text.match(/\bRebirth\s*#?\s*\d{1,3}\b/i)?.[0];
@@ -2014,7 +2030,7 @@ async function fandomSearchTitles(query, deadline) {
     format: "json",
   });
   try {
-    const data = await fetchJson("FANDOM_SEARCH", `${FANDOM_API}?${params.toString()}`, { headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R36" } }, Math.min(CFG.FANDOM_TIMEOUT_MS, left - 20));
+    const data = await fetchJson("FANDOM_SEARCH", `${FANDOM_API}?${params.toString()}`, { headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R37" } }, Math.min(CFG.FANDOM_TIMEOUT_MS, left - 20));
     return (Array.isArray(data?.query?.search) ? data.query.search : []).map((x) => oneLine(x?.title, 300)).filter(Boolean);
   } catch {
     return [];
@@ -2027,7 +2043,7 @@ async function fetchFandomPage(title, deadline) {
   if (cached) return { ...cached, cache: "HIT" };
   const left = timeLeft(deadline);
   if (left < 250) throw new Error("FANDOM_BUDGET_EXHAUSTED");
-  const data = await fetchJson("FANDOM_PARSE", fandomParseUrl(title), { headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R36" } }, Math.min(CFG.FANDOM_TIMEOUT_MS, left - 20));
+  const data = await fetchJson("FANDOM_PARSE", fandomParseUrl(title), { headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R37" } }, Math.min(CFG.FANDOM_TIMEOUT_MS, left - 20));
   if (data?.error) throw new Error(`FANDOM_PARSE_${data.error.code || "ERROR"}`);
   const p = data?.parse || {};
   const html = typeof p.text === "string" ? p.text : String(p.text?.["*"] || "");
@@ -2050,8 +2066,8 @@ function backupResolveText(page, analysis, source) {
   const lines = page.lines;
   let answer = null;
 
-  if (analysis.relation === REL.COST) answer = findLabelValue(lines, ["Base Cost", "Cost", "Price", "Buy Price"]) || text.match(/(?:cost|price)[^$]{0,30}(\$\s*\d+(?:\.\d+)?\s*[KMBTQ]?)/i)?.[1];
-  if (analysis.relation === REL.INCOME) answer = findLabelValue(lines, ["Income per Second", "Income", "Generates", "Income/sec"]) || text.match(/(?:income|generates?)[^$]{0,35}(\$\s*\d+(?:\.\d+)?\s*[KMBTQ]?(?:\/s)?)/i)?.[1];
+  if (analysis.relation === REL.COST) answer = findLabelValue(lines, ["Base Cost", "Cost", "Price", "Buy Price"]) || text.match(/(?:cost|price)[^$]{0,30}(\$\s*\d+(?:\.\d+)?\s*(?:Qa|Qi|Sx|Sp|Oc|No|Dc|K|M|B|T|Q)?)/i)?.[1];
+  if (analysis.relation === REL.INCOME) answer = findLabelValue(lines, ["Income per Second", "Income", "Generates", "Income/sec"]) || text.match(/(?:income|generates?)[^$]{0,35}(\$\s*\d+(?:\.\d+)?\s*(?:Qa|Qi|Sx|Sp|Oc|No|Dc|K|M|B|T|Q)?(?:\/s)?)/i)?.[1];
   if (analysis.relation === REL.RARITY) answer = findLabelValue(lines, ["Rarity", "Tier"]) || text.match(/\bis an?\s+([A-Za-z][A-Za-z ]{1,40}?)\s+brainrot\b/i)?.[1];
   if (analysis.relation === REL.MULTIPLIER) answer = text.match(/\b\d+(?:\.\d+)?\s*[x×]/i)?.[0];
   if (analysis.relation === REL.REBIRTH && analysis.entity) {
@@ -2265,6 +2281,12 @@ function enforceQuestionSemantics(question, analysis) {
   if (/\b(?:how often|how frequently|what interval|frequency|recurr?ence)\b/.test(q)) {
     next.relation = REL.FREQUENCY;
     next.wanted = REL.FREQUENCY;
+  }
+
+  // "event window" asks for the period/duration, not the update number itself.
+  if (/\bevent window\b|\bwindow lasted\b|\bwindow duration\b/.test(q)) {
+    next.relation = REL.DURATION;
+    next.wanted = REL.DURATION;
   }
 
   // A range/lifecycle question that asks WHICH MACHINE still wants the machine name.
@@ -2484,7 +2506,7 @@ function searchCluesFromQuestion(question) {
   const q = oneLine(question, 700);
   const clues = [];
 
-  for (const m of q.matchAll(/\$\s*\d+(?:\.\d+)?\s*[KMBTQ]?/gi)) {
+  for (const m of q.matchAll(/\$\s*\d+(?:\.\d+)?\s*(?:Qa|Qi|Sx|Sp|Oc|No|Dc|K|M|B|T|Q)?/gi)) {
     clues.push(m[0].replace(/\s+/g, ""));
   }
 
@@ -2771,7 +2793,7 @@ function importantQuestionClues(question, analysis) {
   const clues = [];
 
   // Structured values are hard clues.
-  for (const m of q.matchAll(/\$\s*\d+(?:\.\d+)?\s*[KMBTQ]?/gi)) {
+  for (const m of q.matchAll(/\$\s*\d+(?:\.\d+)?\s*(?:Qa|Qi|Sx|Sp|Oc|No|Dc|K|M|B|T|Q)?/gi)) {
     clues.push({ value: m[0].replace(/\s+/g, ""), weight: 4, kind: "money" });
   }
   for (const m of q.matchAll(/\b\d+(?:\.\d+)?\s*%/g)) {
@@ -3148,6 +3170,10 @@ function relationSearchWord(relation) {
     case REL.BASE_SKIN: return "base skin reward";
     case REL.ANNOUNCEMENT: return "announcement announced teased preview revealed";
     case REL.LORE: return "lore history details";
+    case REL.BASE: return "base laser lock floor defense protection";
+    case REL.MECHANIC: return "mechanic how it works trigger activate";
+    case REL.ASSET: return "image icon model visual appearance";
+    case REL.COOLDOWN: return "cooldown refresh restock interval";
     default: return "";
   }
 }
@@ -3245,6 +3271,10 @@ function relationEvidenceScore(text, relation) {
     [REL.BASE_SKIN]: /\b(?:base skin|skin)\b/,
     [REL.ANNOUNCEMENT]: /\b(?:announc|teas|preview|reveal|developer)\b/,
     [REL.LORE]: /./,
+    [REL.BASE]: /(?:base|laser|lock|floor|defen|protect)/,
+    [REL.MECHANIC]: /(?:mechanic|works?|trigger|activate|upgrade|open|spin|steal)/,
+    [REL.ASSET]: /(?:image|icon|visual|appearance|model|looks?)/,
+    [REL.COOLDOWN]: /(?:cooldown|refresh|restock|every|minutes?|hours?)/,
   };
 
   return checks[relation]?.test(t) ? 1 : 0;
@@ -4895,7 +4925,7 @@ function looksLikeBrainrotEntityName(value) {
     /\b(?:brainrot|generating|generates|income|per second|outcome|chance|success rate|request[_ -]?id|developer|producer|creator|cost|price)\b/i.test(answer)
   ) return false;
 
-  if (/\$\s*\d|\b\d+(?:\.\d+)?\s*[KMBTQ]\b|\/s\b/i.test(answer)) return false;
+  if (/\$\s*\d|\b\d+(?:\.\d+)?\s*(?:Qa|Qi|Sx|Sp|Oc|No|Dc|K|M|B|T|Q)\b|\/s\b/i.test(answer)) return false;
 
   return true;
 }
@@ -5272,6 +5302,15 @@ const PRIMARY_LORE_HUBS = Object.freeze([
   { key: "COMMUNITY", url: `${PRIMARY_ORIGIN}/community`, tags: ["announcement","community","discord","news"] },
   { key: "OG", url: `${PRIMARY_ORIGIN}/og`, tags: ["og","brainrot","spawn","availability"] },
   { key: "SECRETS", url: `${PRIMARY_ORIGIN}/secrets`, tags: ["secret","brainrot","lucky block","availability"] },
+  { key: "TIPS", url: `${PRIMARY_ORIGIN}/wiki/tips`, tags: ["tips","strategy","base","steal","floor","spawn","rarity"] },
+  { key: "LUCKY_BLOCKS", url: `${PRIMARY_ORIGIN}/lucky-blocks`, tags: ["lucky block","drop","chance","price","cooldown"] },
+  { key: "LUCKY_BLOCK_BRAINROTS", url: `${PRIMARY_ORIGIN}/lucky-block-brainrots`, tags: ["lucky block","brainrot","drop","chance"] },
+  { key: "BLOGS", url: `${PRIMARY_ORIGIN}/blogs`, tags: ["guide","history","trivia","update","article","meta"] },
+  { key: "CRAFTS", url: `${PRIMARY_ORIGIN}/craft-brainrots`, tags: ["craft","recipe","brainrot","machine"] },
+  { key: "LIMITED", url: `${PRIMARY_ORIGIN}/limited-quantity-brainrots`, tags: ["limited","stock","quantity","brainrot"] },
+  { key: "THEMED", url: `${PRIMARY_ORIGIN}/themed-brainrots`, tags: ["themed","event","brainrot"] },
+  { key: "AQUATIC", url: `${PRIMARY_ORIGIN}/aquatic-brainrots`, tags: ["aquatic","water","brainrot"] },
+  { key: "DEALER", url: `${PRIMARY_ORIGIN}/trader-brainrots`, tags: ["trader","dealer","merchant","brainrot","restock"] },
 ]);
 
 function loreQueryTerms(question, analysis) {
@@ -5320,9 +5359,15 @@ function loreHubScore(hub, question, analysis) {
   if (rel === REL.CODE && key === "CODES") score += 10;
   if (rel === REL.COLLECTION && key === "COLLECTIONS") score += 12;
   if (rel === REL.LUCKY_BLOCK && ["WIKI","COLLECTIONS","SECRETS"].includes(key)) score += 8;
-  if (rel === REL.ANNOUNCEMENT && ["EVENTS","COMMUNITY","HOME"].includes(key)) score += 8;
+  if (rel === REL.ANNOUNCEMENT && ["EVENTS","COMMUNITY","HOME","BLOGS"].includes(key)) score += 9;
+  if ([REL.LUCKY_BLOCK,REL.DROP_RATE,REL.CONTENTS,REL.COST].includes(rel) && key === "LUCKY_BLOCKS") score += 12;
+  if ([REL.BASE,REL.MECHANIC,REL.FREQUENCY,REL.DROP_RATE].includes(rel) && key === "TIPS") score += 11;
+  if (rel === REL.BASE && ["HOME","TIPS","REBIRTH","SHOP"].includes(key)) score += 8;
+  if (rel === REL.ASSET && ["BRAINROTS","EVENTS","LUCKY_BLOCKS"].includes(key)) score += 8;
+  if (rel === REL.MECHANIC && ["WIKI","MACHINES","RITUALS","TIPS","EVENTS"].includes(key)) score += 7;
+  if (rel === REL.COOLDOWN && ["MACHINES","LUCKY_BLOCKS","EVENTS"].includes(key)) score += 10;
 
-  if (analysis.current && ["EVENTS","MACHINES","CODES","HOME"].includes(key)) score += 4;
+  if (analysis.current && ["EVENTS","MACHINES","CODES","HOME","BRAINROTS"].includes(key)) score += 5;
   if (key === "WIKI") score += 2;
 
   return score;
@@ -5336,7 +5381,7 @@ function selectLoreHubs(question, analysis) {
   const selected = ranked.filter((x) => x.score > 0).slice(0, CFG.MAX_LORE_HUBS);
 
   if (selected.length < 4) {
-    for (const key of ["WIKI","EVENTS","BRAINROTS","MACHINES","RITUALS","MUTATIONS","REBIRTH","COLLECTIONS"]) {
+    for (const key of ["WIKI","EVENTS","BRAINROTS","MACHINES","RITUALS","MUTATIONS","REBIRTH","COLLECTIONS","LUCKY_BLOCKS","TIPS"]) {
       const row = ranked.find((x) => x.key === key);
       if (row && !selected.some((x) => x.key === key)) selected.push(row);
       if (selected.length >= Math.min(CFG.MAX_LORE_HUBS, 6)) break;
@@ -5378,7 +5423,11 @@ function lorePathPreference(path, analysis) {
   if ([REL.MACHINE,REL.SHOP,REL.REPLACED_BY,REL.REPLACED_IN,REL.ACTIVE_RANGE].includes(rel) && /(?:machine|trader|merchant|fuse)/.test(path)) score += 6;
   if ([REL.MUTATION,REL.TRAIT,REL.MULTIPLIER].includes(rel) && /mutation/.test(path)) score += 7;
   if ([REL.REBIRTH,REL.GEAR].includes(rel) && /rebirth|shop/.test(path)) score += 7;
-  if (rel === REL.LUCKY_BLOCK && /lucky/.test(path)) score += 8;
+  if ([REL.LUCKY_BLOCK,REL.DROP_RATE,REL.CONTENTS].includes(rel) && /lucky/.test(path)) score += 9;
+  if (rel === REL.BASE && /tips|rebirth|shop/.test(path)) score += 8;
+  if (rel === REL.ASSET && /brainrots|events|lucky/.test(path)) score += 7;
+  if (rel === REL.COOLDOWN && /machine|trader|merchant|lucky/.test(path)) score += 8;
+  if (rel === REL.MECHANIC && /wiki|machine|ritual|events|tips/.test(path)) score += 6;
 
   if (/calculator|privacy|terms|contact/.test(path)) score -= 10;
   return score;
@@ -5435,6 +5484,9 @@ function buildLoreManifest(hubPages, question, analysis) {
       const direct = [
         `${PRIMARY_ORIGIN}/brainrots/${slug}`,
         `${PRIMARY_ORIGIN}/events/${slug}`,
+        `${PRIMARY_ORIGIN}/lucky-blocks/${slug}`,
+        `${PRIMARY_ORIGIN}/collections/${slug}`,
+        `${PRIMARY_ORIGIN}/machines/${slug}`,
         `${PRIMARY_ORIGIN}/wiki/${slug}`,
       ];
       for (const url of direct) {
@@ -5456,7 +5508,7 @@ function buildLoreManifest(hubPages, question, analysis) {
   return [...byUrl.values()]
     .filter((x) => x.score > 1)
     .sort((a,b) => b.score-a.score)
-    .slice(0, 80);
+    .slice(0, CFG.MAX_LORE_MANIFEST);
 }
 
 async function fetchLoreDetails(manifest, deadline) {
@@ -5484,7 +5536,7 @@ function loreSectionsForPage(page) {
   const out=[];
 
   for (const section of sections) {
-    const body=oneLine(section.text,7000);
+    const body=oneLine(section.text,10000);
     if (!body) continue;
     out.push({
       page,
@@ -5496,7 +5548,7 @@ function loreSectionsForPage(page) {
   if (!out.length) {
     const lines=page.lines || [];
     for (let i=0;i<lines.length;i+=8) {
-      const body=oneLine(lines.slice(i,i+12).join(" "),5000);
+      const body=oneLine(lines.slice(i,i+14).join(" "),7000);
       if (body) out.push({page,heading:page.title,text:body});
     }
   }
@@ -5544,7 +5596,7 @@ function rankLoreChunks(pages, question, analysis) {
       title:x.page.title,
       url:x.page.url,
       heading:x.heading,
-      text:oneLine(x.text,4800),
+      text:oneLine(x.text,7000),
       score:Number(x.score.toFixed(3)),
     }));
 }
@@ -5554,6 +5606,61 @@ function contextAroundNeedle(text, needle, radius=900) {
   const idx=raw.toLowerCase().indexOf(String(needle||"").toLowerCase());
   if (idx<0) return "";
   return oneLine(raw.slice(Math.max(0,idx-radius),Math.min(raw.length,idx+String(needle).length+radius)),radius*2+300);
+}
+
+function chunkEntityDistance(chunk, entity, factIndex=0) {
+  const target=oneLine(entity,180);
+  if (!target) return 0;
+
+  const title=oneLine(chunk?.title,300);
+  const heading=oneLine(chunk?.heading,300);
+  if (similarity(target,title)>=0.92 || similarity(target,heading)>=0.92) return 0;
+
+  const raw=String(chunk?.text||"");
+  const lower=raw.toLowerCase();
+  const needle=target.toLowerCase();
+  let best=Infinity;
+  let at=lower.indexOf(needle);
+  while (at>=0) {
+    best=Math.min(best,Math.abs(Number(factIndex||0)-at));
+    at=lower.indexOf(needle,at+Math.max(1,needle.length));
+  }
+  return best;
+}
+
+function bestBoundLoreMatch(chunks, analysis, regexes, formatter, maxDistance=700) {
+  const rows=[];
+  const entity=oneLine(analysis?.entity,180);
+  for (const chunk of chunks || []) {
+    const raw=String(chunk?.text||"");
+    for (const sourceRe of regexes || []) {
+      const flags=sourceRe.flags.includes("g") ? sourceRe.flags : `${sourceRe.flags}g`;
+      const re=new RegExp(sourceRe.source,flags);
+      let m;
+      while ((m=re.exec(raw))!==null) {
+        const distance=chunkEntityDistance(chunk,entity,m.index);
+        if (entity && !Number.isFinite(distance)) continue;
+        if (entity && distance>maxDistance) continue;
+        const answer=formatter(m,chunk);
+        if (!answer) continue;
+        rows.push({answer,chunk,distance,score:Number(chunk?.score||0),index:m.index});
+        if (m[0].length===0) re.lastIndex++;
+      }
+    }
+  }
+  rows.sort((a,b)=>a.distance-b.distance || b.score-a.score || a.index-b.index);
+  return rows[0] || null;
+}
+
+function extractEventWindow(text) {
+  const raw=oneLine(text,9000);
+  const months="January|February|March|April|May|June|July|August|September|October|November|December";
+  const dateTime=`(?:${months})\\s+\\d{1,2},?\\s+20\\d{2}(?:\\s+at)?(?:\\s+\\d{1,2}(?::\\d{2})?\\s*(?:AM|PM)(?:\\s+(?:ET|EST|EDT|UTC))?)?`;
+  const re=new RegExp(`(?:event\\s+window[^.]{0,80}?|window[^.]{0,80}?|ran[^.]{0,40}?)?from\\s+(${dateTime})\\s+to\\s+(${dateTime})`,`i`);
+  const m=raw.match(re);
+  if (!m) return null;
+  const clean=(v)=>oneLine(v,160).replace(/\s+at\s+/i," ");
+  return `${clean(m[1])} to ${clean(m[2])}`;
 }
 
 
@@ -5641,15 +5748,146 @@ function deterministicLoreAnswer(question, analysis, chunks) {
     }
   }
 
+
+  if (analysis.relation===REL.DATE) {
+    const found=bestBoundLoreMatch(
+      chunks,analysis,
+      [/(?:Added to Game|game-added date of|launched on|released(?: in [^.]{0,60})? on)\s+((?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},?\s+20\d{2})/i],
+      (m)=>oneLine(m[1],80),
+      520
+    );
+    if (found) return {...found,reason:"LORE_DATE"};
+  }
+
+  if (analysis.relation===REL.DROP_RATE) {
+    const found=bestBoundLoreMatch(
+      chunks,analysis,
+      [/(\d+(?:\.\d+)?%)\s+(?:listed\s+)?drop chance/i,/(?:drop chance|chance)[:\s]+(\d+(?:\.\d+)?%)/i],
+      (m)=>m[1],
+      360
+    );
+    if (found) return {...found,reason:"LORE_DROP_RATE"};
+  }
+
+  if (analysis.relation===REL.COST) {
+    const cashQuestion=/\bcash\b/i.test(q) || /^rebirth\s*\d+$/i.test(oneLine(analysis.entity,80));
+    const regexes=[/(?:Base Cost|Cost|Price)[:\s]+\$?([0-9]+(?:\.[0-9]+)?\s*(?:Qa|Qi|Sx|Sp|Oc|No|Dc|K|M|B|T|Q)?)/i];
+    if (cashQuestion) regexes.unshift(/\bCash[:\s]+\$?([0-9]+(?:\.[0-9]+)?\s*(?:Qa|Qi|Sx|Sp|Oc|No|Dc|K|M|B|T|Q)?)/i);
+    const found=bestBoundLoreMatch(
+      chunks,analysis,regexes,
+      (m)=>`$${oneLine(m[1],60).replace(/\s+/g,"")}`,
+      420
+    );
+    if (found) return {...found,reason:"LORE_COST"};
+  }
+
+  if (analysis.relation===REL.INCOME) {
+    const found=bestBoundLoreMatch(
+      chunks,analysis,
+      [/(?:Base Income\/sec|Income per Second|Income\/sec)[:\s]*\$?([0-9]+(?:\.[0-9]+)?\s*(?:Qa|Qi|Sx|Sp|Oc|No|Dc|K|M|B|T|Q)?)(?:\/sec)?/i],
+      (m)=>`$${oneLine(m[1],60).replace(/\s+/g,"")}/sec`,
+      420
+    );
+    if (found) return {...found,reason:"LORE_INCOME"};
+  }
+
+  if (analysis.relation===REL.RARITY) {
+    const found=bestBoundLoreMatch(
+      chunks,analysis,
+      [/Rarity[:\s]+(Common|Rare|Epic|Legendary|Mythic|Brainrot God|Secret|OG)\b/i],
+      (m)=>oneLine(m[1],60),
+      420
+    );
+    if (found) return {...found,reason:"LORE_RARITY"};
+  }
+
+  if (analysis.relation===REL.FREQUENCY || analysis.relation===REL.COOLDOWN) {
+    const interval=bestBoundLoreMatch(
+      chunks,analysis,
+      [/\b(?:(approximately|roughly|about|around)\s+)?(?:every|returns? every|activates? every|refresh(?:es)? every|restock(?:s)? every)\s+(one|two|three|four|five|six|eight|ten|twelve|fifteen|thirty|\d+(?:\.\d+)?)\s*(seconds?|minutes?|hours?|days?)\b/i],
+      (m)=>{
+        const map={one:"1",two:"2",three:"3",four:"4",five:"5",six:"6",eight:"8",ten:"10",twelve:"12",fifteen:"15",thirty:"30"};
+        const n=map[String(m[2]).toLowerCase()]||m[2];
+        const prefix=m[1] ? `${m[1][0].toUpperCase()}${m[1].slice(1).toLowerCase()} every` : "Every";
+        return `${prefix} ${n} ${String(m[3]).toLowerCase()}`;
+      },
+      360
+    );
+    const cycle=bestBoundLoreMatch(
+      chunks,analysis,
+      [/(\d+(?:\.\d+)?)[- ](second|minute|hour|day)\s+(?:refresh|restock|cooldown|cycle|offers?)/i],
+      (m)=>`${m[1]} ${m[2]}${Number(m[1])===1?"":"s"}`,
+      360
+    );
+    const chosen=[interval,cycle].filter(Boolean).sort((a,b)=>a.distance-b.distance || b.score-a.score)[0];
+    if (chosen) return {...chosen,reason:chosen===cycle?"LORE_COOLDOWN":"LORE_INTERVAL"};
+    for (const chunk of chunks) {
+      const dist=chunkEntityDistance(chunk,analysis.entity,0);
+      if (analysis.entity && (!Number.isFinite(dist) || dist>360)) continue;
+      if (/\bhourly\b/i.test(chunk.text)) return {answer:"Hourly",chunk,reason:"LORE_INTERVAL"};
+    }
+  }
+
+  if (analysis.relation===REL.DURATION) {
+    for (const chunk of chunks) {
+      const dist=chunkEntityDistance(chunk,analysis.entity,0);
+      if (analysis.entity && (!Number.isFinite(dist) || dist>520)) continue;
+      const window=extractEventWindow(chunk.text);
+      if (window) return {answer:window,chunk,reason:"LORE_EVENT_WINDOW"};
+    }
+    const found=bestBoundLoreMatch(
+      chunks,analysis,
+      [/(?:lasts?|window lasts?|for)\s+(\d+(?:\.\d+)?)\s*(seconds?|minutes?|hours?|days?)\b/i],
+      (m)=>`${m[1]} ${String(m[2]).toLowerCase()}`,
+      520
+    );
+    if (found) return {...found,reason:"LORE_DURATION"};
+  }
+
+  if (analysis.relation===REL.TIME) {
+    const found=bestBoundLoreMatch(
+      chunks,analysis,
+      [/(?:activates?|starts?|begins?|opens?)\s+at\s+(\d{1,2}(?::\d{2})?\s*(?:AM|PM)(?:\s+(?:ET|EST|EDT|UTC))?)/i],
+      (m)=>oneLine(m[1],80),
+      500
+    );
+    if (found) return {...found,reason:"LORE_TIME"};
+  }
+
+  if (analysis.relation===REL.STATUS) {
+    const found=bestBoundLoreMatch(
+      chunks,analysis,
+      [/\b(Offline|Online|Active|Released|Unobtainable|Obtainable|Removed)\b/i],
+      (m)=>m[1][0].toUpperCase()+m[1].slice(1).toLowerCase(),
+      380
+    );
+    if (found) return {...found,reason:"LORE_STATUS"};
+  }
+
+  if (analysis.relation===REL.BASE) {
+    // Answer the specific floor question before looking at generic base-lock text.
+    if (/second floor/i.test(q)) {
+      for (const chunk of chunks) if (/2nd Rebirth|Rebirth 2/i.test(chunk.text)) return {answer:"Rebirth 2",chunk,reason:"LORE_BASE_FLOOR"};
+    }
+    if (/third floor/i.test(q)) {
+      for (const chunk of chunks) if (/10th Rebirth|Rebirth 10/i.test(chunk.text)) return {answer:"Rebirth 10",chunk,reason:"LORE_BASE_FLOOR"};
+    }
+    for (const chunk of chunks) {
+      let m=chunk.text.match(/base is locked for\s+(\d+)\s+seconds?/i);
+      if (m && /\b(?:lock|locked|lock time)\b/i.test(q)) return {answer:`${m[1]} seconds`,chunk,reason:"LORE_BASE_LOCK"};
+      m=chunk.text.match(/(?:holds up to|first floor[^.]{0,80})(\d+)\s+brainrots?/i);
+      if (m && /(?:slot|hold|brainrot)/i.test(q)) return {answer:m[1],chunk,reason:"LORE_BASE_SLOTS"};
+    }
+  }
   return null;
 }
 
 function loreAnswerSafe(answer, analysis) {
-  const value=oneLine(answer,600);
+  const value=oneLine(answer,900);
   if (!value || norm(value)==="unknown") return false;
   if (answerLooksLikeMetadata(value)) return false;
   if (/^(?:request|trace|cache|source)[ _-]?id/i.test(value)) return false;
-  if (value.length>500) return false;
+  if (value.length>800) return false;
 
   if ([REL.BRAINROT,REL.MUTATION,REL.TRAIT,REL.MACHINE,REL.GEAR,REL.RITUAL,REL.EVENT,REL.SHOP].includes(analysis.relation)) {
     if (genericRolePhrase(value)) return false;
@@ -5659,20 +5897,30 @@ function loreAnswerSafe(answer, analysis) {
   return true;
 }
 
-function evidenceQuoteExists(quote,chunks) {
-  const q=oneLine(quote,600);
-  if (!q) return true;
-  return chunks.some((chunk)=>norm(chunk.text).includes(norm(q)));
+function chunkSupportsRequestedEntity(chunk,analysis) {
+  const entity=oneLine(analysis?.entity,180);
+  if (!entity) return true;
+  if (similarity(entity,oneLine(chunk?.title,300))>=0.92) return true;
+  if (similarity(entity,oneLine(chunk?.heading,300))>=0.92) return true;
+  return norm(chunk?.text).includes(norm(entity));
 }
 
-function answerExistsInLore(answer,chunks) {
+function evidenceQuoteExists(quote,chunks,analysis=null) {
+  const q=oneLine(quote,600);
+  if (!q) return true;
+  return chunks.some((chunk)=>chunkSupportsRequestedEntity(chunk,analysis) && norm(chunk.text).includes(norm(q)));
+}
+
+function answerExistsInLore(answer,chunks,analysis=null) {
   const value=oneLine(answer,600);
   if (!value) return false;
-  if (chunks.some((chunk)=>evidenceSupports(value,chunk.text))) return true;
+  const eligible=(chunks||[]).filter((chunk)=>chunkSupportsRequestedEntity(chunk,analysis));
+  if (eligible.some((chunk)=>evidenceSupports(value,chunk.text))) return true;
 
-  // Combined/list answers can be supported piece-by-piece.
+  // Combined/list answers can be supported piece-by-piece, but every piece must
+  // come from evidence tied to the requested subject/entity when one is locked.
   const pieces=value.split(/[,;]+/).map((x)=>oneLine(x,180)).filter(Boolean);
-  if (pieces.length>1 && pieces.every((piece)=>chunks.some((chunk)=>evidenceSupports(piece,chunk.text)))) return true;
+  if (pieces.length>1 && pieces.every((piece)=>eligible.some((chunk)=>evidenceSupports(piece,chunk.text)))) return true;
 
   return false;
 }
@@ -5703,8 +5951,9 @@ async function aiUniversalLoreExtract(question,analysis,chunks,deadline) {
               content:[
                 "Answer a Steal a Brainrot lore question using ONLY supplied steal-a-brainrot.org evidence chunks.",
                 "The evidence may cover brainrots, rituals, machines, updates, events, announcements, dates, codes, rebirth gear, shops, lucky blocks, traits, mutations, collections, and historical lore.",
-                "Do not use memory or outside knowledge.",
-                "Prefer the most direct exact answer. Preserve names, spaces, punctuation, dates, percentages, and code formatting.",
+                "Do not use memory, private game code, guesses, reverse engineering, or undocumented exploit claims.",
+                "Never manufacture precision. If evidence only says frequent, every few minutes, lower chance, unknown, or approximate, preserve that wording; do not convert it to exact seconds or milliseconds.",
+                "Prefer the most direct exact answer. Preserve names, spaces, punctuation, dates, percentages, money suffixes, and code formatting.",
                 "If the question asks for a list, return a concise comma-separated list.",
                 "If the requested fact is not explicitly supported, return UNKNOWN.",
                 `Requested relation: ${analysis.relation}.`,
@@ -5731,10 +5980,10 @@ async function aiUniversalLoreExtract(question,analysis,chunks,deadline) {
     const raw=parseLooseAiExtraction(data?.choices?.[0]?.message?.content);
     const answer=oneLine(raw?.answer,600);
     if (!loreAnswerSafe(answer,analysis)) return {result:null,error:"LORE_AI_UNSAFE_ANSWER"};
-    if (!evidenceQuoteExists(raw?.evidence,chunks)) return {result:null,error:"LORE_AI_EVIDENCE_QUOTE_NOT_FOUND"};
-    if (!answerExistsInLore(answer,chunks)) return {result:null,error:"LORE_AI_ANSWER_NOT_IN_EVIDENCE"};
+    if (!evidenceQuoteExists(raw?.evidence,chunks,analysis)) return {result:null,error:"LORE_AI_EVIDENCE_QUOTE_NOT_FOUND"};
+    if (!answerExistsInLore(answer,chunks,analysis)) return {result:null,error:"LORE_AI_ANSWER_NOT_IN_EVIDENCE"};
 
-    const supporting=chunks.find((c)=>evidenceSupports(answer,c.text)) || chunks[0];
+    const supporting=chunks.find((c)=>chunkSupportsRequestedEntity(c,analysis) && evidenceSupports(answer,c.text)) || chunks.find((c)=>chunkSupportsRequestedEntity(c,analysis)) || chunks[0];
     return {
       result:makeResult(answer,analysis.relation,SOURCE.PRIMARY,{title:supporting.title,url:supporting.url},"PRIMARY_SPLUS_TOTAL_LORE_AI",SOURCE.PRIMARY.confidence),
       error:null,
@@ -7953,6 +8202,56 @@ function runSelfTests() {
   );
 
   check("R36 blocks metadata lore answer", loreAnswerSafe("ec804a6bfa90408597072080ef2b0063", {relation:REL.LORE}) === false);
+
+  const r37StatsChunk=[{id:1,title:"67",url:`${PRIMARY_ORIGIN}/brainrots/67`,heading:"Stats",text:"Rarity: Secret Base Cost $1.3B Base Income/sec: $7.5M Added to Game September 14, 2025 Current Availability Admin Lucky Block (1.5% listed drop chance)",score:20}];
+  check("R37 cost deterministic",deterministicLoreAnswer("What does 67 cost?",{...analyzeQuestion("What does 67 cost?"),entity:"67",relation:REL.COST},r37StatsChunk)?.answer==="$1.3B");
+  check("R37 income deterministic",deterministicLoreAnswer("How much does 67 earn per second?",{...analyzeQuestion("How much does 67 earn per second?"),entity:"67",relation:REL.INCOME},r37StatsChunk)?.answer==="$7.5M/sec");
+  check("R37 rarity deterministic",deterministicLoreAnswer("What rarity is 67?",{...analyzeQuestion("What rarity is 67?"),entity:"67",relation:REL.RARITY},r37StatsChunk)?.answer==="Secret");
+  check("R37 date deterministic",deterministicLoreAnswer("When was 67 added?",{...analyzeQuestion("When was 67 added?"),entity:"67",relation:REL.DATE},r37StatsChunk)?.answer==="September 14, 2025");
+  check("R37 drop deterministic",deterministicLoreAnswer("What is 67's Admin Lucky Block drop chance?",{...analyzeQuestion("What is 67's Admin Lucky Block drop chance?"),entity:"67",relation:REL.DROP_RATE},r37StatsChunk)?.answer==="1.5%");
+  const r37MachineChunk=[{id:1,title:"Machines",url:`${PRIMARY_ORIGIN}/machines`,heading:"Los Traders",text:"Los Traders Offline Jul 11, 2026 Removed Brainrot Trader variant that ran from Update 57 through Update 60 with rotating 30-minute offers. Update 61 replaced it with the RNG Machine.",score:20}];
+  check("R37 cooldown deterministic",deterministicLoreAnswer("What was Los Traders refresh cycle?",{...analyzeQuestion("What was Los Traders refresh cycle?"),entity:"Los Traders",relation:REL.COOLDOWN},r37MachineChunk)?.answer==="30 minutes");
+  const r37BaseChunk=[{id:1,title:"Home",url:PRIMARY_ORIGIN,heading:"Getting Started",text:"Start with $100 cash and choose one of the 8 bases on the map. Your base is locked for 30 seconds when you join, protecting you while you get started! Your base holds up to 10 brainrots on the first floor. 2nd Rebirth unlocks second floor. 10th Rebirth unlocks third floor.",score:20}];
+  check("R37 base lock deterministic",deterministicLoreAnswer("How long is the base lock when you join?",{...analyzeQuestion("How long is the base lock when you join?"),relation:REL.BASE},r37BaseChunk)?.answer==="30 seconds");
+  check("R37 asset relation",inferRelation("What does Arcadragon look like?")===REL.ASSET);
+  check("R37 base relation",inferRelation("How long is the base lock?")===REL.BASE);
+  check("R37 cooldown relation",inferRelation("What is Los Traders refresh cycle?")===REL.COOLDOWN);
+  check("R37 garbage safety",loreAnswerSafe("ec804a6bfa90408597072080ef2b0063",{relation:REL.LORE})===false);
+
+  const r38BaseChunk=[{id:1,title:"Tips",url:`${PRIMARY_ORIGIN}/wiki/tips`,heading:"Your Base",text:"Your base is locked for 30 seconds when you join. The second floor is unlocked at the 2nd Rebirth. The third floor is unlocked at the 10th Rebirth.",score:20}];
+  check("R38 second floor not lock substring",deterministicLoreAnswer("What rebirth unlocks the second floor?",{...analyzeQuestion("What rebirth unlocks the second floor?"),relation:REL.BASE},r38BaseChunk)?.answer==="Rebirth 2");
+  check("R38 third floor not lock substring",deterministicLoreAnswer("What rebirth unlocks the third floor?",{...analyzeQuestion("What rebirth unlocks the third floor?"),relation:REL.BASE},r38BaseChunk)?.answer==="Rebirth 10");
+  const r38CostChunks=[
+    {id:1,title:"All Secrets",url:`${PRIMARY_ORIGIN}/secrets`,heading:"Guerriro Digitale",text:"Guerriro Digitale Cost: $120.0M. Guerriro Digitale drops from Admin Lucky Block.",score:30},
+    {id:2,title:"Admin Lucky Block",url:`${PRIMARY_ORIGIN}/lucky-blocks/admin-lucky-block`,heading:"Admin Lucky Block",text:"Price: $100M. Guerriro Digitale 3% drop chance. 67 1.5% drop chance.",score:25},
+  ];
+  check("R38 cost entity binding",deterministicLoreAnswer("What is the Admin Lucky Block price?",{...analyzeQuestion("What is the Admin Lucky Block price?"),entity:"Admin Lucky Block",relation:REL.COST},r38CostChunks)?.answer==="$100M");
+  check("R38 67 drop entity binding",deterministicLoreAnswer("What is the Admin Lucky Block drop chance for 67?",{...analyzeQuestion("What is the Admin Lucky Block drop chance for 67?"),entity:"67",relation:REL.DROP_RATE},r38CostChunks)?.answer==="1.5%");
+  const r38CooldownChunks=[
+    {id:1,title:"RNG MACHINE + QUEEN BEE",url:`${PRIMARY_ORIGIN}/events/x`,heading:"Event",text:"Queen Bee activates every two hours. Update 61 replaced Los Traders.",score:30},
+    {id:2,title:"All Machines",url:`${PRIMARY_ORIGIN}/machines`,heading:"Los Traders",text:"Removed trader with rotating 30-minute offers. Update 61 replaced it.",score:20},
+  ];
+  check("R38 cooldown entity binding",deterministicLoreAnswer("What was Los Traders refresh cycle?",{...analyzeQuestion("What was Los Traders refresh cycle?"),entity:"Los Traders",relation:REL.COOLDOWN},r38CooldownChunks)?.answer==="30 minutes");
+  const r38RebirthCost=[{id:1,title:"Rebirth System Guide",url:`${PRIMARY_ORIGIN}/wiki/rebirth`,heading:"REBIRTH 19",text:"Requirements Cash: $300Qa Characters: La Grande Combinasion New Items Grief Shield",score:20}];
+  check("R38 rebirth cash binding",deterministicLoreAnswer("How much cash does Rebirth 19 require?",{...analyzeQuestion("How much cash does Rebirth 19 require?"),entity:"Rebirth 19",relation:REL.COST},r38RebirthCost)?.answer==="$300Qa");
+  const r38Window=[{id:1,title:"Update 61",url:`${PRIMARY_ORIGIN}/events/x`,heading:"Event Window",text:"The event window ran from August 8, 2026 at 3:15 PM ET to August 11, 2026 at 12:00 PM ET.",score:20}];
+  check("R38 event window deterministic",deterministicLoreAnswer("What was the Update 61 event window?",{...analyzeQuestion("What was the Update 61 event window?"),relation:REL.DURATION},r38Window)?.answer==="August 8, 2026 3:15 PM ET to August 11, 2026 12:00 PM ET");
+  const r38Time=[{id:1,title:"1x1x1x1 Ritual",url:`${PRIMARY_ORIGIN}/rituals/1x1x1x1-ritual`,heading:"Schedule",text:"The ritual activates at 3 AM EST every night for 5 minutes.",score:20}];
+  check("R38 exact ritual time",deterministicLoreAnswer("What time does the 1x1x1x1 ritual activate?",{...analyzeQuestion("What time does the 1x1x1x1 ritual activate?"),entity:"1x1x1x1",relation:REL.TIME},r38Time)?.answer==="3 AM EST");
+  const r38Approx=[{id:1,title:"Tips",url:`${PRIMARY_ORIGIN}/wiki/tips`,heading:"Spawn Frequency",text:"Legendary brainrots appear approximately every 5 minutes; exact milliseconds are not documented.",score:20}];
+  check("R38 does not invent spawn precision",deterministicLoreAnswer("What is the Legendary spawn rate in milliseconds?",{...analyzeQuestion("What is the Legendary spawn rate in milliseconds?"),entity:null,relation:REL.FREQUENCY},r38Approx)?.answer==="Approximately every 5 minutes");
+  check("R38 image source evidence",htmlToText('<img src="/images/a.png" alt="Arcadragon">',500).includes("Source: /images/a.png"));
+  check("R39 event window overrides AI update",enforceQuestionSemantics("What was the Update 61 event window?",{...analyzeQuestion("What was the Update 61 event window?"),relation:REL.UPDATE,wanted:REL.UPDATE}).relation===REL.DURATION);
+  const r39DurChunks=[
+    {id:1,title:"RNG Event",url:`${PRIMARY_ORIGIN}/events/x`,heading:"Window",text:"The event window ran from August 8, 2026 at 3:15 PM ET to August 11, 2026 at 12:00 PM ET.",score:30},
+    {id:2,title:"1x1x1x1 Ritual",url:`${PRIMARY_ORIGIN}/rituals/1x1x1x1-ritual`,heading:"1x1x1x1 Ritual",text:"The ritual activates at 3 AM EST every night for 5 minutes.",score:20},
+  ];
+  check("R39 duration entity isolation",deterministicLoreAnswer("How long is the 1x1x1x1 ritual active each night?",{...analyzeQuestion("How long is the 1x1x1x1 ritual active each night?"),entity:"1x1x1x1",relation:REL.DURATION},r39DurChunks)?.answer==="5 minutes");
+  check("R39 Qa normalization",normalizeAnswer("$300Qa",REL.COST)==="$300Qa");
+  const r40WrongEntity=[{id:1,title:"Admin Lucky Block",url:`${PRIMARY_ORIGIN}/lucky-blocks/admin-lucky-block`,heading:"Drops",text:"Guerriro Digitale 3% drop chance. La Grande Combinasion 0.5% drop chance.",score:20}];
+  check("R40 AI answer requires requested entity evidence",answerExistsInLore("3%",r40WrongEntity,{entity:"67",relation:REL.DROP_RATE})===false);
+  check("R40 AI evidence quote requires requested entity evidence",evidenceQuoteExists("Guerriro Digitale 3% drop chance.",r40WrongEntity,{entity:"67",relation:REL.DROP_RATE})===false);
+
   // Priority behavior: once S+ has a direct value, lower tier disagreement does not participate.
   const primary = makeResult("10x", REL.MULTIPLIER, SOURCE.PRIMARY, mutationPage, "PRIMARY_MUTATION_SECTION", 0.995);
   const fandom = makeResult("9x", REL.MULTIPLIER, SOURCE.FANDOM, { title: "Mutations", url: "fandom" }, "FANDOM_DIRECT", 0.93);
@@ -8198,6 +8497,18 @@ export async function GET(request) {
       factSlotSemanticBinding: true,
       canonicalPrimaryFastPath: true,
       totalLoreLibrary: true,
+      masterCorpusR37: true,
+        entityBoundNumericFactsR38: true,
+        dateWindowExtractionR38: true,
+        approximatePrecisionPreservedR38: true,
+        eventWindowSemanticsR39: true,
+        extendedMoneySuffixesR39: true,
+        durationEntityIsolationR39: true,
+        aiSubjectEvidenceLockR40: true,
+      expandedPublicHubCorpus: true,
+      imageAltEvidence: true,
+      noPrecisionFabrication: true,
+      publicSourceOnly: true,
       dynamicPrimaryHubCorpus: true,
       internalLinkManifest: true,
       longTailLoreDetailFetch: true,
