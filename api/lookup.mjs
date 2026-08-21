@@ -1,4 +1,4 @@
-const BUILD_ID = "SAB_SINGLE_SLOT_REVERSE_ENGINE_R35_2026_08_21";
+const BUILD_ID = "SAB_TOTAL_LORE_LIBRARY_R36_2026_08_21";
 
 const PRIMARY_ORIGIN = "https://steal-a-brainrot.org";
 const FANDOM_API = "https://stealabrainrot.fandom.com/api.php";
@@ -21,6 +21,10 @@ const CFG = Object.freeze({
   MAX_BACKUP_PAGES: 5,
   MAX_SEARCH_RESULTS: 6,
   MAX_AI_EVIDENCE: 8,
+  MAX_LORE_HUBS: Number(process.env.MAX_LORE_HUBS || 8),
+  MAX_LORE_DETAIL_PAGES: Number(process.env.MAX_LORE_DETAIL_PAGES || 4),
+  MAX_LORE_CHUNKS: Number(process.env.MAX_LORE_CHUNKS || 12),
+  LORE_HUB_TIMEOUT_MS: Number(process.env.LORE_HUB_TIMEOUT_MS || 1050),
 
   PAGE_CACHE_TTL_MS: 5 * 60 * 1000,
   SEARCH_CACHE_TTL_MS: 3 * 60 * 1000,
@@ -59,6 +63,17 @@ const REL = Object.freeze({
   ACTIVE_RANGE: "ACTIVE_RANGE",
   REPLACED_BY: "REPLACED_BY",
   REPLACED_IN: "REPLACED_IN",
+  CODE: "CODE",
+  STOCK: "STOCK",
+  PLAYERS: "PLAYERS",
+  DURATION: "DURATION",
+  TIME: "TIME",
+  LOCATION: "LOCATION",
+  SHOP: "SHOP",
+  LUCKY_BLOCK: "LUCKY_BLOCK",
+  BASE_SKIN: "BASE_SKIN",
+  ANNOUNCEMENT: "ANNOUNCEMENT",
+  LORE: "LORE",
 });
 
 const SOURCE = Object.freeze({
@@ -363,6 +378,17 @@ function extractLifecycleHints(question) {
 function inferRelation(question) {
   const q = oneLine(question, 700).toLowerCase();
 
+  if (/\b(?:redeem code|event code|what code|which code|code was|code did|codes?)\b/.test(q)) return REL.CODE;
+  if (/\b(?:stock|stock limit|quantity|how many copies|limited quantity)\b/.test(q)) return REL.STOCK;
+  if (/\b(?:how many players|players required|player requirement)\b/.test(q)) return REL.PLAYERS;
+  if (/\b(?:how long|duration|lasted|event window|window lasted)\b/.test(q)) return REL.DURATION;
+  if (/\b(?:what time|start time|starts at|started at|when does .* start)\b/.test(q)) return REL.TIME;
+  if (/\b(?:where|location|located|where is|where was)\b/.test(q)) return REL.LOCATION;
+  if (/\b(?:shop|merchant|sold|selling|buy from|purchase from)\b/.test(q)) return REL.SHOP;
+  if (/\b(?:lucky block|lucky blocks)\b/.test(q)) return REL.LUCKY_BLOCK;
+  if (/\b(?:base skin|skin reward|base theme)\b/.test(q)) return REL.BASE_SKIN;
+  if (/\b(?:announcement|announced|teased|previewed|revealed|developer said|dev said)\b/.test(q)) return REL.ANNOUNCEMENT;
+
   if (/\b(?:how often|how frequently|what interval|what cadence|frequency|recurr?ence|every how many)\b/.test(q)) return REL.FREQUENCY;
   if (/\bwhat\s+(?:replaced|replaces)\b|\breplaced by what\b/.test(q)) return REL.REPLACED_BY;
   if (/\b(?:which|what)\s+update\b[^?]{0,80}\breplaced\b|\breplaced in which update\b/.test(q)) return REL.REPLACED_IN;
@@ -470,7 +496,7 @@ function analyzeQuestion(question) {
     intent: inferIntent(q, relation, update, date),
     rawQuestion: q,
     wantedRelations: detectWantedRelations(q, relation),
-    source: "DETERMINISTIC_R35",
+    source: "DETERMINISTIC_R36",
   };
 }
 
@@ -610,7 +636,7 @@ async function fetchPage(url, source, deadline) {
   const html = await fetchText(source.key, url, {
     headers: {
       Accept: "text/html,application/xhtml+xml",
-      "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R35",
+      "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R36",
     },
   }, timeout);
   const page = {
@@ -944,7 +970,7 @@ function withBridgedUpdate(analysis, update) {
     source:
       analysis.source === "NVIDIA_QUESTION_ROUTER"
         ? "NVIDIA_QUESTION_ROUTER+DATE_BRIDGE"
-        : "DETERMINISTIC_R35+DATE_BRIDGE",
+        : "DETERMINISTIC_R36+DATE_BRIDGE",
   };
 }
 
@@ -1988,7 +2014,7 @@ async function fandomSearchTitles(query, deadline) {
     format: "json",
   });
   try {
-    const data = await fetchJson("FANDOM_SEARCH", `${FANDOM_API}?${params.toString()}`, { headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R35" } }, Math.min(CFG.FANDOM_TIMEOUT_MS, left - 20));
+    const data = await fetchJson("FANDOM_SEARCH", `${FANDOM_API}?${params.toString()}`, { headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R36" } }, Math.min(CFG.FANDOM_TIMEOUT_MS, left - 20));
     return (Array.isArray(data?.query?.search) ? data.query.search : []).map((x) => oneLine(x?.title, 300)).filter(Boolean);
   } catch {
     return [];
@@ -2001,7 +2027,7 @@ async function fetchFandomPage(title, deadline) {
   if (cached) return { ...cached, cache: "HIT" };
   const left = timeLeft(deadline);
   if (left < 250) throw new Error("FANDOM_BUDGET_EXHAUSTED");
-  const data = await fetchJson("FANDOM_PARSE", fandomParseUrl(title), { headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R35" } }, Math.min(CFG.FANDOM_TIMEOUT_MS, left - 20));
+  const data = await fetchJson("FANDOM_PARSE", fandomParseUrl(title), { headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 ChromeCodeSniper-R36" } }, Math.min(CFG.FANDOM_TIMEOUT_MS, left - 20));
   if (data?.error) throw new Error(`FANDOM_PARSE_${data.error.code || "ERROR"}`);
   const p = data?.parse || {};
   const html = typeof p.text === "string" ? p.text : String(p.text?.["*"] || "");
@@ -2122,7 +2148,9 @@ function mergeAnalysis(ai, fallback) {
     ? String(ai.relation).toUpperCase()
     : fallback.relation;
 
-  const entity = oneLine(ai.entity, 180) || fallback.entity || null;
+  const aiHasEntity = Object.prototype.hasOwnProperty.call(ai, "entity");
+  const aiEntity = oneLine(ai.entity, 180);
+  const entity = aiHasEntity ? (aiEntity || null) : (fallback.entity || null);
   const aliases = Array.isArray(ai.aliases)
     ? ai.aliases.map((x) => oneLine(x, 180)).filter(Boolean).slice(0, 8)
     : [];
@@ -2479,7 +2507,9 @@ function searchCluesFromQuestion(question) {
 }
 
 function normalizedClue(value) {
-  return oneLine(value, 200)
+  // R36: this is used against whole evidence chunks/pages, not just clue labels.
+  // 200 chars silently cut off valid facts (codes, ritual outcomes, etc.).
+  return oneLine(value, 12000)
     .toLowerCase()
     .replace(/\s+/g, "")
     .replace(/,/g, "");
@@ -3107,6 +3137,17 @@ function relationSearchWord(relation) {
     case REL.ACTIVE_RANGE: return "active from through update available range";
     case REL.REPLACED_BY: return "replaced by replacement";
     case REL.REPLACED_IN: return "replaced in update";
+    case REL.CODE: return "code redeem code event code";
+    case REL.STOCK: return "stock limit quantity copies";
+    case REL.PLAYERS: return "players required player requirement";
+    case REL.DURATION: return "duration event window lasts";
+    case REL.TIME: return "time start time begins";
+    case REL.LOCATION: return "location where located";
+    case REL.SHOP: return "shop merchant buy purchase sold";
+    case REL.LUCKY_BLOCK: return "lucky block drop chance";
+    case REL.BASE_SKIN: return "base skin reward";
+    case REL.ANNOUNCEMENT: return "announcement announced teased preview revealed";
+    case REL.LORE: return "lore history details";
     default: return "";
   }
 }
@@ -3193,6 +3234,17 @@ function relationEvidenceScore(text, relation) {
     [REL.ACTIVE_RANGE]: /\b(?:active|available|from|through|until|update)\b/,
     [REL.REPLACED_BY]: /\b(?:replaced by|replacement|replaced)\b/,
     [REL.REPLACED_IN]: /\b(?:replaced in|update)\b/,
+    [REL.CODE]: /\b(?:code|redeem|sold out|temporary|cooldown|luck level)\b/,
+    [REL.STOCK]: /\b(?:stock|quantity|copies|limited)\b/,
+    [REL.PLAYERS]: /\b(?:players?|required)\b/,
+    [REL.DURATION]: /\b(?:duration|window|hours?|minutes?|days?|from|to)\b/,
+    [REL.TIME]: /\b(?:time|am|pm|et|est|starts?|begins?)\b/,
+    [REL.LOCATION]: /\b(?:location|near|beside|behind|at|in the)\b/,
+    [REL.SHOP]: /\b(?:shop|merchant|sold|buy|purchase|robux|cash)\b/,
+    [REL.LUCKY_BLOCK]: /\b(?:lucky block|drop|chance)\b/,
+    [REL.BASE_SKIN]: /\b(?:base skin|skin)\b/,
+    [REL.ANNOUNCEMENT]: /\b(?:announc|teas|preview|reveal|developer)\b/,
+    [REL.LORE]: /./,
   };
 
   return checks[relation]?.test(t) ? 1 : 0;
@@ -5203,6 +5255,551 @@ function primarySlug(value) {
     .replace(/^-+|-+$/g, "");
 }
 
+
+const PRIMARY_LORE_HUBS = Object.freeze([
+  { key: "HOME", url: `${PRIMARY_ORIGIN}/`, tags: ["home","overview","gameplay","lore"] },
+  { key: "WIKI", url: `${PRIMARY_ORIGIN}/wiki`, tags: ["wiki","system","guide","lucky block","machine","codes"] },
+  { key: "BRAINROTS", url: `${PRIMARY_ORIGIN}/brainrots`, tags: ["brainrot","rarity","cost","income","availability","date"] },
+  { key: "COLLECTIONS", url: `${PRIMARY_ORIGIN}/collections`, tags: ["collection","secret","og","craft","limited","lucky block"] },
+  { key: "EVENTS", url: `${PRIMARY_ORIGIN}/events`, tags: ["event","update","date","announcement","admin abuse","taco tuesday","code"] },
+  { key: "MACHINES", url: `${PRIMARY_ORIGIN}/machines`, tags: ["machine","shop","merchant","replacement","update"] },
+  { key: "RITUALS", url: `${PRIMARY_ORIGIN}/rituals`, tags: ["ritual","players","formation","spawn","trait","outcome"] },
+  { key: "RITUAL_BRAINROTS", url: `${PRIMARY_ORIGIN}/ritual-brainrots`, tags: ["ritual","brainrot","spawn","cost","income"] },
+  { key: "MUTATIONS", url: `${PRIMARY_ORIGIN}/wiki/mutations`, tags: ["mutation","trait","multiplier","event"] },
+  { key: "REBIRTH", url: `${PRIMARY_ORIGIN}/wiki/rebirth`, tags: ["rebirth","gear","item","requirement","floor"] },
+  { key: "SHOP", url: `${PRIMARY_ORIGIN}/wiki/shop`, tags: ["shop","gear","item","price","rebirth","wheel"] },
+  { key: "CODES", url: `${PRIMARY_ORIGIN}/codes`, tags: ["code","redeem","reward","announcement"] },
+  { key: "COMMUNITY", url: `${PRIMARY_ORIGIN}/community`, tags: ["announcement","community","discord","news"] },
+  { key: "OG", url: `${PRIMARY_ORIGIN}/og`, tags: ["og","brainrot","spawn","availability"] },
+  { key: "SECRETS", url: `${PRIMARY_ORIGIN}/secrets`, tags: ["secret","brainrot","lucky block","availability"] },
+]);
+
+function loreQueryTerms(question, analysis) {
+  const terms = new Set();
+  const raw = oneLine(question, 700);
+
+  for (const token of raw.toLowerCase().match(/[a-z0-9][a-z0-9'-]*/g) || []) {
+    if (token.length < 3) continue;
+    if (STOPWORDS.has(token)) continue;
+    terms.add(token);
+  }
+
+  for (const entity of [analysis.entity, ...(analysis.entities || [])]) {
+    if (!entity) continue;
+    terms.add(oneLine(entity, 160).toLowerCase());
+  }
+
+  for (const clue of searchCluesFromQuestion(raw)) {
+    if (clue) terms.add(oneLine(clue, 160).toLowerCase());
+  }
+
+  if (analysis.update) terms.add(`update ${analysis.update}`);
+  if (analysis.date) terms.add(humanDateFromIso(analysis.date).toLowerCase());
+  terms.add(String(analysis.relation || "").toLowerCase());
+
+  return [...terms].filter(Boolean).slice(0, 32);
+}
+
+function loreHubScore(hub, question, analysis) {
+  const q = oneLine(question, 700).toLowerCase();
+  let score = 0;
+  for (const tag of hub.tags) {
+    if (q.includes(tag)) score += tag.includes(" ") ? 5 : 3;
+  }
+
+  const rel = analysis.relation;
+  const key = hub.key;
+
+  if ([REL.EVENT,REL.UPDATE,REL.DATE,REL.TIME,REL.DURATION,REL.ANNOUNCEMENT,REL.CODE].includes(rel) && key === "EVENTS") score += 12;
+  if ([REL.BRAINROT,REL.COST,REL.INCOME,REL.RARITY,REL.STATUS,REL.METHOD,REL.STOCK].includes(rel) && key === "BRAINROTS") score += 12;
+  if ([REL.RITUAL,REL.OUTCOME,REL.SPAWN,REL.REQUIREMENT,REL.FORMATION,REL.PLAYERS].includes(rel) && key === "RITUALS") score += 12;
+  if ([REL.MACHINE,REL.REPLACED_BY,REL.REPLACED_IN,REL.ACTIVE_RANGE,REL.SHOP].includes(rel) && key === "MACHINES") score += 12;
+  if ([REL.MUTATION,REL.TRAIT,REL.MULTIPLIER].includes(rel) && key === "MUTATIONS") score += 12;
+  if ([REL.REBIRTH,REL.GEAR].includes(rel) && key === "REBIRTH") score += 12;
+  if ([REL.GEAR,REL.SHOP].includes(rel) && key === "SHOP") score += 10;
+  if (rel === REL.CODE && key === "CODES") score += 10;
+  if (rel === REL.COLLECTION && key === "COLLECTIONS") score += 12;
+  if (rel === REL.LUCKY_BLOCK && ["WIKI","COLLECTIONS","SECRETS"].includes(key)) score += 8;
+  if (rel === REL.ANNOUNCEMENT && ["EVENTS","COMMUNITY","HOME"].includes(key)) score += 8;
+
+  if (analysis.current && ["EVENTS","MACHINES","CODES","HOME"].includes(key)) score += 4;
+  if (key === "WIKI") score += 2;
+
+  return score;
+}
+
+function selectLoreHubs(question, analysis) {
+  const ranked = PRIMARY_LORE_HUBS
+    .map((hub) => ({ ...hub, score: loreHubScore(hub, question, analysis) }))
+    .sort((a,b) => b.score - a.score);
+
+  const selected = ranked.filter((x) => x.score > 0).slice(0, CFG.MAX_LORE_HUBS);
+
+  if (selected.length < 4) {
+    for (const key of ["WIKI","EVENTS","BRAINROTS","MACHINES","RITUALS","MUTATIONS","REBIRTH","COLLECTIONS"]) {
+      const row = ranked.find((x) => x.key === key);
+      if (row && !selected.some((x) => x.key === key)) selected.push(row);
+      if (selected.length >= Math.min(CFG.MAX_LORE_HUBS, 6)) break;
+    }
+  }
+
+  return selected.slice(0, CFG.MAX_LORE_HUBS);
+}
+
+async function fetchLoreHubs(question, analysis, deadline) {
+  const hubs = selectLoreHubs(question, analysis);
+  const settled = await Promise.all(
+    hubs.map(async (hub) => {
+      try {
+        const page = await fetchPage(hub.url, SOURCE.PRIMARY, deadline);
+        return { ok: true, hub, page, error: null };
+      } catch (error) {
+        return { ok: false, hub, page: null, error: errorCode(error) };
+      }
+    })
+  );
+
+  return {
+    hubs,
+    pages: settled.filter((x) => x.ok).map((x) => x.page),
+    errors: settled.filter((x) => !x.ok).map((x) => `${x.hub.key}:${x.error}`),
+    attempts: settled.map((x) => ({ key: x.hub.key, url: x.hub.url, ok: x.ok, error: x.error })),
+  };
+}
+
+function lorePathPreference(path, analysis) {
+  path = String(path || "").toLowerCase();
+  const rel = analysis.relation;
+  let score = 0;
+
+  if ([REL.BRAINROT,REL.COST,REL.INCOME,REL.RARITY,REL.STATUS,REL.STOCK].includes(rel) && path.startsWith("/brainrots/")) score += 8;
+  if ([REL.RITUAL,REL.OUTCOME,REL.SPAWN,REL.REQUIREMENT,REL.FORMATION,REL.PLAYERS].includes(rel) && path.startsWith("/rituals/")) score += 8;
+  if ([REL.EVENT,REL.UPDATE,REL.DATE,REL.TIME,REL.DURATION,REL.ANNOUNCEMENT,REL.CODE].includes(rel) && path.startsWith("/events/")) score += 8;
+  if ([REL.MACHINE,REL.SHOP,REL.REPLACED_BY,REL.REPLACED_IN,REL.ACTIVE_RANGE].includes(rel) && /(?:machine|trader|merchant|fuse)/.test(path)) score += 6;
+  if ([REL.MUTATION,REL.TRAIT,REL.MULTIPLIER].includes(rel) && /mutation/.test(path)) score += 7;
+  if ([REL.REBIRTH,REL.GEAR].includes(rel) && /rebirth|shop/.test(path)) score += 7;
+  if (rel === REL.LUCKY_BLOCK && /lucky/.test(path)) score += 8;
+
+  if (/calculator|privacy|terms|contact/.test(path)) score -= 10;
+  return score;
+}
+
+function loreLinkScore(link, question, analysis) {
+  const label = `${link.label} ${decodeURIComponent(link.pathname).replace(/[-_/]+/g," ")}`;
+  const lower = label.toLowerCase();
+  let score = lorePathPreference(link.pathname, analysis);
+
+  if (analysis.entity) score += bestEntityScore(analysis, label) * 12;
+
+  const terms = loreQueryTerms(question, analysis);
+  for (const term of terms) {
+    if (term.length < 3) continue;
+    if (lower.includes(term)) score += term.includes(" ") ? 4 : 1.5;
+  }
+
+  if (analysis.update && new RegExp(`update\\s*${analysis.update}`,"i").test(label)) score += 6;
+  if (analysis.date && lower.includes(humanDateFromIso(analysis.date).toLowerCase())) score += 6;
+
+  return score;
+}
+
+function buildLoreManifest(hubPages, question, analysis) {
+  const byUrl = new Map();
+
+  for (const page of hubPages || []) {
+    for (const link of primaryLinks(page,"/")) {
+      const score = loreLinkScore(link, question, analysis);
+      const old = byUrl.get(link.url);
+      if (!old || score > old.score) byUrl.set(link.url, { ...link, score, from: page.url });
+    }
+
+    if (page.url === `${PRIMARY_ORIGIN}/events`) {
+      for (const link of primaryEventContextLinks(page)) {
+        let score = loreLinkScore(link, question, analysis);
+        const contextText = `${link.label} ${link.context} ${link.pathname}`;
+        score += updateNeedleScore(contextText, analysis) * 1.5;
+        const lowerContext = contextText.toLowerCase();
+        for (const term of loreQueryTerms(question, analysis)) {
+          if (term.length >= 3 && lowerContext.includes(term)) score += term.includes(" ") ? 3 : 1;
+        }
+        const old = byUrl.get(link.url);
+        if (!old || score > old.score) byUrl.set(link.url, { ...link, score, from: page.url, context: link.context });
+      }
+    }
+  }
+
+  // Predictable direct URLs supplement the manifest for exact entities.
+  if (analysis.entity) {
+    const slug = slugify(analysis.entity);
+    if (slug) {
+      const direct = [
+        `${PRIMARY_ORIGIN}/brainrots/${slug}`,
+        `${PRIMARY_ORIGIN}/events/${slug}`,
+        `${PRIMARY_ORIGIN}/wiki/${slug}`,
+      ];
+      for (const url of direct) {
+        if (!byUrl.has(url)) {
+          let pathname=""; try { pathname=new URL(url).pathname; } catch {}
+          byUrl.set(url,{url,label:analysis.entity,pathname,score:5+lorePathPreference(pathname,analysis),from:"PREDICTED"});
+        }
+      }
+    }
+
+    for (const url of ritualDetailCandidates(analysis)) {
+      if (!byUrl.has(url)) {
+        let pathname=""; try { pathname=new URL(url).pathname; } catch {}
+        byUrl.set(url,{url,label:analysis.entity,pathname,score:7+lorePathPreference(pathname,analysis),from:"RITUAL_PREDICTED"});
+      }
+    }
+  }
+
+  return [...byUrl.values()]
+    .filter((x) => x.score > 1)
+    .sort((a,b) => b.score-a.score)
+    .slice(0, 80);
+}
+
+async function fetchLoreDetails(manifest, deadline) {
+  const picked = (manifest || []).slice(0, CFG.MAX_LORE_DETAIL_PAGES);
+  const settled = await Promise.all(
+    picked.map(async (link) => {
+      try {
+        const page = await fetchPage(link.url, SOURCE.PRIMARY, deadline);
+        return { ok:true, link, page, error:null };
+      } catch (error) {
+        return { ok:false, link, page:null, error:errorCode(error) };
+      }
+    })
+  );
+
+  return {
+    pages: settled.filter((x)=>x.ok).map((x)=>x.page),
+    attempts: settled.map((x)=>({url:x.link.url,label:x.link.label,score:x.link.score,ok:x.ok,error:x.error})),
+    errors: settled.filter((x)=>!x.ok).map((x)=>`${x.link.url}:${x.error}`),
+  };
+}
+
+function loreSectionsForPage(page) {
+  const sections = extractHeadingSections(page.html || "");
+  const out=[];
+
+  for (const section of sections) {
+    const body=oneLine(section.text,7000);
+    if (!body) continue;
+    out.push({
+      page,
+      heading: section.title || page.title,
+      text: body,
+    });
+  }
+
+  if (!out.length) {
+    const lines=page.lines || [];
+    for (let i=0;i<lines.length;i+=8) {
+      const body=oneLine(lines.slice(i,i+12).join(" "),5000);
+      if (body) out.push({page,heading:page.title,text:body});
+    }
+  }
+
+  return out;
+}
+
+function loreChunkScore(chunk, question, analysis) {
+  const combined=`${chunk.heading}\n${chunk.text}`;
+  const lower=combined.toLowerCase();
+  let score=0;
+
+  if (analysis.entity) score += bestEntityScore(analysis, combined) * 10;
+  score += relationEvidenceScore(combined,analysis.relation) * 4;
+
+  for (const term of loreQueryTerms(question,analysis)) {
+    if (!term || term.length<3) continue;
+    if (lower.includes(term)) score += term.includes(" ") ? 4 : 1;
+  }
+
+  for (const clue of importantQuestionClues(question,analysis)) {
+    if (pageHasClue(combined,clue.value)) score += clue.weight;
+  }
+
+  if (analysis.update && new RegExp(`\\bUpdate\\s*${analysis.update}\\b`,`i`).test(combined)) score += 5;
+  if (analysis.date && lower.includes(humanDateFromIso(analysis.date).toLowerCase())) score += 5;
+
+  return score;
+}
+
+function rankLoreChunks(pages, question, analysis) {
+  const chunks=[];
+  for (const page of pages || []) {
+    for (const section of loreSectionsForPage(page)) {
+      chunks.push({ ...section, score:loreChunkScore(section,question,analysis) });
+    }
+  }
+
+  return chunks
+    .filter((x)=>x.score>0)
+    .sort((a,b)=>b.score-a.score)
+    .slice(0,CFG.MAX_LORE_CHUNKS)
+    .map((x,i)=>({
+      id:i+1,
+      title:x.page.title,
+      url:x.page.url,
+      heading:x.heading,
+      text:oneLine(x.text,4800),
+      score:Number(x.score.toFixed(3)),
+    }));
+}
+
+function contextAroundNeedle(text, needle, radius=900) {
+  const raw=String(text||"");
+  const idx=raw.toLowerCase().indexOf(String(needle||"").toLowerCase());
+  if (idx<0) return "";
+  return oneLine(raw.slice(Math.max(0,idx-radius),Math.min(raw.length,idx+String(needle).length+radius)),radius*2+300);
+}
+
+
+function extractNearestLoreCode(text, clue = "") {
+  const raw = String(text || "");
+  const candidates = [];
+  const patterns = [
+    /`([A-Z0-9]{4,24})`/g,
+    /\b(\d{5,8})\b/g,
+    /\b([A-Z][A-Z0-9]{4,24})\b/g,
+  ];
+  const blocked = new Set(["UPDATE","TEMPORARY","UNKNOWN","ADMIN","ABUSE","SOLD","OUT","EVENT","CODE"]);
+
+  for (const re of patterns) {
+    let m;
+    while ((m = re.exec(raw)) !== null) {
+      const value = m[1];
+      if (!value || blocked.has(value) || answerLooksLikeMetadata(value)) continue;
+      candidates.push({ value, index: m.index });
+    }
+  }
+
+  const unique = [];
+  const seen = new Set();
+  for (const row of candidates) {
+    const key = `${row.value}@${row.index}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(row);
+  }
+  if (!unique.length) return null;
+
+  const needle = String(clue || "");
+  const needleIndex = needle ? raw.toLowerCase().indexOf(needle.toLowerCase()) : -1;
+  if (needleIndex < 0) return unique[0].value;
+
+  unique.sort((a,b) => Math.abs(a.index - needleIndex) - Math.abs(b.index - needleIndex));
+  return unique[0].value;
+}
+
+function deterministicLoreAnswer(question, analysis, chunks) {
+  const q=oneLine(question,700);
+  const lower=q.toLowerCase();
+
+  // Codes: tie the code to the clue phrase rather than taking a random number.
+  if (analysis.relation===REL.CODE || /\bcode\b/i.test(q)) {
+    const clueWords=[];
+    if (/cooldown/i.test(q)) clueWords.push("cooldown");
+    if (/luck level/i.test(q)) clueWords.push("luck level");
+    if (/strawberry elephant/i.test(q)) clueWords.push("Strawberry Elephant");
+    if (/sold out/i.test(q)) clueWords.push("sold out");
+
+    for (const chunk of chunks) {
+      if (clueWords.length) {
+        for (const clue of clueWords) {
+          if (!pageHasClue(chunk.text, clue)) continue;
+          const answer = extractNearestLoreCode(chunk.text, clue);
+          if (answer) return { answer, chunk, reason: "LORE_CODE_NEAREST_CLUE" };
+        }
+      } else {
+        const answer = extractNearestLoreCode(chunk.text, "");
+        if (answer) return { answer, chunk, reason: "LORE_CODE" };
+      }
+    }
+  }
+
+  if (analysis.relation===REL.PLAYERS || /how many players|players required/i.test(q)) {
+    for (const chunk of chunks) {
+      const m=chunk.text.match(/\b(\d+)\s+players?\s+required\b/i);
+      if (m) return {answer:m[1],chunk,reason:"LORE_PLAYERS"};
+    }
+  }
+
+  if (analysis.relation===REL.STOCK || /stock|quantity|copies/i.test(q)) {
+    for (const chunk of chunks) {
+      const m=chunk.text.match(/(?:Stock|stock limit|Original stock limit)[:\s]+([0-9][0-9,]*)/i);
+      if (m) return {answer:m[1],chunk,reason:"LORE_STOCK"};
+    }
+  }
+
+  if (analysis.relation===REL.MULTIPLIER && /mutation/i.test(q)) {
+    for (const chunk of chunks) {
+      const m=chunk.text.match(/(?:###\s*)?([A-Z][A-Za-z ]{2,30})\s+(\d+(?:\.\d+)?)x[^.]{0,120}mutation/i);
+      if (m && lower.includes(m[2].toLowerCase()+"x")) return {answer:oneLine(m[1],80),chunk,reason:"LORE_REVERSE_MUTATION"};
+    }
+  }
+
+  return null;
+}
+
+function loreAnswerSafe(answer, analysis) {
+  const value=oneLine(answer,600);
+  if (!value || norm(value)==="unknown") return false;
+  if (answerLooksLikeMetadata(value)) return false;
+  if (/^(?:request|trace|cache|source)[ _-]?id/i.test(value)) return false;
+  if (value.length>500) return false;
+
+  if ([REL.BRAINROT,REL.MUTATION,REL.TRAIT,REL.MACHINE,REL.GEAR,REL.RITUAL,REL.EVENT,REL.SHOP].includes(analysis.relation)) {
+    if (genericRolePhrase(value)) return false;
+    if (value.split(/\s+/).length>15) return false;
+  }
+
+  return true;
+}
+
+function evidenceQuoteExists(quote,chunks) {
+  const q=oneLine(quote,600);
+  if (!q) return true;
+  return chunks.some((chunk)=>norm(chunk.text).includes(norm(q)));
+}
+
+function answerExistsInLore(answer,chunks) {
+  const value=oneLine(answer,600);
+  if (!value) return false;
+  if (chunks.some((chunk)=>evidenceSupports(value,chunk.text))) return true;
+
+  // Combined/list answers can be supported piece-by-piece.
+  const pieces=value.split(/[,;]+/).map((x)=>oneLine(x,180)).filter(Boolean);
+  if (pieces.length>1 && pieces.every((piece)=>chunks.some((chunk)=>evidenceSupports(piece,chunk.text)))) return true;
+
+  return false;
+}
+
+async function aiUniversalLoreExtract(question,analysis,chunks,deadline) {
+  if (!env("NVIDIA_API_KEY") || timeLeft(deadline)<320 || !chunks.length) return {result:null,error:"LORE_AI_UNAVAILABLE"};
+
+  try {
+    const data=await fetchJson(
+      "NVIDIA_LORE_EXTRACT",
+      NVIDIA_URL,
+      {
+        method:"POST",
+        headers:{
+          Authorization:`Bearer ${env("NVIDIA_API_KEY")}`,
+          "Content-Type":"application/json",
+          Accept:"application/json",
+        },
+        body:JSON.stringify({
+          model:process.env.NVIDIA_MODEL||DEFAULT_MODEL,
+          stream:false,
+          temperature:0,
+          max_tokens:220,
+          chat_template_kwargs:{enable_thinking:false},
+          messages:[
+            {
+              role:"system",
+              content:[
+                "Answer a Steal a Brainrot lore question using ONLY supplied steal-a-brainrot.org evidence chunks.",
+                "The evidence may cover brainrots, rituals, machines, updates, events, announcements, dates, codes, rebirth gear, shops, lucky blocks, traits, mutations, collections, and historical lore.",
+                "Do not use memory or outside knowledge.",
+                "Prefer the most direct exact answer. Preserve names, spaces, punctuation, dates, percentages, and code formatting.",
+                "If the question asks for a list, return a concise comma-separated list.",
+                "If the requested fact is not explicitly supported, return UNKNOWN.",
+                `Requested relation: ${analysis.relation}.`,
+                analysis.entity?`Requested entity: ${analysis.entity}.`:"",
+                analysis.update?`Requested update: ${analysis.update}.`:"",
+                analysis.date?`Requested date: ${analysis.date}.`:"",
+                "Return one short verbatim evidence quote copied from the supplied chunks.",
+                'Return JSON only: {"answer":"UNKNOWN or exact answer","evidence":"short exact quote","chunkId":1,"reason":"short"}',
+              ].filter(Boolean).join("\\n")
+            },
+            {
+              role:"user",
+              content:JSON.stringify({
+                question,
+                evidence:chunks.map((c)=>({id:c.id,title:c.title,url:c.url,heading:c.heading,text:c.text}))
+              })
+            }
+          ]
+        })
+      },
+      Math.max(320,Math.min(CFG.NVIDIA_TIMEOUT_MS,timeLeft(deadline)-30))
+    );
+
+    const raw=parseLooseAiExtraction(data?.choices?.[0]?.message?.content);
+    const answer=oneLine(raw?.answer,600);
+    if (!loreAnswerSafe(answer,analysis)) return {result:null,error:"LORE_AI_UNSAFE_ANSWER"};
+    if (!evidenceQuoteExists(raw?.evidence,chunks)) return {result:null,error:"LORE_AI_EVIDENCE_QUOTE_NOT_FOUND"};
+    if (!answerExistsInLore(answer,chunks)) return {result:null,error:"LORE_AI_ANSWER_NOT_IN_EVIDENCE"};
+
+    const supporting=chunks.find((c)=>evidenceSupports(answer,c.text)) || chunks[0];
+    return {
+      result:makeResult(answer,analysis.relation,SOURCE.PRIMARY,{title:supporting.title,url:supporting.url},"PRIMARY_SPLUS_TOTAL_LORE_AI",SOURCE.PRIMARY.confidence),
+      error:null,
+      supporting,
+    };
+  } catch (error) {
+    return {result:null,error:errorCode(error)};
+  }
+}
+
+async function universalLoreStage(question,analysis,deadline) {
+  const hubs=await fetchLoreHubs(question,analysis,deadline);
+  const manifest=buildLoreManifest(hubs.pages,question,analysis);
+  const details=await fetchLoreDetails(manifest,deadline);
+
+  const allPages=[];
+  const seen=new Set();
+  for (const page of [...hubs.pages,...details.pages]) {
+    if (!page?.url || seen.has(page.url)) continue;
+    seen.add(page.url);
+    allPages.push(page);
+  }
+
+  const chunks=rankLoreChunks(allPages,question,analysis);
+  if (!chunks.length) {
+    return {
+      result:null,
+      hubs:hubs.attempts,
+      manifest:manifest.slice(0,12),
+      detailAttempts:details.attempts,
+      chunks:[],
+      error:[...hubs.errors,...details.errors,"NO_LORE_CHUNKS"].join("|"),
+    };
+  }
+
+  const deterministic=deterministicLoreAnswer(question,analysis,chunks);
+  if (deterministic && loreAnswerSafe(deterministic.answer,analysis)) {
+    return {
+      result:makeResult(
+        deterministic.answer,
+        analysis.relation,
+        SOURCE.PRIMARY,
+        {title:deterministic.chunk.title,url:deterministic.chunk.url},
+        `PRIMARY_SPLUS_${deterministic.reason}`,
+        SOURCE.PRIMARY.confidence
+      ),
+      hubs:hubs.attempts,
+      manifest:manifest.slice(0,12),
+      detailAttempts:details.attempts,
+      chunks,
+      error:null,
+    };
+  }
+
+  const ai=await aiUniversalLoreExtract(question,analysis,chunks,deadline);
+  return {
+    result:ai.result,
+    hubs:hubs.attempts,
+    manifest:manifest.slice(0,12),
+    detailAttempts:details.attempts,
+    chunks,
+    error:ai.error || [...hubs.errors,...details.errors].join("|") || "LORE_NO_ANSWER",
+  };
+}
+
 function canonicalPrimaryTargets(question, analysis) {
   const slots = Array.isArray(analysis.factSlots) ? analysis.factSlots : [];
   const targets = [];
@@ -5957,6 +6554,11 @@ async function resolveQuestion(questionObj, lore = "") {
     primaryCanonicalTargets: [],
     primaryCanonicalPagesTried: [],
     primaryCanonicalError: "",
+    primaryLoreHubs: [],
+    primaryLoreManifest: [],
+    primaryLoreDetailAttempts: [],
+    primaryLoreTopChunks: [],
+    primaryLoreError: "",
     primaryQuery: "",
     primaryQueries: [],
     primarySelectedPage: "",
@@ -6024,7 +6626,42 @@ async function resolveQuestion(questionObj, lore = "") {
   }
 
   // =====================================================
-  // 1B) S+ AGGRESSIVE SEARCH FALLBACK.
+  // 1B) S+ TOTAL LORE LIBRARY.
+  // Dynamically reads the site's main lore directories, builds an internal-link
+  // manifest, opens the best detail pages, ranks evidence sections, and answers
+  // from S+ only. This is the catch-all for categories that do not have a
+  // hand-written resolver: announcements, codes, shops, lucky blocks, dates,
+  // stock, player counts, historical notes, event periods, long-tail lore, etc.
+  // =====================================================
+  const primaryLore = await universalLoreStage(
+    question,
+    analysis,
+    deadline
+  );
+
+  diagnostic.primaryLoreHubs = primaryLore.hubs || [];
+  diagnostic.primaryLoreManifest = primaryLore.manifest || [];
+  diagnostic.primaryLoreDetailAttempts = primaryLore.detailAttempts || [];
+  diagnostic.primaryLoreTopChunks = (primaryLore.chunks || []).slice(0, 6).map((x) => ({
+    title: x.title,
+    url: x.url,
+    heading: x.heading,
+    score: x.score,
+  }));
+  diagnostic.primaryLoreError = primaryLore.error || "";
+
+  if (primaryLore.result) {
+    const result = attachTrustLog(primaryLore.result, SOURCE.PRIMARY);
+    const final = finalize(result, question, analysis, startedAt, diagnostic);
+    final.trustLog = result.trustLog;
+    final.trustedTier = "S+";
+    final.loreLibrary = true;
+    setCachedAnswer(question, final);
+    return final;
+  }
+
+  // =====================================================
+  // 1C) S+ AGGRESSIVE SEARCH FALLBACK.
   // Run 3 S+ searches in parallel -> open top 3 useful S+ pages ->
   // deterministic extraction first -> AI over small verified S+ evidence chunks.
   // If any S+ evidence supports the answer, 0.995 and STOP.
@@ -7255,6 +7892,67 @@ function runSelfTests() {
     deterministicFactSlots(r35NooQ, r35NooA, [r35NooPage])?.answer === "Noo my Resume"
   );
 
+
+  const r36CodeChunk = [{
+    id: 1,
+    title: "RNG MACHINE + QUEEN BEE",
+    url: `${PRIMARY_ORIGIN}/events/rng-machine-queen-bee-event-2026-08-08`,
+    heading: "Event Codes",
+    text: "391725 Temporary Skip a machine cooldown. Announced as a 72-hour Admin Abuse code. 648013 Temporary Raise the lobby Luck Level.",
+    score: 20,
+  }];
+  check(
+    "R36 deterministic cooldown code",
+    deterministicLoreAnswer(
+      "What code skipped a machine cooldown in Update 61?",
+      { ...analyzeQuestion("What code skipped a machine cooldown in Update 61?"), relation: REL.CODE },
+      r36CodeChunk
+    )?.answer === "391725"
+  );
+
+  const r36PlayersChunk = [{
+    id: 1, title: "Mi Gatito Ritual", url: `${PRIMARY_ORIGIN}/rituals/mi-gatito-ritual`, heading: "Requirements",
+    text: "2 players required Requires Mi Gatito Face each other and perform a hug interaction", score: 15,
+  }];
+  check(
+    "R36 deterministic players",
+    deterministicLoreAnswer(
+      "How many players does Mi Gatito Ritual require?",
+      { ...analyzeQuestion("How many players does Mi Gatito Ritual require?"), relation: REL.PLAYERS },
+      r36PlayersChunk
+    )?.answer === "2"
+  );
+
+  const r36StockChunk = [{
+    id: 1, title: "La Anniversary Grande", url: `${PRIMARY_ORIGIN}/brainrots/la-anniversary-grande`, heading: "How to Obtain",
+    text: "Stock: 100,000 Cost: $10,000,000,000 1 YEAR EVENT Taco Truck", score: 15,
+  }];
+  check(
+    "R36 deterministic stock",
+    deterministicLoreAnswer(
+      "What was La Anniversary Grande's stock?",
+      { ...analyzeQuestion("What was La Anniversary Grande's stock?"), relation: REL.STOCK },
+      r36StockChunk
+    )?.answer === "100,000"
+  );
+
+  check(
+    "R36 selects events for announcement",
+    selectLoreHubs(
+      "What was announced in Update 61?",
+      { ...analyzeQuestion("What was announced in Update 61?"), relation: REL.ANNOUNCEMENT }
+    ).some((x) => x.key === "EVENTS")
+  );
+
+  check(
+    "R36 selects shop/rebirth for gear",
+    selectLoreHubs(
+      "What gear unlocks at Rebirth 19?",
+      { ...analyzeQuestion("What gear unlocks at Rebirth 19?"), relation: REL.GEAR }
+    ).some((x) => x.key === "REBIRTH")
+  );
+
+  check("R36 blocks metadata lore answer", loreAnswerSafe("ec804a6bfa90408597072080ef2b0063", {relation:REL.LORE}) === false);
   // Priority behavior: once S+ has a direct value, lower tier disagreement does not participate.
   const primary = makeResult("10x", REL.MULTIPLIER, SOURCE.PRIMARY, mutationPage, "PRIMARY_MUTATION_SECTION", 0.995);
   const fandom = makeResult("9x", REL.MULTIPLIER, SOURCE.FANDOM, { title: "Mutations", url: "fandom" }, "FANDOM_DIRECT", 0.93);
@@ -7407,6 +8105,33 @@ export async function GET(request) {
     });
   }
 
+  if (test === "lore") {
+    const question = oneLine(
+      url.searchParams.get("q") || "What code skipped a machine cooldown in Update 61?",
+      700
+    );
+    const started = nowMs();
+    const deadline = started + Math.max(3500, CFG.GLOBAL_BUDGET_MS);
+    const routed = await analyzeQuestionAI(question, deadline);
+    const analysis = routed.analysis;
+    const stage = await universalLoreStage(question, analysis, deadline);
+    return json(200, {
+      ok: Boolean(stage.result),
+      build: BUILD_ID,
+      question,
+      analysis,
+      result: stage.result,
+      hubs: stage.hubs,
+      manifest: stage.manifest,
+      detailAttempts: stage.detailAttempts,
+      topChunks: (stage.chunks || []).slice(0, 10).map((x) => ({
+        title: x.title, url: x.url, heading: x.heading, score: x.score, text: oneLine(x.text, 700)
+      })),
+      error: stage.error,
+      ms: nowMs() - started,
+    });
+  }
+
   if (test === "resolve") {
     const question = oneLine(url.searchParams.get("q") || "What rarity is Tralalero Tralala?", 700);
     ANSWER_CACHE.delete(answerCacheKey(question));
@@ -7472,6 +8197,11 @@ export async function GET(request) {
       trueMultipartAnswers: true,
       factSlotSemanticBinding: true,
       canonicalPrimaryFastPath: true,
+      totalLoreLibrary: true,
+      dynamicPrimaryHubCorpus: true,
+      internalLinkManifest: true,
+      longTailLoreDetailFetch: true,
+      universalLoreAIExtraction: true,
       singleSpecialFactSlots: true,
       reverseMutationMultiplierSlot: true,
       singleChanceOutcomeSlot: true,
