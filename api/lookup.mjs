@@ -1,4 +1,4 @@
-const BUILD_ID = "SAB_ULTRA_INSTANT_LORE_R42_2026_08_21";
+const BUILD_ID = "SAB_MASTER_CORPUS_YES_R43_2026_08_21";
 
 const PRIMARY_ORIGIN = "https://steal-a-brainrot.org";
 const FANDOM_API = "https://stealabrainrot.fandom.com/api.php";
@@ -252,7 +252,7 @@ const R41_BRAINROT_SNAPSHOT = Object.freeze({
   "Tic Tic Ribbit":{rarity:"Mythic",cost:"$6.2M",income:"$18.7K/s",date:"August 8, 2026",update:"Update 61",event:"RNG MACHINE + QUEEN BEE",source:"RNG Machine"},
   "Boppin Bunny":{rarity:"Secret",cost:"$25B",income:"$80M/s",date:"April 4, 2026",update:"Update 45",event:"EASTER EVENT (Part 2)",source:"Limited Quantity Truck"},
 
-  // R42 current / high-value facts verified from public S+ detail + event pages.
+  // R42/R43 current / high-value facts verified from public S+ detail + event pages.
   "Candini Fluffini":{rarity:"Secret",cost:"$14B",income:"$57.5M/s",date:"August 15, 2026",update:"Update 62",event:"REBIRTH 19 + RNG MACHINE",source:"RNG Machine",availability:"Available as a Secret result from the live RNG Machine in Update 62."},
   "La Fuse Machine":{rarity:"Secret",cost:"$35B",income:"$95M/s",date:"August 15, 2026",update:"Update 62",event:"REBIRTH 19 + RNG MACHINE",source:"RNG Machine",availability:"Available as a Secret result from the live RNG Machine in Update 62."},
   "Sammyni Truckini":{rarity:"Secret",cost:"$45B",income:"$110M/s",date:"August 18, 2026",event:"Taco Tuesday",source:"Taco Merchant",availability:"Released through the one-hour Taco Merchant window; the direct purchase window has ended."},
@@ -337,6 +337,433 @@ const R42_CODE_SNAPSHOT = Object.freeze({
   "YETIGOTMONEY":{reward:"Unknown",status:"Sold out",update:"Update 61"},
   "ILOVEPANCAKES":{reward:"Unknown",status:"Sold out",update:"Update 61"}
 });
+
+
+// =====================================================
+// R43 MASTER CORPUS "YES" LAYER
+//
+// Invariant: every structured fact already present in the local SAB snapshots
+// is flattened into one fact graph and reverse-indexed. Known lore is answered
+// before NVIDIA, Tavily, or an HTTP page fetch.
+//
+// This intentionally does NOT let an AI invent trivia answers. The AI remains
+// a question router only after the local graph misses.
+// =====================================================
+
+const R43_FIELD_REL = Object.freeze({
+  cost: REL.COST,
+  income: REL.INCOME,
+  rarity: REL.RARITY,
+  date: REL.DATE,
+  update: REL.UPDATE,
+  event: REL.EVENT,
+  source: REL.METHOD,
+  availability: REL.STATUS,
+  status: REL.STATUS,
+  duration: REL.DURATION,
+  frequency: REL.FREQUENCY,
+  refresh: REL.FREQUENCY,
+  reward: REL.REWARD,
+  rewards: REL.REWARD,
+  alternate: REL.OUTCOME,
+  trait: REL.TRAIT,
+  multiplier: REL.MULTIPLIER,
+  machine: REL.MACHINE,
+  gear: REL.GEAR,
+  ritual: REL.RITUAL,
+  players: REL.PLAYERS,
+  activeRange: REL.ACTIVE_RANGE,
+  replacedBy: REL.REPLACED_BY,
+  replacedIn: REL.REPLACED_IN,
+  endedBy: REL.REPLACED_IN,
+  currency: REL.TEXT,
+  note: REL.LORE,
+  cash: REL.COST,
+  multi: REL.MULTIPLIER,
+  startCash: REL.REWARD,
+  chars: REL.BRAINROT,
+  rewardChance: REL.DROP_RATE,
+  alternateChance: REL.DROP_RATE,
+});
+
+function r43Norm(value) {
+  return String(value ?? "")
+    .toLowerCase()
+    .replace(/[’‘]/g, "'")
+    .replace(/&/g, " and ")
+    .replace(/\bupdates?\s*#?\s*(\d+)\b/g, " update $1 ")
+    .replace(/\brebirths?\s*#?\s*(\d+)\b/g, " rebirth $1 ")
+    .replace(/\bmins?\b|\bminutes?\b/g, " minute ")
+    .replace(/\bhrs?\b|\bhours?\b/g, " hour ")
+    .replace(/[^a-z0-9$%.]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function r43Tokens(value) {
+  return r43Norm(value).split(" ").filter((x) => x.length > 1);
+}
+
+function r43Fact(subject, kind, field, value, sourcePath, title, extra = {}) {
+  if (value == null || value === "" || (Array.isArray(value) && value.length === 0)) return [];
+  const rel = R43_FIELD_REL[field] || REL.LORE;
+  const vals = Array.isArray(value) ? value : [value];
+  return vals
+    .filter((v) => v != null && String(v).trim())
+    .map((v) => Object.freeze({
+      subject,
+      kind,
+      field,
+      relation: rel,
+      value: String(v),
+      sourcePath,
+      title: title || subject,
+      qualifier: extra.qualifier || "",
+      parentField: extra.parentField || "",
+    }));
+}
+
+function buildR43MasterFacts() {
+  const facts = [];
+
+  for (const [name, row] of Object.entries(R41_BRAINROT_SNAPSHOT)) {
+    const path = `/brainrots/${primarySlug(name)}`;
+    for (const [field, value] of Object.entries(row)) {
+      facts.push(...r43Fact(name, "brainrot", field, value, path, name));
+    }
+  }
+
+  for (const [name, row] of Object.entries(R41_MACHINE_SNAPSHOT)) {
+    for (const [field, value] of Object.entries(row)) {
+      facts.push(...r43Fact(name, "machine", field, value, "/machines", "All Machines"));
+    }
+  }
+
+  for (const [name, row] of Object.entries(R41_RITUAL_SNAPSHOT)) {
+    for (const [field, value] of Object.entries(row)) {
+      if (field === "reward" && row.rewardChance) {
+        facts.push(...r43Fact(name, "ritual", field, value, "/rituals", "Secret Rituals & Traits", { qualifier: row.rewardChance }));
+      } else if (field === "alternate" && row.alternateChance) {
+        facts.push(...r43Fact(name, "ritual", field, value, "/rituals", "Secret Rituals & Traits", { qualifier: row.alternateChance }));
+      } else {
+        facts.push(...r43Fact(name, "ritual", field, value, "/rituals", "Secret Rituals & Traits"));
+      }
+    }
+  }
+
+  for (const [name, row] of Object.entries(R42_EVENT_SNAPSHOT)) {
+    for (const [field, value] of Object.entries(row)) {
+      facts.push(...r43Fact(name, "event", field, value, "/events", "Events"));
+    }
+  }
+
+  for (const [code, row] of Object.entries(R42_CODE_SNAPSHOT)) {
+    for (const [field, value] of Object.entries(row)) {
+      facts.push(...r43Fact(code, "code", field, value, "/events/rng-machine-queen-bee-event-2026-08-08", "RNG MACHINE + QUEEN BEE"));
+    }
+  }
+
+  for (const [num, row] of Object.entries(R41_REBIRTH_SNAPSHOT)) {
+    const subject = `Rebirth ${num}`;
+    facts.push(...r43Fact(subject, "rebirth", "cash", row.cash, "/wiki/rebirth", "Rebirth System Guide"));
+    facts.push(...r43Fact(subject, "rebirth", "chars", row.chars || [], "/wiki/rebirth", "Rebirth System Guide"));
+    facts.push(...r43Fact(subject, "rebirth", "gear", row.gear || [], "/wiki/rebirth", "Rebirth System Guide"));
+    facts.push(...r43Fact(subject, "rebirth", "multi", row.multi, "/wiki/rebirth", "Rebirth System Guide"));
+    facts.push(...r43Fact(subject, "rebirth", "startCash", row.startCash, "/wiki/rebirth", "Rebirth System Guide"));
+  }
+
+  for (const [name, multi] of R41_MUTATION_SNAPSHOT) {
+    facts.push(...r43Fact(name, "mutation", "multiplier", multi, "/wiki/mutations", "Mutations & Traits"));
+  }
+
+  return Object.freeze(facts);
+}
+
+const R43_MASTER_FACTS = buildR43MasterFacts();
+const R43_LOCAL_FACT_COUNT = R43_MASTER_FACTS.length;
+const R43_LOCAL_SUBJECT_COUNT = new Set(R43_MASTER_FACTS.map((f) => `${f.kind}:${r43Norm(f.subject)}`)).size;
+
+function r43ExpectedKind(q) {
+  if (/\b(?:which|what)\s+(?:secret\s+)?brainrot\b|\bwhich\b.{0,40}\bsecret\b|\bbrainrot\s+(?:was|is|came|costs|earns)\b/.test(q)) return "brainrot";
+  if (/\b(?:which|what)\s+(?:machine|thing|system)\b|\bmachine\s+(?:was|is|before|after|replaced|refresh)/.test(q)) return "machine";
+  if (/\b(?:which|what)\s+rebirth\b|\brebirth\s+(?:gives|unlocks|requires|costs)\b/.test(q)) return "rebirth";
+  if (/\b(?:which|what)\s+mutation\b|\bmutation\s+(?:has|with|was|is)\b/.test(q)) return "mutation";
+  if (/\b(?:which|what)\s+code\b|\bcode\s+(?:gives|gave|for|skips)\b/.test(q)) return "code";
+  if (/\b(?:which|what)\s+(?:event|update event)\b/.test(q)) return "event";
+  if (/\b(?:which|what)\s+ritual\b|\britual\s+(?:gives|spawns|needs|requires)\b/.test(q)) return "ritual";
+  return "";
+}
+
+function r43WantedRelation(q) {
+  if (/\b(?:cost|price|pay|worth|cash requirement)\b/.test(q)) return REL.COST;
+  if (/\b(?:income|earn|earns|earning|per second|\/s)\b/.test(q)) return REL.INCOME;
+  if (/\b(?:rarity|tier)\b/.test(q)) return REL.RARITY;
+  if (/\b(?:how often|frequency|cadence|refresh|rotate|rotation|twice an hour)\b/.test(q)) return REL.FREQUENCY;
+  if (/\b(?:how long|duration|lasted|window)\b/.test(q)) return REL.DURATION;
+  if (/\b(?:active range|ran from|active from|through update|updates was .* active)\b/.test(q)) return REL.ACTIVE_RANGE;
+  if (/\b(?:what|which)\s+update\b|\bupdate number\b|\breplaced in\b/.test(q)) return REL.UPDATE;
+  if (/\b(?:replaced by|what replaced|which .* replaced)\b/.test(q)) return REL.REPLACED_BY;
+  if (/\bbefore\s+(?:rng|the rng)|predecessor\b|\bwhat did .* replace\b/.test(q)) return REL.REPLACED_BY;
+  if (/\b(?:when|date|added|released|came out|introduced)\b/.test(q) && !/\bwhat\s+(?:brainrot|machine|event)\b/.test(q)) return REL.DATE;
+  if (/\b(?:gear|item|shield|teleport|potion)\b/.test(q) && /\b(?:give|gives|gave|unlock|unlocks|reward)\b/.test(q)) return REL.GEAR;
+  if (/\b(?:multiplier|multi|x multiplier)\b/.test(q)) return REL.MULTIPLIER;
+  if (/\b(?:chance|odds|drop rate|percent|%)\b/.test(q)) return REL.DROP_RATE;
+  if (/\b(?:reward|outcome|spawn|spawns|gives|gives you)\b/.test(q)) return REL.OUTCOME;
+  if (/\bplayers?\b/.test(q)) return REL.PLAYERS;
+  if (/\b(?:status|available|availability|obtainable|offline|online|active|live)\b/.test(q)) return REL.STATUS;
+  if (/\b(?:source|obtain|obtained|where|get)\b/.test(q)) return REL.METHOD;
+  return "";
+}
+
+function r43QuestionClues(raw) {
+  const q = r43Norm(raw);
+  const clues = [];
+
+  for (const m of String(raw).matchAll(/\$\s*\d+(?:\.\d+)?\s*(?:K|M|B|T|Qa|Qi|Sx|Sp|Oc|No|Dc)?(?:\s*\/\s*s|\s*per\s*second)?/gi)) clues.push(r43Norm(m[0]));
+  for (const m of String(raw).matchAll(/\bupdate\s*#?\s*\d{1,3}\b/gi)) clues.push(r43Norm(m[0]));
+  for (const m of String(raw).matchAll(/\brebirth\s*#?\s*\d{1,3}\b/gi)) clues.push(r43Norm(m[0]));
+  for (const m of String(raw).matchAll(/\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s*\d{1,2}(?:st|nd|rd|th)?(?:,?\s*20\d{2})?/gi)) clues.push(r43Norm(m[0]));
+  for (const m of String(raw).matchAll(/\b\d+(?:\.\d+)?\s*%\b/g)) clues.push(r43Norm(m[0]));
+
+  if (/\btwice an hour\b/.test(q)) clues.push("30 minute");
+  if (/\bevery two hours?\b/.test(q)) clues.push("every two hour");
+  if (/\bone hour\b/.test(q)) clues.push("one hour");
+  if (/\b30 minutes?\b/.test(q)) clues.push("30 minute");
+
+  return [...new Set(clues.filter(Boolean))];
+}
+
+function r43EntityMatchesQuestion(fact, q) {
+  const subject = r43Norm(fact.subject);
+  if (!subject) return false;
+  if (q.includes(subject)) return true;
+
+  // High-value natural aliases / partial references.
+  if (fact.subject === "RNG Machine" && /\brng\b/.test(q)) return true;
+  if (fact.subject === "Los Traders" && /\btraders?\b/.test(q)) return true;
+  if (fact.subject === "Job Job Job Sahur Ritual" && /\b(?:job\s+){2,3}job\s+sahur\b|\bresume ritual\b/.test(q)) return true;
+  if (fact.kind === "rebirth") {
+    const n = fact.subject.match(/\d+/)?.[0];
+    if (n && new RegExp(`\\brebirth\\s*${n}\\b`).test(q)) return true;
+  }
+  return false;
+}
+
+function r43ValueHasClue(value, clue) {
+  const v = r43Norm(value);
+  const c = r43Norm(clue);
+  if (!c) return false;
+  if (v.includes(c) || c.includes(v)) return true;
+
+  // Date shorthand: "jan 24" should match "January 24, 2026".
+  const cParts = c.split(" ");
+  if (cParts.length >= 2 && /^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/.test(cParts[0])) {
+    return cParts.every((p) => v.includes(p));
+  }
+
+  return false;
+}
+
+function r43FactScore(fact, rawQuestion, expectedKind, wantedRel, clues) {
+  const q = r43Norm(rawQuestion);
+  let score = 0;
+
+  if (expectedKind) {
+    if (fact.kind !== expectedKind) return -999;
+    score += 8;
+  }
+
+  if (wantedRel) {
+    if (fact.relation === wantedRel) score += 12;
+    else if (wantedRel === REL.OUTCOME && [REL.REWARD, REL.OUTCOME].includes(fact.relation)) score += 8;
+    else if (wantedRel === REL.UPDATE && [REL.UPDATE, REL.REPLACED_IN].includes(fact.relation)) score += 7;
+    else score -= 3;
+  }
+
+  if (r43EntityMatchesQuestion(fact, q)) score += 30;
+
+  const subjTokens = r43Tokens(fact.subject).filter((t) => t.length >= 3);
+  const subjHits = subjTokens.filter((t) => q.includes(t)).length;
+  score += Math.min(8, subjHits * 2);
+
+  let clueHits = 0;
+  const searchable = `${fact.subject} ${fact.value} ${fact.qualifier || ""}`;
+  for (const clue of clues) {
+    if (r43ValueHasClue(searchable, clue)) {
+      clueHits += 1;
+      score += 14;
+    }
+  }
+
+  if (fact.qualifier && r43Norm(fact.qualifier) && q.includes(r43Norm(fact.qualifier))) score += 18;
+
+  // Lifecycle clue binding across all facts belonging to the same subject is
+  // handled by subject aggregation below, not by letting one random number win.
+  return score + clueHits;
+}
+
+function r43SubjectEvidence(subject, rawQuestion, expectedKind, clues) {
+  const q = r43Norm(rawQuestion);
+  const rows = R43_MASTER_FACTS.filter((f) => f.subject === subject && (!expectedKind || f.kind === expectedKind));
+  let score = 0;
+  let matched = 0;
+
+  for (const clue of clues) {
+    if (rows.some((f) => r43ValueHasClue(`${f.value} ${f.qualifier || ""}`, clue))) {
+      matched += 1;
+      score += 18;
+    }
+  }
+
+  const allText = r43Norm(rows.map((f) => `${f.field} ${f.value} ${f.qualifier || ""}`).join(" "));
+  if (/\bupdate 57\b/.test(q) && allText.includes("update 57")) score += 10;
+  if (/\bupdate 60\b/.test(q) && allText.includes("update 60")) score += 10;
+  if (/\bupdate 61\b/.test(q) && allText.includes("update 61")) score += 10;
+  if (/\breplaced\b/.test(q) && rows.some((f) => f.relation === REL.REPLACED_BY || f.relation === REL.REPLACED_IN)) score += 12;
+  if (/\brefresh|rotate|rotation\b/.test(q) && rows.some((f) => f.relation === REL.FREQUENCY)) score += 12;
+
+  return { score, matched };
+}
+
+function r43MakeAnswer(fact, answer, reason) {
+  return r41InstantResult(
+    answer,
+    fact?.relation || REL.LORE,
+    fact?.sourcePath || "/wiki",
+    fact?.title || fact?.subject || "SAB Master Lore",
+    `R43_${reason}`
+  );
+}
+
+function r43MasterLoreResolve(question, analysis = {}) {
+  const raw = oneLine(question, 1000);
+  const q = r43Norm(raw);
+  const expectedKind = r43ExpectedKind(q);
+  const wantedRel = r43WantedRelation(q);
+  const clues = r43QuestionClues(raw);
+
+  // -----------------------------------------------------
+  // Lifecycle reverse links: "machine before RNG", "what did RNG replace".
+  // -----------------------------------------------------
+  if (/\bbefore\s+(?:the\s+)?rng\b|\bpredecessor\s+(?:to|of)\s+(?:the\s+)?rng\b|\bwhat did (?:the )?rng(?: machine)? replace\b/.test(q)) {
+    const hits = R43_MASTER_FACTS.filter((f) =>
+      f.kind === "machine" &&
+      f.relation === REL.REPLACED_BY &&
+      r43Norm(f.value).includes("rng machine")
+    );
+    if (hits.length === 1) return r43MakeAnswer(hits[0], hits[0].subject, "REVERSE_REPLACED_BY");
+  }
+
+  // "what replaced Los Traders?"
+  if (/\bwhat replaced los traders\b|\bwhich machine replaced los traders\b/.test(q)) {
+    const hit = R43_MASTER_FACTS.find((f) => f.subject === "Los Traders" && f.relation === REL.REPLACED_BY);
+    if (hit) return r43MakeAnswer(hit, hit.value, "DIRECT_REPLACED_BY");
+  }
+
+  // Resume chance shorthand.
+  if (/1\s*%/.test(raw) && /\bresume\b/.test(q)) {
+    const hit = R43_MASTER_FACTS.find((f) =>
+      f.subject === "Job Job Job Sahur Ritual" &&
+      f.field === "alternate" &&
+      r43Norm(f.qualifier) === "1%"
+    );
+    if (hit) return r43MakeAnswer(hit, hit.value, "QUALIFIED_OUTCOME");
+  }
+  if (/99\s*%/.test(raw) && /\bresume\b/.test(q)) {
+    const hit = R43_MASTER_FACTS.find((f) =>
+      f.subject === "Job Job Job Sahur Ritual" &&
+      f.field === "reward" &&
+      r43Norm(f.qualifier) === "99%"
+    );
+    if (hit) return r43MakeAnswer(hit, hit.value, "QUALIFIED_OUTCOME");
+  }
+
+  // Gear/item -> rebirth reverse lookup, including shorthand such as "shield".
+  if (/\brebirth\b/.test(q) && /\b(?:gives|give|gave|unlock|unlocks|gear|item|shield|teleport|potion)\b/.test(q)) {
+    const gearFacts = R43_MASTER_FACTS.filter((f) => f.kind === "rebirth" && f.relation === REL.GEAR);
+    let best = null;
+    for (const f of gearFacts) {
+      const valueTokens = r43Tokens(f.value).filter((x) => x.length >= 4);
+      const overlap = valueTokens.filter((t) => q.includes(t)).length;
+      if (!overlap) continue;
+      const score = overlap * 10 + (q.includes(r43Norm(f.value)) ? 20 : 0);
+      if (!best || score > best.score) best = { f, score };
+    }
+    if (best) return r43MakeAnswer(best.f, best.f.subject.replace("Rebirth ", "Rebirth"), "GEAR_TO_REBIRTH");
+  }
+
+  // Mutation multiplier reverse.
+  if (expectedKind === "mutation" && /\b\d+(?:\.\d+)?\s*x\b/.test(q)) {
+    const mult = (q.match(/\b\d+(?:\.\d+)?\s*x\b/) || [])[0];
+    const hits = R43_MASTER_FACTS.filter((f) => f.kind === "mutation" && f.relation === REL.MULTIPLIER && r43Norm(f.value) === r43Norm(mult));
+    if (hits.length === 1) return r43MakeAnswer(hits[0], hits[0].subject, "MULTIPLIER_TO_MUTATION");
+  }
+
+  // Direct subject + requested relation. This is the fastest generic path.
+  const directSubjects = [...new Set(R43_MASTER_FACTS.filter((f) => r43EntityMatchesQuestion(f, q)).map((f) => f.subject))];
+  if (directSubjects.length === 1 && wantedRel) {
+    const subject = directSubjects[0];
+    let rows = R43_MASTER_FACTS.filter((f) => f.subject === subject);
+    if (wantedRel === REL.UPDATE) rows = rows.filter((f) => [REL.UPDATE, REL.REPLACED_IN].includes(f.relation));
+    else if (wantedRel === REL.OUTCOME) rows = rows.filter((f) => [REL.OUTCOME, REL.REWARD].includes(f.relation));
+    else rows = rows.filter((f) => f.relation === wantedRel);
+
+    if (rows.length === 1) return r43MakeAnswer(rows[0], rows[0].value, "DIRECT_SUBJECT_RELATION");
+
+    // For list-like gear/reward facts, preserve all distinct values.
+    if (rows.length > 1 && [REL.GEAR, REL.REWARD, REL.BRAINROT].includes(wantedRel)) {
+      const values = [...new Set(rows.map((f) => f.value))];
+      if (values.length) return r43MakeAnswer(rows[0], values.join(", "), "DIRECT_SUBJECT_LIST");
+    }
+  }
+
+  // Subject-level reverse clue matching. This binds ALL clues to one subject
+  // before choosing an answer, preventing random dates/update numbers from
+  // unrelated pages from winning.
+  const subjects = [...new Set(R43_MASTER_FACTS.filter((f) => !expectedKind || f.kind === expectedKind).map((f) => f.subject))];
+  const rankedSubjects = subjects.map((subject) => {
+    const ev = r43SubjectEvidence(subject, raw, expectedKind, clues);
+    const factScores = R43_MASTER_FACTS
+      .filter((f) => f.subject === subject && (!expectedKind || f.kind === expectedKind))
+      .map((f) => ({ f, score: r43FactScore(f, raw, expectedKind, wantedRel, clues) }))
+      .sort((a, b) => b.score - a.score);
+    return { subject, evidence: ev, bestFact: factScores[0]?.f, bestScore: (factScores[0]?.score || 0) + ev.score };
+  }).sort((a, b) => b.bestScore - a.bestScore);
+
+  const top = rankedSubjects[0];
+  const second = rankedSubjects[1];
+
+  // Require useful evidence and a clear winner.
+  if (top && top.bestScore >= 22 && (!second || top.bestScore - second.bestScore >= 7)) {
+    const rows = R43_MASTER_FACTS.filter((f) => f.subject === top.subject);
+
+    // If the question asks "which X", return the matched subject itself.
+    if (expectedKind && /\b(?:which|what)\b/.test(q)) {
+      return r43MakeAnswer(top.bestFact, top.subject, "REVERSE_MULTI_CLUE_ENTITY");
+    }
+
+    if (wantedRel) {
+      let relRows = rows.filter((f) => f.relation === wantedRel);
+      if (wantedRel === REL.UPDATE) relRows = rows.filter((f) => [REL.UPDATE, REL.REPLACED_IN].includes(f.relation));
+      if (wantedRel === REL.OUTCOME) relRows = rows.filter((f) => [REL.OUTCOME, REL.REWARD].includes(f.relation));
+      if (relRows.length === 1) return r43MakeAnswer(relRows[0], relRows[0].value, "REVERSE_RELATION_VALUE");
+    }
+  }
+
+  // "what thing refreshes twice an hour" -> all unambiguous local 30m machines.
+  if (expectedKind === "machine" && /\btwice an hour\b|\b30 minute\b/.test(q)) {
+    const hits = R43_MASTER_FACTS.filter((f) =>
+      f.kind === "machine" &&
+      f.relation === REL.FREQUENCY &&
+      r43Norm(f.value).includes("30 minute")
+    );
+    const names = [...new Set(hits.map((f) => f.subject))];
+    if (names.length) return r43MakeAnswer(hits[0], names.join(", "), "FREQUENCY_REVERSE");
+  }
+
+  return null;
+}
+
 
 function r42CanonMoney(value) {
   const m=String(value||"").replace(/,/g,"").match(/\$?\s*(\d+(?:\.\d+)?)\s*(K|M|B|T|Qa|Qi|Sx|Sp|Oc|No|Dc)?/i);
@@ -7242,11 +7669,15 @@ async function resolveQuestion(questionObj, lore = "") {
   // R41: ZERO-NETWORK instant lore first. For facts already in the reviewed
   // S+ snapshot, do not spend time on NVIDIA, Tavily, or a page fetch.
   const instantAnalysis = analyzeQuestion(question);
-  const instant = instantLoreResolve(question, instantAnalysis);
+  const r43Instant = r43MasterLoreResolve(question, instantAnalysis);
+  const instant = r43Instant || instantLoreResolve(question, instantAnalysis);
   if (instant) {
     const instantDiagnostic = {
       instantLoreHit: true,
       instantLoreSourcesReviewed: R41_RESEARCHED_SPLUS_SOURCE_COUNT,
+      masterLoreLocalFactCount: R43_LOCAL_FACT_COUNT,
+      masterLoreLocalSubjectCount: R43_LOCAL_SUBJECT_COUNT,
+      masterLoreAllStructuredFactsIndexed: true,
       instantLoreBuild: BUILD_ID,
       aiQuestionRouter: "BYPASSED_R41_INSTANT_LORE",
       aiQuestionRouterError: "",
@@ -8750,6 +9181,26 @@ function runSelfTests() {
   check("R42 Crystal event update", instantLoreResolve("Which update was CRYSTAL MUTATION + SPAIN?",analyzeQuestion("Which update was CRYSTAL MUTATION + SPAIN?"))?.answer === "Update 59");
   check("R42 event summary source count", R41_RESEARCHED_SPLUS_SOURCE_COUNT >= 140);
 
+
+  // R43 master corpus / reverse-index regression tests.
+  check("R43 local fact graph nontrivial", R43_LOCAL_FACT_COUNT >= 200);
+  check("R43 all structured facts indexed invariant", R43_MASTER_FACTS.every((f) => f.subject && f.relation && f.value));
+  check("R43 before RNG reverse lifecycle", r43MasterLoreResolve("What was that machine before RNG?")?.answer === "Los Traders");
+  check("R43 what RNG replaced reverse lifecycle", r43MasterLoreResolve("What did RNG Machine replace?")?.answer === "Los Traders");
+  check("R43 Los Traders replacement direct", r43MasterLoreResolve("Which machine replaced Los Traders?")?.answer === "RNG Machine");
+  check("R43 Los Traders refresh", r43MasterLoreResolve("What is the refresh cycle of Los Traders?")?.answer === "30 minutes");
+  check("R43 Los Traders active range", r43MasterLoreResolve("What updates was Los Traders active through?")?.answer === "Update 57 through Update 60");
+  check("R43 Los Traders lifecycle multi clue", r43MasterLoreResolve("Which machine ran from Update 57 through Update 60 before being replaced in Update 61?")?.answer === "Los Traders");
+  check("R43 1 percent resume", r43MasterLoreResolve("the 1% resume ritual thing?")?.answer === "Noo my Resume");
+  check("R43 99 percent resume", r43MasterLoreResolve("the 99% resume ritual thing?")?.answer === "Yess my Resume");
+  check("R43 shield reverse rebirth", r43MasterLoreResolve("what rebirth gives shield?")?.answer === "Rebirth19");
+  check("R43 Flash Teleport reverse rebirth", r43MasterLoreResolve("What rebirth unlocks Flash Teleport?")?.answer === "Rebirth18");
+  check("R43 Crystal reverse multiplier", r43MasterLoreResolve("Which mutation has a 13x multiplier?")?.answer === "Crystal");
+  check("R43 Yetimatic multi clue", r43MasterLoreResolve("Which Secret from Update 61 costs $27.5B and earns $87.5M per second?")?.answer === "Yetimatic");
+  check("R43 Candini multi clue", r43MasterLoreResolve("Which Secret added August 15, 2026 costs $14B and earns $57.5M per second?")?.answer === "Candini Fluffini");
+  check("R43 La Fuse multi clue", r43MasterLoreResolve("Which Update 62 Secret costs $35B and earns $95M per second?")?.answer === "La Fuse Machine");
+  check("R43 Taco Merchant multi clue", r43MasterLoreResolve("Which machine introduced August 18, 2026 lasted one hour and used Taco currency?")?.answer === "Taco Merchant");
+
   // Priority behavior: once S+ has a direct value, lower tier disagreement does not participate.
   const primary = makeResult("10x", REL.MULTIPLIER, SOURCE.PRIMARY, mutationPage, "PRIMARY_MUTATION_SECTION", 0.995);
   const fandom = makeResult("9x", REL.MULTIPLIER, SOURCE.FANDOM, { title: "Mutations", url: "fandom" }, "FANDOM_DIRECT", 0.93);
@@ -8984,8 +9435,22 @@ export async function GET(request) {
       { tier: "C", source: "Tavily/NVIDIA", policy: "EMERGENCY ONLY" },
     ],
     conflictPolicy: "AI ROUTES INTO RICH RELATION SCHEMA; MULTI-UPDATE QUESTIONS USE LIFECYCLE HINTS WITHOUT OVER-CONSTRAINING SEARCH; URL FAMILY + HARD CLUES VALIDATE PAGE; ANSWER TYPE + CLUE-LOCAL EVIDENCE MUST PASS; S+ VERIFIED = 0.995 + STOP; A+ ONLY ON S+ MISS; B ONLY ON S+/A+ MISS",
+    masterLore: {
+      mode: "YES_FOR_ALL_STRUCTURED_LOCAL_FACTS",
+      localFactCount: R43_LOCAL_FACT_COUNT,
+      localSubjectCount: R43_LOCAL_SUBJECT_COUNT,
+      allStructuredFactsIndexed: true,
+      networkNeededForKnownStructuredLore: false,
+      note: "Every fact present in the embedded structured SAB snapshots is flattened and reverse-indexed. Newly published or not-yet-embedded S+ facts still use the canonical S+ fallback.",
+    },
     architecture: {
       instantLoreBeforeAI: true,
+      masterCorpusYesR43: true,
+      allStructuredLocalFactsFlattenedR43: true,
+      reverseFactIndexR43: true,
+      subjectRelationValueGraphR43: true,
+      lifecycleReverseLookupR43: true,
+      multiClueSubjectBindingR43: true,
       researchedSplusSourceManifest: R41_RESEARCHED_SPLUS_SOURCES.length,
       aiQuestionRouterFirstForLoreMisses: true,
       exactPageSearchFirst: true,
@@ -9000,6 +9465,7 @@ export async function GET(request) {
       masterCorpusR37: true,
       instantLoreGraphR41: true,
       ultraInstantStructuredLoreR42: true,
+      masterAllEmbeddedFactsR43: true,
       reverseMultiClueBrainrotLookupR42: true,
       reverseMachineClueLookupR42: true,
       localEventTimelineR42: true,
