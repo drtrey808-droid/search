@@ -1,4 +1,4 @@
-const BUILD_ID = "SAB_LOCAL_FIRST_HARD_CLUES_R44_2026_08_21";
+const BUILD_ID = "SAB_AGGRESSIVE_AI_LORE_R44_2026_08_22";
 
 const PRIMARY_ORIGIN = "https://steal-a-brainrot.org";
 const FANDOM_API = "https://stealabrainrot.fandom.com/api.php";
@@ -246,6 +246,7 @@ const R41_RITUAL_SNAPSHOT = Object.freeze({
 });
 
 const R41_BRAINROT_SNAPSHOT = Object.freeze({
+  "Tralalero Tralala":{rarity:"Brainrot God",cost:"$10.0M",income:"$50.0K/s",date:"April 1, 2025",event:"Regular",source:"Fishing Event",availability:"Extremely rare; milestone/fishing routes documented on S+."},
   "Arcadopus":{rarity:"Secret",cost:"$900M",income:"$5M/s",date:"January 24, 2026",event:"THE RETURN",source:"Themed Brainrots"},
   "Spyder Elephant":{rarity:"OG",cost:"$1T",income:"$1B/s",date:"May 16, 2026",event:"1 YEAR EVENT",source:"Spyder Chain"},
   "Yetimatic":{rarity:"Secret",cost:"$27.5B",income:"$87.5M/s",date:"August 8, 2026",update:"Update 61",event:"RNG MACHINE + QUEEN BEE",source:"RNG Machine"},
@@ -412,6 +413,20 @@ function r42RecordSearch(question) {
     if (rarity && String(row.rarity||'').toLowerCase()===rarity) {score+=2; strong++;}
     if (upd && String(row.update||'').toLowerCase().replace(/[^0-9]/g,'')===upd) {score+=4; strong++;}
     if (date && row.date && r42DateKey(row.date).includes(date)) {score+=5; strong++;}
+
+    // R44: bind lifecycle and refresh clues to the SAME machine/entity.
+    // This prevents a generic 30-minute system from winning a question that
+    // also says it ended in Update 60.
+    if (row.kind==='machine') {
+      const refreshText=String(row.refresh||'').toLowerCase();
+      const lifecycleText=`${row.activeRange||''} ${row.endedBy||''} ${row.replacedIn||''}`.toLowerCase();
+      if ((/30\s*(?:min|mins|minute|minutes)/.test(q) || /twice\s+(?:an|per)\s+hour/.test(q)) && /30\s*minutes?/.test(refreshText)) {score+=8; strong++;}
+      if (upd && (new RegExp(`update\\s*${upd}\\b`,'i').test(lifecycleText))) {score+=7; strong++;}
+      const ended=(q.match(/(?:ended|stopped|last(?:ed)?|through|until)\s+(?:in\s+)?update\s*#?\s*(\d{1,3})/i)||[])[1];
+      if (ended && new RegExp(`update\\s*${ended}\\b`,'i').test(lifecycleText)) {score+=10; strong++;}
+      if (/replaced/.test(q) && row.replacedBy) {score+=3;}
+    }
+
     for (const m of money) {
       const cost=r42CanonMoney(row.cost), income=r42CanonMoney(row.income);
       if (cost && cost===m) {score+=6; strong++;}
@@ -438,220 +453,17 @@ function r42RecordSearch(question) {
   if (second && second.score===best.score && second.row.name!==best.row.name) return null;
   return {row:best.row,answer:best.row.name,field:'name',score:best.score};
 }
-
-// =====================================================
-// R44 LOCAL-FIRST HARD-CLUE RESOLVER
-// Fixes two observed Roblox misses without touching CodeSniper:
-//   1) machine refresh + lifecycle/end-update reverse questions
-//   2) "What Secret costs $X and makes $Y/s?" reverse money questions
-// Known structured lore MUST resolve before NVIDIA/Tavily/network.
-// =====================================================
-
-function r44MoneyCanon(value) {
-  const m = String(value || "").replace(/,/g, "").match(/\$?\s*(\d+(?:\.\d+)?)\s*(K|M|B|T|Qa|Qi|Sx|Sp|Oc|No|Dc)?/i);
-  if (!m) return "";
-  const n = Number(m[1]);
-  if (!Number.isFinite(n)) return "";
-  return `${String(n).replace(/\.0+$/,"")}${String(m[2] || "").toLowerCase()}`;
-}
-
-function r44TypedMoneyClues(raw) {
-  const q = String(raw || "");
-  const cost = (q.match(/\b(?:costs?|price(?:d)?(?:\s+at)?|worth)\s*(?:is|=|:|of)?\s*(\$\s*\d+(?:\.\d+)?\s*(?:K|M|B|T|Qa|Qi|Sx|Sp|Oc|No|Dc)?)/i) || [])[1] || "";
-  const income = (q.match(/\b(?:makes?|earns?|income(?:\s+of)?|generates?)\s*(?:is|=|:|of)?\s*(\$\s*\d+(?:\.\d+)?\s*(?:K|M|B|T|Qa|Qi|Sx|Sp|Oc|No|Dc)?)(?:\s*\/\s*s|\s*per\s*second)?/i) || [])[1] || "";
-  return {
-    cost: r44MoneyCanon(cost),
-    income: r44MoneyCanon(income),
-  };
-}
-
-function r44UpdateNum(value) {
-  const m = String(value || "").match(/\bUpdate\s*#?\s*(\d{1,3})\b/i);
-  return m ? Number(m[1]) : null;
-}
-
-function r44RangeEndsAt(value, n) {
-  if (!n) return false;
-  const s = String(value || "");
-  const matches = [...s.matchAll(/\bUpdate\s*#?\s*(\d{1,3})\b/gi)].map((m) => Number(m[1]));
-  if (!matches.length) return false;
-  return matches[matches.length - 1] === Number(n);
-}
-
-function r44RangeStartsAt(value, n) {
-  if (!n) return false;
-  const m = String(value || "").match(/\bUpdate\s*#?\s*(\d{1,3})\b/i);
-  return Boolean(m && Number(m[1]) === Number(n));
-}
-
-function r44MachineLocalResolve(question) {
-  const raw = oneLine(question, 1000);
-  const q = raw.toLowerCase();
-
-  // Direct named-machine relations first.
-  for (const [name, row] of Object.entries(R41_MACHINE_SNAPSHOT)) {
-    const lname = name.toLowerCase();
-    const named = q.includes(lname) ||
-      (name === "RNG Machine" && /\brng(?:\s+machine)?\b/.test(q)) ||
-      (name === "Los Traders" && /\blos\s+traders\b|\btraders\b/.test(q));
-    if (!named) continue;
-
-    if (/\brefresh|cycle|rotate|rotation|offers?\b/.test(q) && row.refresh) {
-      return r41InstantResult(String(row.refresh), REL.FREQUENCY, "/machines", "All Machines", "R44_MACHINE_REFRESH");
-    }
-    if (/\bactive range|ran from|active from|which updates|what updates\b/.test(q) && row.activeRange) {
-      return r41InstantResult(String(row.activeRange), REL.ACTIVE_RANGE, "/machines", "All Machines", "R44_MACHINE_ACTIVE_RANGE");
-    }
-    if (/\bwhat replaced|replaced by|replacement\b/.test(q) && row.replacedBy) {
-      return r41InstantResult(String(row.replacedBy), REL.REPLACED_BY, "/machines", "All Machines", "R44_MACHINE_REPLACED_BY");
-    }
-    if (/\bwhen .*replaced|replaced in|which update .*replaced\b/.test(q) && row.replacedIn) {
-      return r41InstantResult(String(row.replacedIn), REL.REPLACED_IN, "/machines", "All Machines", "R44_MACHINE_REPLACED_IN");
-    }
-  }
-
-  const asksMachine = /\b(?:which|what)\s+(?:machine|thing|system)\b|\bmachine\b/.test(q);
-  if (!asksMachine) return null;
-
-  const wants30 = /\bevery\s*30\s*minutes?\b|\b30\s*minute(?:s)?\b|\btwice\s+an\s+hour\b/.test(q);
-  const wantsRefresh = /\brefresh|cycle|rotate|rotation|offers?\b/.test(q) || wants30;
-  const endUpdate = Number((q.match(/\b(?:ended?|ending|through|until|lasted through)\s+(?:in\s+)?update\s*#?\s*(\d{1,3})\b/i) || [])[1] || 0);
-  const startUpdate = Number((q.match(/\b(?:ran|active|started|from)\s+(?:from\s+)?update\s*#?\s*(\d{1,3})\b/i) || [])[1] || 0);
-  const replacedIn = Number((q.match(/\breplaced\s+(?:in\s+)?update\s*#?\s*(\d{1,3})\b/i) || [])[1] || 0);
-
-  if (!wantsRefresh && !endUpdate && !startUpdate && !replacedIn) return null;
-
-  const candidates = [];
-  for (const [name, row] of Object.entries(R41_MACHINE_SNAPSHOT)) {
-    let strong = 0;
-    let reject = false;
-
-    if (wants30) {
-      if (String(row.refresh || "").toLowerCase() === "30 minutes") strong++;
-      else reject = true;
-    } else if (wantsRefresh) {
-      if (row.refresh) strong++;
-      else reject = true;
-    }
-
-    if (endUpdate) {
-      const ok =
-        r44UpdateNum(row.endedBy) === endUpdate ||
-        r44RangeEndsAt(row.activeRange, endUpdate);
-      if (ok) strong++;
-      else reject = true;
-    }
-
-    if (startUpdate) {
-      if (r44RangeStartsAt(row.activeRange, startUpdate)) strong++;
-      else reject = true;
-    }
-
-    if (replacedIn) {
-      if (r44UpdateNum(row.replacedIn) === replacedIn) strong++;
-      else reject = true;
-    }
-
-    if (!reject && strong > 0) candidates.push({ name, row, strong });
-  }
-
-  candidates.sort((a,b) => b.strong - a.strong);
-  const bestStrong = candidates[0]?.strong || 0;
-  const winners = candidates.filter((x) => x.strong === bestStrong);
-
-  if (winners.length === 1) {
-    return r41InstantResult(winners[0].name, REL.MACHINE, "/machines", "All Machines", "R44_MACHINE_HARD_CLUES");
-  }
-  if (winners.length > 1 && wants30 && !endUpdate && !startUpdate && !replacedIn) {
-    const preferred = winners
-      .map((x) => x.name)
-      .sort((a,b) => (a === "Los Traders" ? -1 : b === "Los Traders" ? 1 : a.localeCompare(b)));
-    return r41InstantResult(preferred.join(", "), REL.MACHINE, "/machines", "All Machines", "R44_MACHINE_REFRESH_REVERSE");
-  }
-
-  return null;
-}
-
-function r44BrainrotMoneyResolve(question) {
-  const raw = oneLine(question, 1000);
-  const q = raw.toLowerCase();
-
-  const asksBrainrot =
-    /\b(?:which|what)\s+(?:secret\s+)?brainrot\b/.test(q) ||
-    /\b(?:which|what)\s+secret\b/.test(q);
-
-  if (!asksBrainrot) return null;
-
-  const typed = r44TypedMoneyClues(raw);
-  const allMoney = r42MoneyClues(q);
-  const update = Number((q.match(/\bupdate\s*#?\s*(\d{1,3})\b/i) || [])[1] || 0);
-  const rarity = (q.match(/\b(common|rare|epic|legendary|mythic|brainrot god|secret|og)\b/i) || [])[1]?.toLowerCase() || "";
-
-  // If wording did not reveal which monetary number is which, still use all
-  // money clues as subject-level evidence, but typed cost/income must bind to
-  // the correct fields when available.
-  const candidates = [];
-  for (const [name, row] of Object.entries(R41_BRAINROT_SNAPSHOT)) {
-    let score = 0;
-    let strong = 0;
-    let reject = false;
-
-    if (rarity) {
-      if (String(row.rarity || "").toLowerCase() === rarity) score += 2;
-      else reject = true;
-    }
-
-    if (update) {
-      if (r44UpdateNum(row.update) === update) { score += 5; strong++; }
-      else reject = true;
-    }
-
-    if (typed.cost) {
-      if (r44MoneyCanon(row.cost) === typed.cost) { score += 10; strong++; }
-      else reject = true;
-    }
-
-    if (typed.income) {
-      if (r44MoneyCanon(row.income) === typed.income) { score += 10; strong++; }
-      else reject = true;
-    }
-
-    if (!typed.cost && !typed.income && allMoney.length) {
-      for (const m of allMoney) {
-        if (r44MoneyCanon(row.cost) === m || r44MoneyCanon(row.income) === m) {
-          score += 7; strong++;
-        } else {
-          reject = true;
-          break;
-        }
-      }
-    }
-
-    if (!reject && strong > 0) candidates.push({ name, row, score, strong });
-  }
-
-  candidates.sort((a,b) => (b.strong - a.strong) || (b.score - a.score));
-  if (!candidates.length) return null;
-
-  const top = candidates[0];
-  const tied = candidates.filter((x) => x.strong === top.strong && x.score === top.score);
-  if (tied.length !== 1) return null;
-
-  return r41InstantResult(
-    top.name,
-    REL.BRAINROT,
-    `/brainrots/${primarySlug(top.name)}`,
-    top.name,
-    "R44_BRAINROT_TYPED_MONEY"
-  );
-}
-
-function r44LocalHardClueResolve(question) {
-  return r44BrainrotMoneyResolve(question) || r44MachineLocalResolve(question);
-}
-
-
 function r42InstantStructuredResolve(question) {
+  const qq=String(question||'').toLowerCase();
+  // Preserve intentional ambiguity for a pure 30-minute reverse question:
+  // both Craft Machine and Los Traders are documented 30-minute systems.
+  // Lifecycle qualifiers (e.g. ended Update 60) make Los Traders unique and
+  // are handled by the structured scorer below.
+  const genericThirty=(/twice\s+(?:an|per)\s+hour|every\s+(?:30|thirty)\s*(?:min|mins|minute|minutes)/.test(qq)) &&
+    /(?:what|which|thing|machine|system)/.test(qq) &&
+    !/(?:update\s*\d+|ended|stopped|through|until|replaced|active range|los traders|craft machine)/.test(qq);
+  if (genericThirty) return null;
+
   const hit=r42RecordSearch(question);
   if (!hit) return null;
   const title=hit.row.kind==='machine'?'All Machines':hit.row.kind==='event'?'Events':hit.row.kind==='code'?'Update 61 Event Codes':hit.row.name;
@@ -672,10 +484,6 @@ function instantLoreResolve(question, analysis = {}) {
   const raw=oneLine(question,1000);
   const q=raw.toLowerCase();
   const nq=norm(raw);
-
-  // R44: exact local hard-clue binding before any AI/network work.
-  const r44Local = r44LocalHardClueResolve(raw);
-  if (r44Local) return r44Local;
 
   // R42: generic zero-network structured clue matcher. This runs BEFORE every
   // old shortcut, AI router, Tavily search, or upstream page fetch.
@@ -708,6 +516,11 @@ function instantLoreResolve(question, analysis = {}) {
   }
   if (/third\s+floor/.test(q) && /rebirth|unlock|which|what/.test(q)) {
     return r41InstantResult("Rebirth10",REL.REBIRTH,"/wiki/rebirth","Rebirth System Guide","THIRD_FLOOR");
+  }
+
+  // Current progression snapshot: S+ rebirth guide currently tops out at Rebirth 19.
+  if (/\b(?:newest|latest|current|highest)\b/.test(q) && /\brebirth\b/.test(q)) {
+    return r41InstantResult("Rebirth19",REL.REBIRTH,"/wiki/rebirth","Rebirth System Guide","CURRENT_REBIRTH");
   }
 
   // Reverse mutation lookup: "which mutation has 13x?"
@@ -791,6 +604,46 @@ function instantLoreResolve(question, analysis = {}) {
   }
 
   return null;
+}
+
+
+// =====================================================
+// R44 AI-ROUTED LOCAL LORE PASS
+// The first deterministic pass stays zero-network. If it misses, NVIDIA is
+// allowed to UNDERSTAND the wording, then we immediately retry the LOCAL lore
+// corpus using the structured semantics. Only after BOTH local passes miss do
+// we fetch S+ pages/search other sources.
+// =====================================================
+function r44SemanticQuestion(question, analysis = {}) {
+  const parts=[oneLine(question,900)];
+  const rel=String(analysis.relation||'').toUpperCase();
+  if (rel===REL.BRAINROT) parts.push('which brainrot');
+  if (rel===REL.MACHINE) parts.push('which machine');
+  if (rel===REL.MUTATION) parts.push('which mutation');
+  if (rel===REL.REBIRTH) parts.push('which rebirth');
+  if (rel===REL.RITUAL) parts.push('which ritual');
+  if (rel===REL.CODE) parts.push('which code');
+  if (analysis.entity) parts.push(String(analysis.entity));
+  for (const x of analysis.entities||[]) parts.push(String(x));
+  for (const x of analysis.clues||[]) parts.push(String(x));
+  for (const x of analysis.keywords||[]) parts.push(String(x));
+  if (analysis.update) parts.push(`Update ${analysis.update}`);
+  if (analysis.activeFrom) parts.push(`Update ${analysis.activeFrom}`);
+  if (analysis.activeTo) parts.push(`Update ${analysis.activeTo}`);
+  if (analysis.replacedIn) parts.push(`Update ${analysis.replacedIn}`);
+  if (analysis.date) parts.push(String(analysis.date));
+  return oneLine([...new Set(parts.filter(Boolean))].join(' '),1800);
+}
+
+function r44AiRoutedLocalResolve(question, analysis = {}) {
+  const enriched=r44SemanticQuestion(question,analysis);
+  const hit=r42InstantStructuredResolve(enriched) || instantLoreResolve(enriched,analysis);
+  if (!hit) return null;
+  return {
+    ...hit,
+    reason:`PRIMARY_SPLUS_R44_AI_ROUTED_LOCAL_${oneLine(hit.reason||'HIT',120)}`,
+    confidence:Math.max(Number(hit.confidence||0),0.995),
+  };
 }
 
 const PAGE_CACHE = new Map();
@@ -2865,8 +2718,13 @@ function mergeAnalysis(ai, fallback) {
     intent: oneLine(ai.intent, 80) || fallback.intent,
     wanted: oneLine(ai.wanted, 80) || relation,
     wantedRelations: normalizedWantedRelations(ai.wantedRelations, relation),
+    entityType: oneLine(ai.entityType, 60) || fallback.entityType || "",
+    answerType: oneLine(ai.answerType, 60) || fallback.answerType || relation,
+    clues: Array.isArray(ai.clues) ? ai.clues.map((x)=>oneLine(x,120)).filter(Boolean).slice(0,12) : (fallback.clues || []),
+    keywords: Array.isArray(ai.keywords) ? ai.keywords.map((x)=>oneLine(x,100)).filter(Boolean).slice(0,12) : (fallback.keywords || []),
+    negativeConstraints: Array.isArray(ai.negativeConstraints) ? ai.negativeConstraints.map((x)=>oneLine(x,120)).filter(Boolean).slice(0,8) : [],
     rawQuestion: fallback.rawQuestion || "",
-    source: "NVIDIA_QUESTION_ROUTER",
+    source: "NVIDIA_QUESTION_ROUTER_R44",
   };
 }
 
@@ -2976,11 +2834,17 @@ function enforceQuestionSemantics(question, analysis) {
   // The requested answer is the brainrot/entity, not the COST value.
   if (
     /\b(?:what|which)\b/.test(q) &&
-    /\bbrain\s*rot\b|\bbrainrot\b/.test(q) &&
-    /\b(?:cost|price|income|machine|event|update|rarity|secret)\b/.test(q)
+    ( /\bbrain\s*rot\b|\bbrainrot\b/.test(q) || /\b(?:what|which)\s+secret\b/.test(q) ) &&
+    /\b(?:cost|price|income|earn|earns|machine|event|update|rarity|secret|added|released)\b/.test(q)
   ) {
     next.relation = REL.BRAINROT;
     next.wanted = REL.BRAINROT;
+    // The unknown is the entity itself; don't let a noisy candidate entity lock
+    // the search onto a random adjective or money clue.
+    if (/\b(?:what|which)\s+secret\b/.test(q) || /\b(?:what|which)\s+brain\s*rot\b|\b(?:what|which)\s+brainrot\b/.test(q)) {
+      next.entity = null;
+      next.entities = [];
+    }
   }
 
   // Same idea for mutation reverse-identification questions.
@@ -3042,12 +2906,15 @@ async function analyzeQuestionAI(question, deadline) {
                 "wantedRelations is an array of every distinct fact type explicitly requested. For a normal single-part question it has one entry.",
                 "slots is optional structured semantics. Use unique slot ids when the question asks multiple facts or repeated facts with different qualifiers.",
                 "A slot may contain id, relation, answerType, subject, predicate, qualifier, anchorUpdate.",
+                "Also return entityType, answerType, clues, keywords, and negativeConstraints. clues MUST preserve exact money/date/update/percentage/duration strings from the question.",
+                "Interpret shorthand aggressively: 'what secret costs $27.5B and makes $87.5M/s' means answerType=BRAINROT, entityType=brainrot, clues include both money values; 'machine refreshes 30 minutes and ended Update 60' means answerType=MACHINE with BOTH lifecycle clues bound to one machine.",
+                "Never treat a clue as the answer. If the user asks WHICH/WHAT entity, relation is the entity family (BRAINROT/MACHINE/MUTATION/REBIRTH/etc.).",
                 "Example: 'How often did the Queen Bee event occur, and what update was it tied to?' => relation=FREQUENCY, wantedRelations=[FREQUENCY,UPDATE].",
                 "For questions like 'What machine was added in Update 61?', set update=61, relation=MACHINE, wanted=MACHINE.",
                 "For questions like 'What rebirth was added in the August 15, 2026 update?', set date=2026-08-15, relation=REBIRTH, wanted=REBIRTH.",
                 "For 'What did Update 62 add?', set update=62, relation=UPDATE, wanted=UPDATE, intent=UPDATE_SUMMARY.",
                 "Use canonical entity names when obvious, but never invent facts.",
-                'Return JSON only: {"intent":"...","entity":null,"aliases":[],"relation":"...","wanted":"...","wantedRelations":["..."],"slots":[],"update":null,"updateNumbers":[],"activeFrom":null,"activeTo":null,"replacedIn":null,"rebirth":null,"date":null,"current":false}',
+                'Return JSON only: {"intent":"...","entity":null,"aliases":[],"entityType":"","answerType":"","relation":"...","wanted":"...","wantedRelations":["..."],"slots":[],"clues":[],"keywords":[],"negativeConstraints":[],"update":null,"updateNumbers":[],"activeFrom":null,"activeTo":null,"replacedIn":null,"rebirth":null,"date":null,"current":false}',
               ].join("\n"),
             },
             {
@@ -7484,6 +7351,33 @@ async function resolveQuestion(questionObj, lore = "") {
   const routed = await analyzeQuestionAI(question, deadline);
   const analysis = routed.analysis;
 
+  // R44: AI is a semantic router, NOT an answer generator. Re-run local lore
+  // immediately with its structured interpretation before touching the network.
+  const aiLocal = r44AiRoutedLocalResolve(question, analysis);
+  if (aiLocal) {
+    const aiLocalDiagnostic = {
+      instantLoreHit: true,
+      aiRoutedLoreHit: true,
+      instantLoreSourcesReviewed: R41_RESEARCHED_SPLUS_SOURCE_COUNT,
+      instantLoreBuild: BUILD_ID,
+      aiQuestionRouter: analysis.source,
+      aiQuestionRouterError: routed.aiError || "",
+      aiEntityType: analysis.entityType || "",
+      aiAnswerType: analysis.answerType || analysis.relation,
+      aiClues: analysis.clues || [],
+    };
+    const trusted = attachTrustLog(aiLocal, SOURCE.PRIMARY);
+    const final = finalize(trusted, question, analysis, startedAt, aiLocalDiagnostic);
+    final.trustLog = trusted.trustLog;
+    final.trustedTier = "S+";
+    final.loreLibrary = true;
+    final.instantLore = true;
+    final.aiRoutedLore = true;
+    final.researchedSourceCount = R41_RESEARCHED_SPLUS_SOURCE_COUNT;
+    setCachedAnswer(question, final);
+    return final;
+  }
+
   const diagnostic = {
     aiQuestionRouter: analysis.source,
     aiQuestionRouterError: routed.aiError,
@@ -7637,81 +7531,46 @@ async function resolveQuestion(questionObj, lore = "") {
   }
 
   // =====================================================
-  // 2) A+ FANDOM.
-  // This is the FIRST point where the result/log says best source missed.
+  // 2/3) R44 TRUSTED SECONDARY SOURCES IN PARALLEL.
+  // S+ always wins and has already fully missed at this point. Fandom A+ and
+  // steal-a-brainrot.wiki B are queried concurrently so one slow source cannot
+  // consume the whole remaining budget. A+ still wins over B when both answer.
   // =====================================================
-  if (timeLeft(deadline) > 500) {
-    const fandom = await exactTierLookup(
-      question,
-      analysis,
-      SOURCE.FANDOM,
-      deadline
-    );
+  if (timeLeft(deadline) > 650) {
+    const [fandomSettled, wikiSettled] = await Promise.allSettled([
+      fandomStage(question, analysis, deadline),
+      wikiStage(question, analysis, deadline),
+    ]);
 
-    diagnostic.fandomQuery = fandom.query;
-    diagnostic.fandomQueries = fandom.queries || [];
-    diagnostic.fandomSelectedPage = fandom.page?.url || fandom.selected?.url || "";
-    diagnostic.fandomPagesTried = fandom.pagesTried || [];
-    diagnostic.fandomSearchVariantErrors = fandom.searchVariantErrors || [];
-    diagnostic.fandomMultipart = fandom.multipart || null;
-    diagnostic.fandomFactSlots = fandom.factSlots || null;
-    diagnostic.fandomError = fandom.error || "";
+    const fandom = fandomSettled.status === 'fulfilled' ? fandomSettled.value : {result:null,pages:[],errors:[errorCode(fandomSettled.reason)]};
+    const wiki = wikiSettled.status === 'fulfilled' ? wikiSettled.value : {result:null,search:{results:[],errors:[errorCode(wikiSettled.reason)]}};
+
+    diagnostic.fandomPagesTried = (fandom.pages || []).map((p)=>({title:p.title,url:p.url,usable:true,reason:'R44_PARALLEL_API'}));
+    diagnostic.fandomError = (fandom.errors || []).join('|');
+    diagnostic.wikiPagesTried = (wiki.search?.results || []).slice(0,5).map((p)=>({title:p.title,url:p.url,usable:true,reason:'R44_PARALLEL_SEARCH'}));
+    diagnostic.wikiError = (wiki.search?.errors || []).join('|');
 
     if (fandom.result) {
       const result = attachTrustLog(fandom.result, SOURCE.FANDOM);
-      const final = finalize(
-        result,
-        question,
-        analysis,
-        startedAt,
-        diagnostic
-      );
-
+      const final = finalize(result, question, analysis, startedAt, diagnostic);
       final.trustLog = result.trustLog;
-      final.trustedTier = "A+";
-
+      final.trustedTier = 'A+';
+      final.secondaryParallel = true;
       setCachedAnswer(question, final);
       return final;
     }
-  } else {
-    diagnostic.fandomError = "BUDGET_EXHAUSTED_BEFORE_A_PLUS";
-  }
-
-  // =====================================================
-  // 3) B SECONDARY WIKI.
-  // =====================================================
-  if (timeLeft(deadline) > 450) {
-    const wiki = await exactTierLookup(
-      question,
-      analysis,
-      SOURCE.WIKI,
-      deadline
-    );
-
-    diagnostic.wikiQuery = wiki.query;
-    diagnostic.wikiQueries = wiki.queries || [];
-    diagnostic.wikiSelectedPage = wiki.page?.url || wiki.selected?.url || "";
-    diagnostic.wikiPagesTried = wiki.pagesTried || [];
-    diagnostic.wikiError = wiki.error || "";
-
     if (wiki.result) {
       const result = attachTrustLog(wiki.result, SOURCE.WIKI);
-      const final = finalize(
-        result,
-        question,
-        analysis,
-        startedAt,
-        diagnostic
-      );
-
+      const final = finalize(result, question, analysis, startedAt, diagnostic);
       final.trustLog = result.trustLog;
-      final.trustedTier = "B";
-
+      final.trustedTier = 'B';
+      final.secondaryParallel = true;
       setCachedAnswer(question, final);
       return final;
     }
   } else {
-    diagnostic.wikiError = "BUDGET_EXHAUSTED_BEFORE_B";
+    diagnostic.fandomError = 'BUDGET_EXHAUSTED_BEFORE_PARALLEL_SECONDARY';
+    diagnostic.wikiError = 'BUDGET_EXHAUSTED_BEFORE_PARALLEL_SECONDARY';
   }
 
   // =====================================================
@@ -8967,14 +8826,15 @@ function runSelfTests() {
   check("R42 Crystal event update", instantLoreResolve("Which update was CRYSTAL MUTATION + SPAIN?",analyzeQuestion("Which update was CRYSTAL MUTATION + SPAIN?"))?.answer === "Update 59");
   check("R42 event summary source count", R41_RESEARCHED_SPLUS_SOURCE_COUNT >= 140);
 
-
-  // R44 exact regressions from Roblox screenshots.
-  check("R44 refresh+end Update60 reverse", instantLoreResolve("What machine refreshes every 30 minutes and ended in Update 60?", analyzeQuestion("What machine refreshes every 30 minutes and ended in Update 60?"))?.answer === "Los Traders");
-  check("R44 Secret money reverse", instantLoreResolve("What Secret costs $27.5B and makes $87.5M/s?", analyzeQuestion("What Secret costs $27.5B and makes $87.5M/s?"))?.answer === "Yetimatic");
-  check("R44 pre RNG still instant", instantLoreResolve("What machine came before RNG Machine?", analyzeQuestion("What machine came before RNG Machine?"))?.answer === "Los Traders");
-  check("R44 Grief Shield still instant", instantLoreResolve("What rebirth gives Grief Shield?", analyzeQuestion("What rebirth gives Grief Shield?"))?.answer === "Rebirth19");
-  check("R44 Job 1pct still instant", instantLoreResolve("What is the 1% Job Job Job Sahur outcome?", analyzeQuestion("What is the 1% Job Job Job Sahur outcome?"))?.answer === "Noo my Resume");
-  check("R44 Crystal 13x still instant", instantLoreResolve("What mutation has a 13x multiplier?", analyzeQuestion("What mutation has a 13x multiplier?"))?.answer === "Crystal");
+  // R44 screenshot regressions + aggressive local lore tests.
+  check("R44 pre RNG", instantLoreResolve("What machine came before RNG Machine?", analyzeQuestion("What machine came before RNG Machine?"))?.answer === "Los Traders");
+  check("R44 Grief Shield reverse", instantLoreResolve("What rebirth gives Grief Shield?", analyzeQuestion("What rebirth gives Grief Shield?"))?.answer === "Rebirth19");
+  check("R44 Crystal 13x", instantLoreResolve("What mutation has a 13x multiplier?", analyzeQuestion("What mutation has a 13x multiplier?"))?.answer === "Crystal");
+  check("R44 what Secret money reverse", instantLoreResolve("What Secret costs $27.5B and makes $87.5M/s?", analyzeQuestion("What Secret costs $27.5B and makes $87.5M/s?"))?.answer === "Yetimatic");
+  check("R44 one percent job outcome", instantLoreResolve("What is the 1% Job Job Job Sahur outcome?", analyzeQuestion("What is the 1% Job Job Job Sahur outcome?"))?.answer === "Noo my Resume");
+  check("R44 machine refresh plus lifecycle", instantLoreResolve("What machine refreshes every 30 minutes and ended in Update 60?", analyzeQuestion("What machine refreshes every 30 minutes and ended in Update 60?"))?.answer === "Los Traders");
+  check("R44 AI enriched Secret money", r44AiRoutedLocalResolve("Which one is it?", {relation:REL.BRAINROT,answerType:"BRAINROT",entityType:"brainrot",clues:["$27.5B","$87.5M/s"],keywords:["Secret"]})?.answer === "Yetimatic");
+  check("R44 AI enriched lifecycle", r44AiRoutedLocalResolve("Which machine?", {relation:REL.MACHINE,answerType:"MACHINE",entityType:"machine",clues:["30 minutes","Update 60"],keywords:["refresh","ended"]})?.answer === "Los Traders");
 
   // Priority behavior: once S+ has a direct value, lower tier disagreement does not participate.
   const primary = makeResult("10x", REL.MULTIPLIER, SOURCE.PRIMARY, mutationPage, "PRIMARY_MUTATION_SECTION", 0.995);
@@ -9226,10 +9086,11 @@ export async function GET(request) {
       masterCorpusR37: true,
       instantLoreGraphR41: true,
       ultraInstantStructuredLoreR42: true,
-      localFirstHardClueBindingR44: true,
-      machineRefreshLifecycleReverseR44: true,
-      typedCostIncomeReverseR44: true,
-      observed429AvoidedForKnownLoreR44: true,
+      aggressiveAiSemanticRouterR44: true,
+      aiThenLocalLoreRetryR44: true,
+      lifecycleMultiClueBindingR44: true,
+      whatSecretReverseLookupR44: true,
+      parallelTrustedSecondaryFallbackR44: true,
       reverseMultiClueBrainrotLookupR42: true,
       reverseMachineClueLookupR42: true,
       localEventTimelineR42: true,
